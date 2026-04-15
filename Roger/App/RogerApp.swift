@@ -5,12 +5,9 @@ struct RogerApp: App {
     @State private var coordinator = AppCoordinator()
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra("Roger", systemImage: "waveform") {
             MenuBarView()
                 .environment(coordinator)
-        } label: {
-            Image(systemName: coordinator.appState.menuBarIcon)
-                .symbolRenderingMode(.hierarchical)
         }
         .menuBarExtraStyle(.window)
 
