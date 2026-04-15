@@ -23,6 +23,7 @@ targets:
       - path: UI
       - path: Services
       - path: Models
+      - path: LLM
       - path: Resources
         buildPhase: resources
         type: folder

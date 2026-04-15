@@ -1,0 +1,184 @@
+import SwiftUI
+
+struct PresetsSettingsView: View {
+    @Environment(AppCoordinator.self) private var coordinator
+    @State private var selectedPresetID: UUID?
+
+    var body: some View {
+        HSplitView {
+            presetList
+                .frame(minWidth: 150, maxWidth: 180)
+
+            if let selectedID = selectedPresetID,
+               let index = coordinator.appState.presets.firstIndex(where: { $0.id == selectedID }) {
+                @Bindable var state = coordinator.appState
+                presetDetail(preset: $state.presets[index])
+            } else {
+                Text("Select a preset")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear {
+            selectedPresetID = coordinator.appState.activePresetID
+        }
+    }
+
+    // MARK: - Preset List
+
+    private var presetList: some View {
+        VStack(spacing: 0) {
+            List(coordinator.appState.presets, id: \.id, selection: $selectedPresetID) { preset in
+                HStack {
+                    if preset.isBuiltIn {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(preset.name)
+                    Spacer()
+                    if preset.id == coordinator.appState.activePresetID {
+                        Image(systemName: "checkmark")
+                            .font(.caption)
+                            .foregroundColor(.accentColor)
+                    }
+                }
+                .tag(preset.id)
+            }
+
+            Divider()
+
+            HStack(spacing: 12) {
+                Button(action: addCustomPreset) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+
+                Button(action: removeSelectedPreset) {
+                    Image(systemName: "minus")
+                }
+                .buttonStyle(.plain)
+                .disabled(selectedPresetIsBuiltIn)
+
+                Spacer()
+            }
+            .padding(8)
+        }
+    }
+
+    // MARK: - Preset Detail
+
+    private func presetDetail(preset: Binding<DictationPreset>) -> some View {
+        Form {
+            if preset.wrappedValue.isBuiltIn {
+                Section {
+                    Text("Built-in presets cannot be edited. Create a custom preset to customize.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Name") {
+                TextField("Preset name", text: preset.name)
+                    .disabled(preset.wrappedValue.isBuiltIn)
+            }
+
+            Section("Pipeline Steps") {
+                Toggle("Remove filler words", isOn: preset.enableFillerRemoval)
+                Toggle("Remove repeated words", isOn: preset.enableDedup)
+                Toggle("AI punctuation & formatting", isOn: preset.enableAIFormatting)
+                Toggle("Apply custom dictionary", isOn: preset.enableCustomDictionary)
+                Toggle("AI rewrite", isOn: preset.enableRewrite)
+            }
+            .disabled(preset.wrappedValue.isBuiltIn)
+
+            if preset.wrappedValue.enableAIFormatting {
+                Section("Formatting Prompt") {
+                    TextEditor(text: preset.aiPrompt)
+                        .font(.callout)
+                        .frame(minHeight: 60)
+                        .disabled(preset.wrappedValue.isBuiltIn)
+                }
+            }
+
+            if preset.wrappedValue.enableRewrite {
+                Section("Rewrite Prompt") {
+                    TextEditor(text: preset.rewritePrompt)
+                        .font(.callout)
+                        .frame(minHeight: 60)
+                        .disabled(preset.wrappedValue.isBuiltIn)
+                }
+            }
+
+            if preset.wrappedValue.enableCustomDictionary {
+                dictionarySection(preset: preset)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - Dictionary Editor
+
+    private func dictionarySection(preset: Binding<DictationPreset>) -> some View {
+        Section("Custom Dictionary") {
+            ForEach(preset.dictionaryEntries) { $entry in
+                HStack {
+                    TextField("Find", text: $entry.find)
+                        .textFieldStyle(.roundedBorder)
+                    Image(systemName: "arrow.right")
+                        .foregroundStyle(.tertiary)
+                    TextField("Replace", text: $entry.replace)
+                        .textFieldStyle(.roundedBorder)
+                    Button(action: {
+                        preset.wrappedValue.dictionaryEntries.removeAll { $0.id == entry.id }
+                    }) {
+                        Image(systemName: "minus.circle")
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Button("Add Entry") {
+                preset.wrappedValue.dictionaryEntries.append(
+                    DictionaryEntry(find: "", replace: "")
+                )
+            }
+            .disabled(preset.wrappedValue.isBuiltIn)
+        }
+    }
+
+    // MARK: - Actions
+
+    private var selectedPresetIsBuiltIn: Bool {
+        guard let id = selectedPresetID else { return true }
+        return coordinator.appState.presets.first { $0.id == id }?.isBuiltIn ?? true
+    }
+
+    private func addCustomPreset() {
+        let newPreset = DictationPreset(
+            id: UUID(),
+            name: "Custom",
+            isBuiltIn: false,
+            enableFillerRemoval: true,
+            enableDedup: true,
+            enableAIFormatting: true,
+            enableCustomDictionary: false,
+            enableRewrite: false,
+            aiPrompt: "Add proper punctuation and capitalization to this dictated text. Return only the corrected text, nothing else.",
+            rewritePrompt: "",
+            dictionaryEntries: []
+        )
+        coordinator.appState.presets.append(newPreset)
+        selectedPresetID = newPreset.id
+    }
+
+    private func removeSelectedPreset() {
+        guard let id = selectedPresetID, !selectedPresetIsBuiltIn else { return }
+        coordinator.appState.presets.removeAll { $0.id == id }
+        if coordinator.appState.activePresetID == id {
+            coordinator.appState.activePresetID = DictationPreset.defaultPresetID
+        }
+        selectedPresetID = coordinator.appState.activePresetID
+    }
+}

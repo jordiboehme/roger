@@ -62,6 +62,22 @@ struct MenuBarView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 4)
 
+            // Preset picker
+            HStack {
+                Text("Preset")
+                Spacer()
+                @Bindable var state2 = coordinator.appState
+                Picker("", selection: $state2.activePresetID) {
+                    ForEach(coordinator.appState.presets) { preset in
+                        Text(preset.name).tag(preset.id)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+
             Divider()
                 .padding(.vertical, 4)
 

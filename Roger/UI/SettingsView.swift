@@ -12,6 +12,14 @@ struct SettingsView: View {
             PermissionsSettingsView(permissionManager: coordinator.permissionManager)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
 
+            AIProviderSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("AI Provider", systemImage: "sparkles") }
+
+            PresetsSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("Presets", systemImage: "antenna.radiowaves.left.and.right") }
+
             ModelSettingsView(
                 engine: coordinator.transcriptionEngine,
                 downloadProgress: coordinator.appState.modelDownloadProgress,
@@ -22,7 +30,7 @@ struct SettingsView: View {
             AboutView()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 450, height: 320)
+        .frame(width: 500, height: 400)
     }
 }
 

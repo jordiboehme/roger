@@ -11,6 +11,7 @@ final class AppCoordinator {
     let permissionManager = PermissionManager()
     let audioCaptureService = AudioCaptureService()
     let transcriptionEngine = TranscriptionEngine()
+    let postProcessor = PostProcessor()
     let textInsertionService = TextInsertionService()
     let hotkeyManager = HotkeyManager()
 
@@ -94,8 +95,16 @@ final class AppCoordinator {
                 return
             }
 
-            // TODO: Phase 2 — AI post-processing via PostProcessor
-            let processedText = transcript
+            let activePreset = appState.activePreset
+            let processedText: String
+
+            if activePreset.requiresAI {
+                appState.dictationState = .processing
+                let llmService = appState.currentLLMService()
+                processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: llmService)
+            } else {
+                processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: nil)
+            }
 
             appState.dictationState = .inserting
             appState.lastTranscription = processedText
