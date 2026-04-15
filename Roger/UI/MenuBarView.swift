@@ -4,9 +4,9 @@ struct MenuBarView: View {
     @Environment(AppCoordinator.self) private var coordinator
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             // Status
-            HStack {
+            HStack(spacing: 8) {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
@@ -14,6 +14,9 @@ struct MenuBarView: View {
                     .font(.headline)
                 Spacer()
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
 
             // Model download progress
             if let progress = coordinator.appState.modelDownloadProgress {
@@ -23,19 +26,25 @@ struct MenuBarView: View {
                         .foregroundStyle(.secondary)
                     ProgressView(value: progress)
                 }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
             }
 
             // Last transcription
             if let text = coordinator.appState.lastTranscription {
-                GroupBox {
-                    Text(text)
-                        .font(.body)
-                        .lineLimit(4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                Text(text)
+                    .font(.callout)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(.quaternary.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
             }
 
             Divider()
+                .padding(.vertical, 4)
 
             // Language picker
             HStack {
@@ -50,22 +59,25 @@ struct MenuBarView: View {
                 .labelsHidden()
                 .fixedSize()
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
 
             Divider()
+                .padding(.vertical, 4)
 
             // Actions
-            Button("Settings…") {
+            MenuBarButton(title: "Settings…", shortcut: "⌘,") {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
-            .keyboardShortcut(",", modifiers: .command)
 
-            Button("Quit Roger") {
+            MenuBarButton(title: "Quit Roger", shortcut: "⌘Q") {
                 NSApp.terminate(nil)
             }
-            .keyboardShortcut("q", modifiers: .command)
+
+            Spacer()
+                .frame(height: 6)
         }
-        .padding()
-        .frame(width: 280)
+        .frame(width: 260)
         .task {
             coordinator.permissionManager.checkPermissions()
             if !coordinator.transcriptionEngine.isReady {
@@ -86,5 +98,28 @@ struct MenuBarView: View {
         case .error:
             return .red
         }
+    }
+}
+
+struct MenuBarButton: View {
+    let title: String
+    var shortcut: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer()
+                if let shortcut {
+                    Text(shortcut)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
     }
 }
