@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(AppCoordinator.self) private var coordinator
-    var openSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -83,9 +82,22 @@ struct MenuBarView: View {
                 .padding(.vertical, 4)
 
             // Actions
-            MenuBarButton(title: "Settings…") {
-                openSettings()
+            SettingsLink {
+                Text("Settings…")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
             }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
+                DispatchQueue.main.async {
+                    NSApp.activate(ignoringOtherApps: true)
+                    for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                }
+            })
 
             MenuBarButton(title: "Quit Roger") {
                 NSApp.terminate(nil)

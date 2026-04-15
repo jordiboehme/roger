@@ -3,11 +3,10 @@ import SwiftUI
 @main
 struct RogerApp: App {
     @State private var coordinator = AppCoordinator()
-    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(openSettings: { openWindow(id: "settings") })
+            MenuBarView()
                 .environment(coordinator)
         } label: {
             Image(systemName: coordinator.appState.menuBarIcon)
@@ -15,11 +14,9 @@ struct RogerApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Roger Settings", id: "settings") {
+        Settings {
             SettingsView()
                 .environment(coordinator)
         }
-        .defaultSize(width: 500, height: 400)
-        .windowResizability(.contentSize)
     }
 }
