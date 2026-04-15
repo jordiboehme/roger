@@ -194,10 +194,10 @@ struct AboutView: View {
             Spacer()
 
             VStack(spacing: 6) {
-                Text("Created with \u{2764}\u{FE0F} by Jordi Boehme")
+                Text("Created with \u{2764}\u{FE0F} by Jordi Böhme")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("\u{00A9} 2026 Jordi Boehme. MIT License.")
+                Text("\u{00A9} 2026 Jordi Böhme. MIT License.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
