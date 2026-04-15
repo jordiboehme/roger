@@ -82,9 +82,14 @@ struct MenuBarView: View {
                 .padding(.vertical, 4)
 
             // Actions
-            MenuBarButton(title: "Settings…") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            SettingsLink {
+                Text("Settings…")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
             }
+            .buttonStyle(.plain)
 
             MenuBarButton(title: "Quit Roger") {
                 NSApp.terminate(nil)
