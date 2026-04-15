@@ -66,11 +66,11 @@ struct MenuBarView: View {
                 .padding(.vertical, 4)
 
             // Actions
-            MenuBarButton(title: "Settings…", shortcut: "⌘,") {
+            MenuBarButton(title: "Settings…") {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
 
-            MenuBarButton(title: "Quit Roger", shortcut: "⌘Q") {
+            MenuBarButton(title: "Quit Roger") {
                 NSApp.terminate(nil)
             }
 
