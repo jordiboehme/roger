@@ -1,3 +1,4 @@
+import ApplicationServices
 import SwiftUI
 
 struct SettingsView: View {
@@ -9,7 +10,8 @@ struct SettingsView: View {
             GeneralSettingsView(state: state)
                 .tabItem { Label("General", systemImage: "gear") }
 
-            PermissionsSettingsView(permissionManager: coordinator.permissionManager)
+            PermissionsSettingsView()
+                .environment(coordinator)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
 
             AIProviderSettingsView()
@@ -72,51 +74,183 @@ struct GeneralSettingsView: View {
 // MARK: - Permissions
 
 struct PermissionsSettingsView: View {
-    var permissionManager: PermissionManager
+    @Environment(AppCoordinator.self) private var coordinator
+    @State private var micTestResult: String?
+    @State private var accessibilityTestResult: String?
+    @State private var hotkeyTestResult: String?
+    @State private var hotkeyTestActive = false
 
     var body: some View {
+        let pm = coordinator.permissionManager
         Form {
-            LabeledContent("Microphone") {
-                HStack {
-                    Image(systemName: permissionManager.microphoneAuthorized ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(permissionManager.microphoneAuthorized ? .green : .red)
-                    if !permissionManager.microphoneAuthorized {
-                        Button("Request") {
-                            Task { await permissionManager.requestMicrophone() }
+            // Microphone
+            Section {
+                LabeledContent("Microphone") {
+                    HStack {
+                        Image(systemName: pm.microphoneAuthorized ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(pm.microphoneAuthorized ? .green : .red)
+                        if !pm.microphoneAuthorized {
+                            Button("Request") {
+                                Task { await pm.requestMicrophone() }
+                            }
+                        }
+                    }
+                }
+
+                if pm.microphoneAuthorized {
+                    HStack {
+                        Button("Test Microphone") { testMicrophone() }
+                        if let result = micTestResult {
+                            Text(result)
+                                .font(.caption)
+                                .foregroundStyle(result.contains("OK") ? .green : .red)
                         }
                     }
                 }
             }
 
-            LabeledContent("Accessibility") {
-                HStack {
-                    Image(systemName: permissionManager.accessibilityAuthorized ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(permissionManager.accessibilityAuthorized ? .green : .red)
-                    if !permissionManager.accessibilityAuthorized {
-                        Button("Open Settings") {
-                            permissionManager.requestAccessibility()
+            // Accessibility
+            Section {
+                LabeledContent("Accessibility") {
+                    HStack {
+                        Image(systemName: pm.accessibilityAuthorized ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(pm.accessibilityAuthorized ? .green : .red)
+                        if !pm.accessibilityAuthorized {
+                            Button("Open Settings") {
+                                pm.requestAccessibility()
+                            }
+                        }
+                    }
+                }
+
+                if pm.accessibilityAuthorized {
+                    HStack {
+                        Button("Test Accessibility") { testAccessibility() }
+                        if let result = accessibilityTestResult {
+                            Text(result)
+                                .font(.caption)
+                                .foregroundStyle(result.contains("OK") ? .green : .red)
                         }
                     }
                 }
             }
 
-            LabeledContent("Caps Lock Remap") {
-                HStack {
-                    Button("Enable") {
-                        HotkeyManager.remapCapsLockToF18()
+            // Caps Lock / Hotkey
+            Section {
+                LabeledContent("Caps Lock Remap") {
+                    HStack {
+                        Button("Enable") {
+                            HotkeyManager.remapCapsLockToF18()
+                        }
+                        Button("Install for Login") {
+                            try? HotkeyManager.installRemapLaunchAgent()
+                        }
                     }
-                    Button("Install for Login") {
-                        try? HotkeyManager.installRemapLaunchAgent()
+                }
+
+                HStack {
+                    Button(hotkeyTestActive ? "Listening for keypress…" : "Test Hotkey") {
+                        testHotkey()
+                    }
+                    .disabled(hotkeyTestActive)
+
+                    if hotkeyTestActive {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    if let result = hotkeyTestResult {
+                        Text(result)
+                            .font(.caption)
+                            .foregroundStyle(result.contains("OK") ? .green : .red)
+                    }
+                }
+
+                LabeledContent("Hotkey Status") {
+                    Text(coordinator.hotkeyActive ? "Active" : "Not active")
+                        .foregroundStyle(coordinator.hotkeyActive ? .green : .red)
+                }
+
+                if !coordinator.hotkeyActive {
+                    Button("Retry Hotkey Setup") {
+                        coordinator.startHotkey()
                     }
                 }
             }
         }
         .formStyle(.grouped)
         .onAppear {
-            permissionManager.checkPermissions()
+            pm.checkPermissions()
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            permissionManager.checkPermissions()
+            pm.checkPermissions()
+        }
+    }
+
+    // MARK: - Tests
+
+    private func testMicrophone() {
+        micTestResult = nil
+        let service = coordinator.audioCaptureService
+        do {
+            try service.startCapture()
+            // Record for 0.5s then stop
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let samples = service.stopCapture()
+                if let samples, !samples.isEmpty {
+                    let peak = samples.map { abs($0) }.max() ?? 0
+                    micTestResult = "OK — captured \(samples.count) samples (peak: \(String(format: "%.3f", peak)))"
+                } else {
+                    micTestResult = "Failed — no audio captured"
+                }
+            }
+        } catch {
+            micTestResult = "Failed — \(error.localizedDescription)"
+        }
+    }
+
+    private func testAccessibility() {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedElement: AnyObject?
+        let result = AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedElement
+        )
+        if result == .success {
+            accessibilityTestResult = "OK — can read focused UI element"
+        } else {
+            accessibilityTestResult = "Failed — cannot access UI elements (error \(result.rawValue))"
+        }
+    }
+
+    private func testHotkey() {
+        hotkeyTestResult = nil
+        hotkeyTestActive = true
+
+        // Temporarily override callbacks to detect keypress
+        let originalStart = coordinator.hotkeyManager.onRecordingStarted
+        let originalStop = coordinator.hotkeyManager.onRecordingStopped
+
+        coordinator.hotkeyManager.onRecordingStarted = { [self] in
+            Task { @MainActor in
+                hotkeyTestResult = "OK — hotkey press detected!"
+                hotkeyTestActive = false
+                // Restore original callbacks
+                coordinator.hotkeyManager.onRecordingStarted = originalStart
+                coordinator.hotkeyManager.onRecordingStopped = originalStop
+            }
+        }
+        coordinator.hotkeyManager.onRecordingStopped = nil
+
+        // Timeout after 10 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [self] in
+            if hotkeyTestActive {
+                hotkeyTestResult = "Timeout — no keypress detected in 10s"
+                hotkeyTestActive = false
+                coordinator.hotkeyManager.onRecordingStarted = originalStart
+                coordinator.hotkeyManager.onRecordingStopped = originalStop
+            }
         }
     }
 }
