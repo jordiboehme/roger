@@ -115,6 +115,9 @@ struct PermissionsSettingsView: View {
         .onAppear {
             permissionManager.checkPermissions()
         }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            permissionManager.checkPermissions()
+        }
     }
 }
 

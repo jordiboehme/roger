@@ -16,6 +16,8 @@ final class AppCoordinator {
     let hotkeyManager = HotkeyManager()
     let floatingPanel = FloatingPanel()
 
+    var hotkeyActive = false
+    private var isSettingUpModel = false
     private var recordingStartTime: Date?
 
     init() {
@@ -35,6 +37,23 @@ final class AppCoordinator {
         }
     }
 
+    // MARK: - Hotkey
+
+    func startHotkey() {
+        permissionManager.checkAccessibility()
+        guard permissionManager.accessibilityAuthorized else {
+            logger.warning("Accessibility not authorized — hotkey cannot start")
+            hotkeyActive = false
+            return
+        }
+        hotkeyActive = hotkeyManager.start(mode: appState.activationMode)
+        if hotkeyActive {
+            logger.info("Hotkey started successfully")
+        } else {
+            logger.error("Hotkey failed to start — event tap creation failed")
+        }
+    }
+
     // MARK: - Dictation
 
     func startDictation() {
@@ -48,9 +67,9 @@ final class AppCoordinator {
             return
         }
 
-        permissionManager.checkAccessibility()
-        if !permissionManager.accessibilityAuthorized {
-            logger.warning("Accessibility not authorized — text insertion may use clipboard fallback")
+        guard transcriptionEngine.isReady else {
+            appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+            return
         }
 
         do {
@@ -152,19 +171,32 @@ final class AppCoordinator {
     // MARK: - Model Setup
 
     func setupModel() async {
+        guard !isSettingUpModel else {
+            logger.info("Model setup already in progress, skipping")
+            return
+        }
+        guard !transcriptionEngine.isReady else {
+            logger.info("Model already ready, skipping setup")
+            return
+        }
+
+        isSettingUpModel = true
+        appState.modelDownloadProgress = 0
+
         do {
-            appState.modelDownloadProgress = 0
             try await transcriptionEngine.setup { progress in
                 Task { @MainActor [weak self] in
                     self?.appState.modelDownloadProgress = progress
                 }
             }
             appState.modelDownloadProgress = nil
+            isSettingUpModel = false
             logger.info("Model setup complete")
         } catch {
             logger.error("Model setup failed: \(error)")
             appState.modelDownloadProgress = nil
-            appState.dictationState = .error("Model download failed — check your connection and retry in Settings")
+            isSettingUpModel = false
+            appState.dictationState = .error("Model download failed — check your connection and retry")
         }
     }
 

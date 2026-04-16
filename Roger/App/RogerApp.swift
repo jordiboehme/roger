@@ -29,13 +29,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") else { return }
+        let coordinator = sharedCoordinator
 
+        // Check permissions
+        coordinator.permissionManager.checkPermissions()
+
+        // Start model download
+        Task {
+            if !coordinator.transcriptionEngine.isReady {
+                await coordinator.setupModel()
+            }
+        }
+
+        // Start hotkey listener
+        coordinator.startHotkey()
+
+        // Show onboarding on first launch
+        if !coordinator.appState.hasCompletedOnboarding {
+            showOnboarding(coordinator: coordinator)
+        }
+    }
+
+    private func showOnboarding(coordinator: AppCoordinator) {
         let view = OnboardingView(onComplete: { [weak self] in
             self?.onboardingWindow?.close()
             self?.onboardingWindow = nil
         })
-        .environment(sharedCoordinator)
+        .environment(coordinator)
 
         let hostingView = NSHostingView(rootView: view)
 

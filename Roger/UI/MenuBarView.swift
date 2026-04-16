@@ -26,12 +26,28 @@ struct MenuBarView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            // Error retry for model download
-            if case .error(let msg) = coordinator.appState.dictationState, msg.contains("Model") {
-                MenuBarButton(title: "Retry Model Download") {
-                    coordinator.dismissError()
-                    Task { await coordinator.setupModel() }
+            // Error retry
+            if case .error(let msg) = coordinator.appState.dictationState {
+                if msg.contains("Model") || msg.contains("download") {
+                    MenuBarButton(title: "Retry Model Download") {
+                        coordinator.dismissError()
+                        Task { await coordinator.setupModel() }
+                    }
                 }
+            }
+
+            // Hotkey status warning
+            if !coordinator.hotkeyActive && coordinator.appState.dictationState == .idle {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                    Text("Hotkey not active — grant Accessibility permission")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
             }
 
             // Model download progress
@@ -125,10 +141,6 @@ struct MenuBarView: View {
         .frame(width: 260)
         .task {
             coordinator.permissionManager.checkPermissions()
-            if !coordinator.transcriptionEngine.isReady {
-                await coordinator.setupModel()
-            }
-            coordinator.hotkeyManager.start(mode: coordinator.appState.activationMode)
         }
     }
 

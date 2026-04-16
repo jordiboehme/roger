@@ -21,9 +21,10 @@ final class HotkeyManager: @unchecked Sendable {
         stop()
     }
 
-    func start(mode: ActivationMode) {
+    @discardableResult
+    func start(mode: ActivationMode) -> Bool {
         activationMode = mode
-        setupEventTap()
+        return setupEventTap()
     }
 
     func stop() {
@@ -111,7 +112,8 @@ final class HotkeyManager: @unchecked Sendable {
 
     // MARK: - Event Tap
 
-    private func setupEventTap() {
+    @discardableResult
+    private func setupEventTap() -> Bool {
         let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, refcon -> Unmanaged<CGEvent>? in
@@ -168,7 +170,7 @@ final class HotkeyManager: @unchecked Sendable {
             userInfo: refcon
         ) else {
             logger.error("Failed to create event tap — Accessibility permission required")
-            return
+            return false
         }
 
         eventTap = tap
@@ -178,5 +180,6 @@ final class HotkeyManager: @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
 
         logger.info("Event tap active, listening for keyCode \(self.triggerKeyCode)")
+        return true
     }
 }

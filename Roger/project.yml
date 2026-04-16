@@ -36,9 +36,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Resources/Roger.entitlements
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        CODE_SIGN_IDENTITY: "-"
-        CODE_SIGN_STYLE: Manual
-        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         PRODUCT_NAME: Roger
