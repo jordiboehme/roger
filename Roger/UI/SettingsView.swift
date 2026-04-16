@@ -115,22 +115,35 @@ struct PermissionsSettingsView: View {
                     HStack {
                         Image(systemName: pm.accessibilityAuthorized ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundStyle(pm.accessibilityAuthorized ? .green : .red)
-                        if !pm.accessibilityAuthorized {
-                            Button("Open Settings") {
-                                pm.requestAccessibility()
-                            }
+                        Button("Open Settings") {
+                            pm.openAccessibilitySettings()
                         }
                     }
                 }
 
-                if pm.accessibilityAuthorized {
-                    HStack {
-                        Button("Test Accessibility") { testAccessibility() }
-                        if let result = accessibilityTestResult {
-                            Text(result)
-                                .font(.caption)
-                                .foregroundStyle(result.contains("OK") ? .green : .red)
+                if !pm.accessibilityAuthorized {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Each new build changes the code signature. Remove all old \"Roger\" entries from Accessibility, then re-add the current one:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(Bundle.main.bundlePath)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+
+                        Button("Reset Accessibility for Roger") {
+                            resetAccessibility()
                         }
+                        .font(.caption)
+                    }
+                }
+
+                HStack {
+                    Button("Test Accessibility") { testAccessibility() }
+                    if let result = accessibilityTestResult {
+                        Text(result)
+                            .font(.caption)
+                            .foregroundStyle(result.contains("OK") ? .green : .red)
                     }
                 }
             }
@@ -207,6 +220,18 @@ struct PermissionsSettingsView: View {
         } catch {
             micTestResult = "Failed — \(error.localizedDescription)"
         }
+    }
+
+    private func resetAccessibility() {
+        // Reset TCC accessibility entry for this app, then re-prompt
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = ["reset", "Accessibility", "com.jordiboehme.roger"]
+        try? task.run()
+        task.waitUntilExit()
+
+        // Re-prompt
+        coordinator.permissionManager.requestAccessibility()
     }
 
     private func testAccessibility() {
