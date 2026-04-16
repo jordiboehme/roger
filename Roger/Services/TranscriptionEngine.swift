@@ -50,7 +50,8 @@ final class TranscriptionEngine: @unchecked Sendable {
         }
 
         let options = DecodingOptions(
-            language: mode.whisperLanguage, // nil = auto-detect
+            language: mode.whisperLanguage,
+            detectLanguage: mode.whisperLanguage == nil, // auto-detect for multilingual
             skipSpecialTokens: true,
             suppressBlank: true
         )
