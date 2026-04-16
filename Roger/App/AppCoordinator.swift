@@ -14,6 +14,7 @@ final class AppCoordinator {
     let postProcessor = PostProcessor()
     let textInsertionService = TextInsertionService()
     let hotkeyManager = HotkeyManager()
+    let floatingPanel = FloatingPanel()
 
     private var recordingStartTime: Date?
 
@@ -34,6 +35,8 @@ final class AppCoordinator {
         }
     }
 
+    // MARK: - Dictation
+
     func startDictation() {
         guard appState.dictationState == .idle else {
             logger.warning("Cannot start dictation: state is \(self.appState.statusText)")
@@ -41,16 +44,23 @@ final class AppCoordinator {
         }
 
         guard permissionManager.microphoneAuthorized else {
-            appState.dictationState = .error("Microphone access required")
+            appState.dictationState = .error("Microphone access required — open Settings > Permissions")
             return
+        }
+
+        permissionManager.checkAccessibility()
+        if !permissionManager.accessibilityAuthorized {
+            logger.warning("Accessibility not authorized — text insertion may use clipboard fallback")
         }
 
         do {
             appState.dictationState = .listening
             recordingStartTime = Date()
+            floatingPanel.show()
             try audioCaptureService.startCapture()
             logger.info("Dictation started")
         } catch {
+            floatingPanel.hide()
             logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
         }
@@ -59,6 +69,7 @@ final class AppCoordinator {
     func stopDictation() {
         guard appState.dictationState == .listening else { return }
 
+        floatingPanel.hide()
         let audioBuffer = audioCaptureService.stopCapture()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
@@ -96,12 +107,28 @@ final class AppCoordinator {
             }
 
             let activePreset = appState.activePreset
-            let processedText: String
+            var processedText = transcript
 
             if activePreset.requiresAI {
                 appState.dictationState = .processing
                 let llmService = appState.currentLLMService()
-                processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: llmService)
+
+                if await llmService.isAvailable {
+                    processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: llmService)
+                } else {
+                    logger.warning("LLM provider not available, applying non-AI steps only")
+                    let fallbackPreset = DictationPreset(
+                        id: activePreset.id, name: activePreset.name, isBuiltIn: activePreset.isBuiltIn,
+                        enableFillerRemoval: activePreset.enableFillerRemoval,
+                        enableDedup: activePreset.enableDedup,
+                        enableAIFormatting: false,
+                        enableCustomDictionary: activePreset.enableCustomDictionary,
+                        enableRewrite: false,
+                        aiPrompt: "", rewritePrompt: "",
+                        dictionaryEntries: activePreset.dictionaryEntries
+                    )
+                    processedText = try await postProcessor.process(transcript, preset: fallbackPreset, llmService: nil)
+                }
             } else {
                 processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: nil)
             }
@@ -119,11 +146,10 @@ final class AppCoordinator {
         } catch {
             logger.error("Dictation failed: \(error)")
             appState.dictationState = .error(error.localizedDescription)
-
-            try? await Task.sleep(for: .seconds(3))
-            appState.dictationState = .idle
         }
     }
+
+    // MARK: - Model Setup
 
     func setupModel() async {
         do {
@@ -137,7 +163,14 @@ final class AppCoordinator {
             logger.info("Model setup complete")
         } catch {
             logger.error("Model setup failed: \(error)")
-            appState.dictationState = .error("Model download failed")
+            appState.modelDownloadProgress = nil
+            appState.dictationState = .error("Model download failed — check your connection and retry in Settings")
         }
+    }
+
+    // MARK: - Error Management
+
+    func dismissError() {
+        appState.dictationState = .idle
     }
 }

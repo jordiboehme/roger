@@ -18,5 +18,13 @@ struct RogerApp: App {
             SettingsView()
                 .environment(coordinator)
         }
+
+        Window("Welcome to Roger", id: "onboarding") {
+            OnboardingView()
+                .environment(coordinator)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }

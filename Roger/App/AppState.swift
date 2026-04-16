@@ -60,6 +60,12 @@ final class AppState {
         didSet { savePresets() }
     }
 
+    // MARK: - Onboarding
+
+    var hasCompletedOnboarding: Bool {
+        didSet { defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
+    }
+
     var activePreset: DictationPreset {
         presets.first { $0.id == activePresetID } ?? .polished
     }
@@ -152,6 +158,7 @@ final class AppState {
 
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
         self.presets = Self.loadPresets() ?? DictationPreset.builtInPresets
+        self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
     }
 
     // MARK: - Persistence

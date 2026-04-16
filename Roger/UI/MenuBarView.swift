@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,10 +14,27 @@ struct MenuBarView: View {
                 Text(coordinator.appState.statusText)
                     .font(.headline)
                 Spacer()
+
+                // Error dismiss button
+                if case .error = coordinator.appState.dictationState {
+                    Button(action: { coordinator.dismissError() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
             .padding(.bottom, 8)
+
+            // Error retry for model download
+            if case .error(let msg) = coordinator.appState.dictationState, msg.contains("Model") {
+                MenuBarButton(title: "Retry Model Download") {
+                    coordinator.dismissError()
+                    Task { await coordinator.setupModel() }
+                }
+            }
 
             // Model download progress
             if let progress = coordinator.appState.modelDownloadProgress {
@@ -109,6 +127,12 @@ struct MenuBarView: View {
         .frame(width: 260)
         .task {
             coordinator.permissionManager.checkPermissions()
+
+            // Show onboarding on first launch
+            if !coordinator.appState.hasCompletedOnboarding {
+                openWindow(id: "onboarding")
+            }
+
             if !coordinator.transcriptionEngine.isReady {
                 await coordinator.setupModel()
             }
@@ -132,7 +156,6 @@ struct MenuBarView: View {
 
 struct MenuBarButton: View {
     let title: String
-    var shortcut: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -140,10 +163,6 @@ struct MenuBarButton: View {
             HStack {
                 Text(title)
                 Spacer()
-                if let shortcut {
-                    Text(shortcut)
-                        .foregroundStyle(.tertiary)
-                }
             }
             .contentShape(Rectangle())
             .padding(.horizontal, 14)
