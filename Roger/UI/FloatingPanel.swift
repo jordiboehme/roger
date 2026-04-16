@@ -57,12 +57,12 @@ private struct FloatingIndicatorContent: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.red.opacity(0.35))
+                .fill(Color.orange.opacity(0.35))
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.red.opacity(pulseOpacity), lineWidth: 1.5)
+                .strokeBorder(Color.orange.opacity(pulseOpacity), lineWidth: 1.5)
         }
         .shadow(color: .red.opacity(0.3), radius: 16, y: 4)
         .onAppear {
