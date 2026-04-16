@@ -10,6 +10,8 @@ final class FloatingPanel {
 
         let hostingView = NSHostingView(rootView: FloatingIndicatorContent())
         hostingView.frame = NSRect(x: 0, y: 0, width: 190, height: 56)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = .clear
 
         let p = NSPanel(
             contentRect: hostingView.frame,
