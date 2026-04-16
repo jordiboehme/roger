@@ -412,6 +412,18 @@ struct AboutView: View {
 
             Spacer()
 
+            VStack(spacing: 8) {
+                Text("Powered by")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                HStack(spacing: 16) {
+                    Link("WhisperKit", destination: URL(string: "https://github.com/argmaxinc/WhisperKit")!)
+                    Link("OpenAI Whisper", destination: URL(string: "https://github.com/openai/whisper")!)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
             VStack(spacing: 6) {
                 Text("Created with \u{2764}\u{FE0F} by Jordi Böhme")
                     .font(.caption)
