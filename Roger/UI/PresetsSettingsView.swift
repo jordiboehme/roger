@@ -48,28 +48,17 @@ struct PresetsSettingsView: View {
 
             Divider()
 
-            HStack(spacing: 12) {
-                Button(action: addCustomPreset) {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.plain)
-
-                Button(action: removeSelectedPreset) {
-                    Image(systemName: "minus")
-                }
-                .buttonStyle(.plain)
-                .disabled(selectedPresetIsBuiltIn)
-
-                Button(action: duplicateSelectedPreset) {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.plain)
-                .disabled(selectedPresetID == nil)
-                .help("Duplicate preset")
-
+            HStack(spacing: 4) {
+                toolbarButton("plus", action: addCustomPreset)
+                toolbarButton("minus", action: removeSelectedPreset)
+                    .disabled(selectedPresetIsBuiltIn)
+                toolbarButton("doc.on.doc", action: duplicateSelectedPreset)
+                    .disabled(selectedPresetID == nil)
+                    .help("Duplicate preset")
                 Spacer()
             }
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         }
     }
 
@@ -160,6 +149,17 @@ struct PresetsSettingsView: View {
             }
             .disabled(preset.wrappedValue.isBuiltIn)
         }
+    }
+
+    // MARK: - Components
+
+    private func toolbarButton(_ icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
