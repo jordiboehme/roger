@@ -82,39 +82,36 @@ final class TextInsertionService {
     private func clipboardPaste(_ text: String, restoreClipboard: Bool) throws {
         let pasteboard = NSPasteboard.general
 
-        // Save current clipboard if requested
-        var savedData: Data?
-        var savedType: NSPasteboard.PasteboardType?
-        if restoreClipboard {
-            // Save just the primary string representation
-            savedData = pasteboard.data(forType: .string)
-            savedType = .string
-        }
+        // Save current clipboard
+        let savedString = restoreClipboard ? pasteboard.string(forType: .string) : nil
 
         // Set our text on the clipboard
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
-        // Small delay to ensure clipboard is committed
-        usleep(50_000) // 50ms
+        // Ensure clipboard is committed before pasting
+        usleep(100_000) // 100ms
 
         // Simulate Cmd+V
         simulatePaste()
 
-        // Restore clipboard after the target app has had time to process
-        if restoreClipboard, let savedData, let savedType {
-            let restoredData = savedData
-            let restoredType = savedType
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.setData(restoredData, forType: restoredType)
+        // Restore clipboard after delay — if paste didn't work,
+        // the text is still on the clipboard for manual Cmd+V
+        if restoreClipboard, let savedString {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                // Only restore if clipboard still contains our text
+                // (user might have copied something else in the meantime)
+                if NSPasteboard.general.string(forType: .string) == text {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(savedString, forType: .string)
+                }
             }
         }
     }
 
     private func simulatePaste() {
-        let source = CGEventSource(stateID: .combinedSessionState)
+        // Use separate event source to avoid interference with the event tap
+        let source = CGEventSource(stateID: .privateState)
 
         // Key code 9 = V
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true)
@@ -124,7 +121,7 @@ final class TextInsertionService {
         keyUp?.flags = .maskCommand
 
         keyDown?.post(tap: .cgAnnotatedSessionEventTap)
-        usleep(10_000) // 10ms between key down and up
+        usleep(50_000) // 50ms between key down and up
         keyUp?.post(tap: .cgAnnotatedSessionEventTap)
     }
 }
