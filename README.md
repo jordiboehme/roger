@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/app-icon.png" width="256" alt="Roger">
+</p>
+
 # Roger
 
 Speak. It types. Anywhere on your Mac.

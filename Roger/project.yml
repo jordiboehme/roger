@@ -24,9 +24,12 @@ targets:
       - path: Services
       - path: Models
       - path: LLM
-      - path: Resources
+      - path: Resources/Assets.xcassets
         buildPhase: resources
-        type: folder
+      - path: Resources/Info.plist
+        buildPhase: none
+      - path: Resources/Roger.entitlements
+        buildPhase: none
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger

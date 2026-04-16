@@ -466,9 +466,10 @@ struct AboutView: View {
         VStack(spacing: 20) {
             Spacer()
 
-            Image(systemName: "waveform")
-                .font(.system(size: 64))
-                .foregroundColor(.accentColor)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 128, height: 128)
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
 
             VStack(spacing: 4) {
                 Text("Roger")
