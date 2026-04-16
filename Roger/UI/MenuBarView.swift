@@ -142,6 +142,9 @@ struct MenuBarView: View {
         .task {
             coordinator.permissionManager.checkPermissions()
         }
+        .onChange(of: coordinator.appState.transcriptionMode) { _, _ in
+            Task { await coordinator.setupModel() }
+        }
     }
 
     private var statusColor: Color {
