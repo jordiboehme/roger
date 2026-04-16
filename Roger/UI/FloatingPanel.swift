@@ -9,7 +9,7 @@ final class FloatingPanel {
         guard panel == nil else { return }
 
         let hostingView = NSHostingView(rootView: FloatingIndicatorContent())
-        hostingView.frame = NSRect(x: 0, y: 0, width: 180, height: 52)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 190, height: 56)
 
         let p = NSPanel(
             contentRect: hostingView.frame,
@@ -25,7 +25,6 @@ final class FloatingPanel {
         p.isMovableByWindowBackground = false
         p.contentView = hostingView
 
-        // Position: centered horizontally, near top of main screen
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let x = screenFrame.midX - hostingView.frame.width / 2
@@ -43,25 +42,37 @@ final class FloatingPanel {
     }
 }
 
-/// macOS glass-style floating indicator
 private struct FloatingIndicatorContent: View {
+    @State private var pulseOpacity: Double = 0.6
+
     var body: some View {
         HStack(spacing: 10) {
             PanelWaveform()
             Text("Listening")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.primary)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
-                }
+            ZStack {
+                // Red-tinted glass
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.ultraThinMaterial)
+
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.red.opacity(0.35))
+
+                // Pulsing border
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.red.opacity(pulseOpacity), lineWidth: 1.5)
+            }
+            .shadow(color: .red.opacity(0.3), radius: 16, y: 4)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                pulseOpacity = 0.15
+            }
         }
     }
 }
@@ -73,7 +84,7 @@ private struct PanelWaveform: View {
         HStack(spacing: 3) {
             ForEach(0..<5, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.accentColor)
+                    .fill(.white)
                     .frame(width: 3, height: phases[index] ? barHeight(for: index) : 4)
                     .animation(
                         .easeInOut(duration: duration(for: index))
