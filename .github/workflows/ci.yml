@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        uses: devops-actions/actionlint@469810fd82c015d3c43815cd2b0e4d02eecc4819 # v0.1.11
+
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: |
+          xcodebuild -project Roger/Roger.xcodeproj \
+            -scheme Roger \
+            -configuration Release \
+            build \
+            CONFIGURATION_BUILD_DIR=${{ github.workspace }}/build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify app bundle
+        run: test -d build/Roger.app

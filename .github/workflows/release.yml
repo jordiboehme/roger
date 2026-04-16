@@ -1,0 +1,165 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      KEYCHAIN: build.keychain-db
+      KEYCHAIN_PASSWORD: actions
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Import signing certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp /tmp/cert.XXXXXX.p12)
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_FILE"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_FILE" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+
+          rm "$CERT_FILE"
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project Roger/Roger.xcodeproj \
+            -scheme Roger \
+            -configuration Release \
+            -archivePath ${{ runner.temp }}/Roger.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+
+      - name: Write ExportOptions.plist
+        run: |
+          cat > ${{ runner.temp }}/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>teamID</key>
+            <string>${{ secrets.APPLE_TEAM_ID }}</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Export archive
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath ${{ runner.temp }}/Roger.xcarchive \
+            -exportOptionsPlist ${{ runner.temp }}/ExportOptions.plist \
+            -exportPath ${{ runner.temp }}/export
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent \
+            "${{ runner.temp }}/export/Roger.app" \
+            "${{ runner.temp }}/Roger-notarize.zip"
+
+          xcrun notarytool submit \
+            "${{ runner.temp }}/Roger-notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "${{ runner.temp }}/export/Roger.app"
+
+      - name: Create DMG
+        run: |
+          DMG_NAME="Roger-${{ steps.version.outputs.VERSION }}.dmg"
+          DMG_DIR=${{ runner.temp }}/dmg
+          mkdir -p "$DMG_DIR"
+          cp -R "${{ runner.temp }}/export/Roger.app" "$DMG_DIR/"
+          ln -s /Applications "$DMG_DIR/Applications"
+          hdiutil create \
+            -volname "Roger" \
+            -srcfolder "$DMG_DIR" \
+            -ov -format UDZO \
+            "${{ runner.temp }}/$DMG_NAME"
+          echo "DMG_PATH=${{ runner.temp }}/$DMG_NAME" >> "$GITHUB_ENV"
+          echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          SHA=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+          echo "SHA256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $SHA"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        with:
+          files: ${{ env.DMG_PATH }}
+          generate_release_notes: true
+
+      - name: Update Homebrew tap
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          SHA256="${{ steps.sha.outputs.SHA256 }}"
+
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/jordiboehme/homebrew-tap.git" \
+            "${{ runner.temp }}/homebrew-tap"
+
+          mkdir -p ${{ runner.temp }}/homebrew-tap/Casks
+
+          cat > ${{ runner.temp }}/homebrew-tap/Casks/roger.rb << CASK
+          cask "roger" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/jordiboehme/roger/releases/download/v#{version}/Roger-#{version}.dmg"
+            name "Roger"
+            desc "macOS menu bar app for speech-to-text dictation into any application"
+            homepage "https://github.com/jordiboehme/roger"
+
+            depends_on macos: ">= :sonoma"
+
+            app "Roger.app"
+
+            zap trash: [
+              "~/Library/Preferences/com.jordiboehme.roger.plist",
+            ]
+          end
+          CASK
+
+          cd ${{ runner.temp }}/homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/roger.rb
+          git commit -m "Update roger to ${VERSION}"
+          git push
+
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN" 2>/dev/null || true
