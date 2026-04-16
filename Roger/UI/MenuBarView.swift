@@ -78,9 +78,14 @@ struct MenuBarView: View {
             Divider()
                 .padding(.vertical, 4)
 
-            // Language picker
+            // Mode picker
             HStack {
-                Text("Mode")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mode")
+                    Text(coordinator.appState.transcriptionMode.modelDescription)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 @Bindable var state = coordinator.appState
                 Picker("", selection: $state.transcriptionMode) {

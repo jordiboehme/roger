@@ -191,12 +191,27 @@ enum TranscriptionMode: String, CaseIterable, Identifiable, Codable {
     }
 
     var modelName: String {
+        let models = WhisperKit.recommendedModels()
         switch self {
-        case .englishOnly: return "distil-whisper_distil-large-v3"
+        case .englishOnly:
+            // Prefer distil models (fast, English-only), then .en models
+            let distil = models.supported.filter { $0.contains("distil") }
+            if let best = distil.last { return best }
+            let en = models.supported.filter { $0.contains(".en") }
+            if let best = en.last { return best }
+            return models.default
         case .multilingual:
-            // Use WhisperKit's recommended multilingual model for this device
-            return WhisperKit.recommendedModels().default
+            return models.default
         }
+    }
+
+    /// Short model name for display in UI
+    var modelDescription: String {
+        let name = modelName
+        // Strip common prefixes for readability
+        return name
+            .replacingOccurrences(of: "openai_whisper-", with: "")
+            .replacingOccurrences(of: "distil-whisper_distil-", with: "distil-")
     }
 
     /// Language code passed to WhisperKit. Nil = auto-detect.
