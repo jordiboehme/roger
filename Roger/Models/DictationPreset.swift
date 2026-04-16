@@ -60,7 +60,7 @@ extension DictationPreset {
         enableAIFormatting: true,
         enableCustomDictionary: true,
         enableRewrite: false,
-        aiPrompt: "Add proper punctuation, capitalization, and paragraph breaks to this dictated text. Preserve the original wording exactly. Return only the corrected text, nothing else.",
+        aiPrompt: "Add proper punctuation, capitalization and paragraph breaks to this dictated text. Preserve the original wording exactly. Return only the corrected text, nothing else.",
         rewritePrompt: "",
         dictionaryEntries: []
     )
@@ -74,8 +74,8 @@ extension DictationPreset {
         enableAIFormatting: true,
         enableCustomDictionary: true,
         enableRewrite: true,
-        aiPrompt: "Add proper punctuation, capitalization, and paragraph breaks to this dictated text. Preserve the original wording exactly. Return only the corrected text, nothing else.",
-        rewritePrompt: "Clean up this dictated text: fix grammar, improve sentence structure, and make it read naturally. Keep the original meaning and words as much as possible — do not change the format, do not add greetings, sign-offs, subject lines, or any text that wasn't in the original. Return only the cleaned-up text, nothing else.",
+        aiPrompt: "Add proper punctuation, capitalization and paragraph breaks to this dictated text. Preserve the original wording exactly. Return only the corrected text, nothing else.",
+        rewritePrompt: "Clean up this dictated text: fix grammar, improve sentence structure and make it read naturally. Keep the original meaning and words as much as possible — do not change the format, do not add greetings, sign-offs, subject lines or any text that wasn't in the original. Return only the cleaned-up text, nothing else.",
         dictionaryEntries: []
     )
 
@@ -88,7 +88,7 @@ extension DictationPreset {
         enableAIFormatting: true,
         enableCustomDictionary: true,
         enableRewrite: false,
-        aiPrompt: "Add proper punctuation and capitalization to this dictated text. Preserve technical terms, function names, variable names, and code references exactly as spoken. Format inline code references with backticks. Return only the corrected text, nothing else.",
+        aiPrompt: "Add proper punctuation and capitalization to this dictated text. Preserve technical terms, function names, variable names and code references exactly as spoken. Format inline code references with backticks. Return only the corrected text, nothing else.",
         rewritePrompt: "",
         dictionaryEntries: []
     )

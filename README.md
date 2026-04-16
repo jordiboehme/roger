@@ -1,18 +1,20 @@
 # Roger
 
-A macOS menu bar app for speech-to-text dictation into any application. Press a hotkey, speak, and your words appear at the cursor — powered by on-device AI.
+A macOS menu bar app for speech-to-text dictation into any application. Press a hotkey, speak and your words appear at the cursor — powered by on-device AI.
 
 **Your voice stays on your machine.** Roger is local-first — speech recognition runs entirely on your Mac using the Neural Engine. Cloud AI providers are available for text cleanup but opt-in.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V31T6CL9)
 
 ## Features
 
 - **Dictate anywhere** — Text appears at the cursor in any app (Notes, Warp, VS Code, browsers)
 - **On-device transcription** — WhisperKit with CoreML, no cloud required
 - **Multilingual** — English and German with automatic language detection
-- **AI post-processing** — Filler word removal, punctuation, grammar cleanup via configurable presets
-- **Configurable presets** — Plain, Polished, Professional, Code, or create your own
-- **Multiple AI providers** — Apple Intelligence, Ollama, Claude, OpenAI (same provider abstraction as [GitCanary](https://github.com/jordiboehme/GitCanary))
-- **Push-to-talk or toggle** — Hold Caps Lock to record, or press once to start/stop
+- **AI post-processing** — Filler word removal, punctuation and grammar cleanup via configurable presets
+- **Configurable presets** — Plain, Polished, Professional, Code or create your own
+- **Multiple AI providers** — Apple Intelligence, Ollama, Claude and OpenAI (same provider abstraction as [GitCanary](https://github.com/jordiboehme/GitCanary))
+- **Push-to-talk or toggle** — Hold Caps Lock to record or press once to start/stop
 - **Visual feedback** — Floating indicator with orange glow while listening
 - **Menu bar app** — Lives silently in your menu bar, no Dock icon
 
@@ -47,17 +49,17 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## How It Works
 
-Roger captures audio via `AVAudioEngine`, transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML implementation of [OpenAI Whisper](https://github.com/openai/whisper)), optionally post-processes the text with an AI provider, and inserts the result at your cursor using the Accessibility API (with a clipboard+paste fallback for Electron apps).
+Roger captures audio via `AVAudioEngine`, transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML implementation of [OpenAI Whisper](https://github.com/openai/whisper)), optionally post-processes the text with an AI provider and inserts the result at your cursor using the Accessibility API (with a clipboard+paste fallback for Electron apps).
 
 ### Dictation Presets
 
 | Preset | What it does |
 |--------|-------------|
 | **Plain** | Removes filler words and repeated words. No AI needed. |
-| **Polished** | Adds punctuation, capitalization, and formatting via AI. |
-| **Professional** | Full cleanup plus AI rewrite for clear, professional prose. |
+| **Polished** | Adds punctuation, capitalization and formatting via AI. |
+| **Professional** | Full cleanup plus AI rewrite for clear professional prose. |
 | **Code** | Developer-aware — preserves technical terms and code references. |
-| **Custom** | Your own pipeline steps, prompts, and dictionary. |
+| **Custom** | Your own pipeline steps, prompts and dictionary. |
 
 ### AI Providers
 
