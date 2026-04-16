@@ -14,10 +14,15 @@ final class TranscriptionEngine: @unchecked Sendable {
     func setup(progressHandler: @Sendable @escaping (Double) -> Void) async throws {
         logger.info("Setting up WhisperKit…")
 
-        // large-v3-turbo: multilingual (EN+DE), fast on Apple Silicon, ~1.6GB
-        // distil-large-v3 is English-only and cannot be used for German
+        // Let WhisperKit pick the best model for this device.
+        // Do NOT hardcode distil-large-v3 — it's English-only.
+        // WhisperKit auto-selects a multilingual model (e.g. large-v3-turbo).
+        let recommended = WhisperKit.recommendedModels()
+        let modelName = recommended.default
+        logger.info("Using model: \(modelName)")
+
         let config = WhisperKitConfig(
-            model: "large-v3-turbo",
+            model: modelName,
             computeOptions: ModelComputeOptions(
                 audioEncoderCompute: .cpuAndNeuralEngine,
                 textDecoderCompute: .cpuAndNeuralEngine
