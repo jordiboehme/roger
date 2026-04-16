@@ -2,8 +2,6 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(AppCoordinator.self) private var coordinator
-    @Environment(\.openWindow) private var openWindow
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Status
@@ -127,12 +125,6 @@ struct MenuBarView: View {
         .frame(width: 260)
         .task {
             coordinator.permissionManager.checkPermissions()
-
-            // Show onboarding on first launch
-            if !coordinator.appState.hasCompletedOnboarding {
-                openWindow(id: "onboarding")
-            }
-
             if !coordinator.transcriptionEngine.isReady {
                 await coordinator.setupModel()
             }

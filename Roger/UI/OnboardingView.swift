@@ -2,15 +2,18 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Environment(AppCoordinator.self) private var coordinator
-    @Environment(\.dismiss) private var dismiss
+    var onComplete: (() -> Void)?
     @State private var currentStep = 0
+    @State private var capsLockRemapped = false
+
+    private let totalSteps = 4
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 8) {
                 Image(systemName: "waveform")
-                    .font(.system(size: 40))
+                    .font(.system(size: 36))
                     .foregroundColor(.accentColor)
                 Text("Welcome to Roger")
                     .font(.title2.bold())
@@ -18,20 +21,39 @@ struct OnboardingView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .padding(.top, 24)
-            .padding(.bottom, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            // Step indicator
+            HStack(spacing: 8) {
+                ForEach(0..<totalSteps, id: \.self) { step in
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(step == currentStep ? Color.accentColor : step < currentStep ? .green : .secondary.opacity(0.3))
+                            .frame(width: 8, height: 8)
+                        if step == currentStep {
+                            Text(stepName(step))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 12)
 
             Divider()
 
-            // Steps
-            TabView(selection: $currentStep) {
-                microphoneStep.tag(0)
-                accessibilityStep.tag(1)
-                capsLockStep.tag(2)
-                modelStep.tag(3)
+            // Step content
+            Group {
+                switch currentStep {
+                case 0: microphoneStep
+                case 1: accessibilityStep
+                case 2: capsLockStep
+                case 3: modelStep
+                default: EmptyView()
+                }
             }
-            .tabViewStyle(.automatic)
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -41,27 +63,38 @@ struct OnboardingView: View {
                     Button("Back") { currentStep -= 1 }
                 }
                 Spacer()
-                if currentStep < 3 {
+                if currentStep < totalSteps - 1 {
                     Button("Next") { currentStep += 1 }
                         .buttonStyle(.borderedProminent)
                 } else {
                     Button("Get Started") {
                         coordinator.appState.hasCompletedOnboarding = true
-                        dismiss()
+                        onComplete?()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(coordinator.appState.modelDownloadProgress != nil && coordinator.appState.modelDownloadProgress! < 1.0)
+                    .disabled(!coordinator.transcriptionEngine.isReady)
                 }
             }
             .padding(16)
         }
-        .frame(width: 460, height: 400)
+        .frame(width: 480, height: 460)
+    }
+
+    private func stepName(_ step: Int) -> String {
+        switch step {
+        case 0: "Microphone"
+        case 1: "Accessibility"
+        case 2: "Hotkey"
+        case 3: "Model"
+        default: ""
+        }
     }
 
     // MARK: - Step 1: Microphone
 
     private var microphoneStep: some View {
         VStack(spacing: 16) {
+            Spacer()
             stepHeader(
                 icon: "mic.fill",
                 title: "Microphone Access",
@@ -77,7 +110,6 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.bordered)
             }
-
             Spacer()
         }
         .padding(24)
@@ -87,10 +119,11 @@ struct OnboardingView: View {
 
     private var accessibilityStep: some View {
         VStack(spacing: 16) {
+            Spacer()
             stepHeader(
                 icon: "accessibility",
                 title: "Accessibility Access",
-                description: "Roger needs Accessibility permission to insert text at your cursor and listen for the global hotkey."
+                description: "Required to insert text at your cursor and listen for the global hotkey."
             )
 
             if coordinator.permissionManager.accessibilityAuthorized {
@@ -102,10 +135,11 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.bordered)
 
-                Text("Add Roger in System Settings > Privacy & Security > Accessibility, then return here.")
+                Text("Add Roger in System Settings > Privacy & Security > Accessibility, then click Check Again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
 
                 Button("Check Again") {
                     coordinator.permissionManager.checkAccessibility()
@@ -113,7 +147,6 @@ struct OnboardingView: View {
                 .buttonStyle(.borderless)
                 .font(.caption)
             }
-
             Spacer()
         }
         .padding(24)
@@ -123,30 +156,32 @@ struct OnboardingView: View {
 
     private var capsLockStep: some View {
         VStack(spacing: 16) {
+            Spacer()
             stepHeader(
                 icon: "capslock.fill",
-                title: "Caps Lock Hotkey (Optional)",
-                description: "Remap Caps Lock to act as a push-to-talk key. This remaps it system-wide — you can undo this anytime in Settings."
+                title: "Caps Lock Hotkey",
+                description: "Use Caps Lock as a push-to-talk key. This remaps it system-wide — you can undo it anytime in Settings."
             )
 
-            HStack(spacing: 12) {
+            if capsLockRemapped {
+                Label("Caps Lock remapped to push-to-talk", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
                 Button("Enable Caps Lock Remap") {
-                    HotkeyManager.remapCapsLockToF18()
-                    try? HotkeyManager.installRemapLaunchAgent()
+                    let success = HotkeyManager.remapCapsLockToF18()
+                    if success {
+                        try? HotkeyManager.installRemapLaunchAgent()
+                        capsLockRemapped = true
+                    }
                 }
                 .buttonStyle(.bordered)
-
-                Button("Skip") {
-                    currentStep += 1
-                }
-                .buttonStyle(.borderless)
             }
 
-            Text("You can also use a custom keyboard shortcut instead — configure it in Settings > General.")
+            Text("Optional — you can also configure a different shortcut in Settings > General.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-
+                .padding(.horizontal, 20)
             Spacer()
         }
         .padding(24)
@@ -156,10 +191,11 @@ struct OnboardingView: View {
 
     private var modelStep: some View {
         VStack(spacing: 16) {
+            Spacer()
             stepHeader(
                 icon: "cpu",
                 title: "Speech Recognition Model",
-                description: "Roger uses an on-device model for speech recognition. The download is about 500 MB."
+                description: "Roger uses an on-device model (~500 MB). Your voice data never leaves your Mac."
             )
 
             if coordinator.transcriptionEngine.isReady {
@@ -173,26 +209,24 @@ struct OnboardingView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            } else if case .error(let msg) = coordinator.appState.dictationState {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+
+                Button("Retry Download") {
+                    coordinator.dismissError()
+                    Task { await coordinator.setupModel() }
+                }
+                .buttonStyle(.bordered)
             } else {
                 Button("Download Model") {
                     Task { await coordinator.setupModel() }
                 }
                 .buttonStyle(.bordered)
             }
-
-            if case .error(let msg) = coordinator.appState.dictationState {
-                Text(msg)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-
-                Button("Retry") {
-                    coordinator.dismissError()
-                    Task { await coordinator.setupModel() }
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-            }
-
             Spacer()
         }
         .padding(24)
@@ -211,6 +245,7 @@ struct OnboardingView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
         }
     }
 }
