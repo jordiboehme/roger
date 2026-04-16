@@ -103,9 +103,9 @@ final class TextInsertionService {
         // Simulate Cmd+V
         simulatePaste()
 
-        // Restore clipboard after a brief delay
+        // Restore clipboard after giving the target app time to process the paste
         if restoreClipboard, let savedItems {
-            Thread.sleep(forTimeInterval: 0.15)
+            Thread.sleep(forTimeInterval: 0.5)
             pasteboard.clearContents()
             pasteboard.writeObjects(savedItems)
         }
