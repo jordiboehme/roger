@@ -114,7 +114,10 @@ final class HotkeyManager: @unchecked Sendable {
 
     @discardableResult
     private func setupEventTap() -> Bool {
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        let eventMask: CGEventMask =
+            (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.keyUp.rawValue) |
+            (1 << CGEventType.flagsChanged.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, refcon -> Unmanaged<CGEvent>? in
             guard let refcon else { return Unmanaged.passRetained(event) }
@@ -128,23 +131,47 @@ final class HotkeyManager: @unchecked Sendable {
             }
 
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
             guard keyCode == manager.triggerKeyCode else {
                 return Unmanaged.passRetained(event)
             }
 
-            let isKeyDown = type == .keyDown
+            logger.debug("Event tap: keyCode=\(keyCode) type=\(type.rawValue)")
+
+            // For flagsChanged events (caps lock path), detect press/release via flags
+            let isKeyDown: Bool
+            if type == .flagsChanged {
+                // When a remapped key sends flagsChanged, the key is "down" when
+                // its modifier flag is set, "up" when cleared
+                let flags = event.flags
+                isKeyDown = flags.contains(.maskNonCoalesced) || flags.rawValue & 0x20000 != 0
+                // Fallback: toggle on each flagsChanged
+            } else {
+                isKeyDown = type == .keyDown
+            }
 
             switch manager.activationMode {
             case .pushToTalk:
-                if isKeyDown && !manager.isRecording {
-                    manager.isRecording = true
-                    manager.onRecordingStarted?()
-                } else if !isKeyDown && manager.isRecording {
-                    manager.isRecording = false
-                    manager.onRecordingStopped?()
+                if type == .flagsChanged {
+                    // For flagsChanged, treat as toggle since we can't reliably detect up/down
+                    if !manager.isRecording {
+                        manager.isRecording = true
+                        manager.onRecordingStarted?()
+                    } else {
+                        manager.isRecording = false
+                        manager.onRecordingStopped?()
+                    }
+                } else {
+                    if isKeyDown && !manager.isRecording {
+                        manager.isRecording = true
+                        manager.onRecordingStarted?()
+                    } else if !isKeyDown && manager.isRecording {
+                        manager.isRecording = false
+                        manager.onRecordingStopped?()
+                    }
                 }
             case .toggle:
-                if isKeyDown {
+                if isKeyDown || type == .flagsChanged {
                     if manager.isRecording {
                         manager.isRecording = false
                         manager.onRecordingStopped?()
