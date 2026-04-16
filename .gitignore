@@ -1,31 +1,31 @@
-# Xcode
+# Build artifacts
 build/
 DerivedData/
-*.xcworkspace
+*.app
+*.dmg
+*.dSYM
+
+# Xcode user data
 xcuserdata/
 *.xcuserstate
-*.xcscmblueprint
-*.xccheckout
 
 # Swift Package Manager
 .build/
 .swiftpm/
 Package.resolved
 
-# macOS
-.DS_Store
-*.dSYM
-*.dSYM.zip
-
-# Archives
-*.xcarchive
-
 # Code signing
-*.mobileprovision
 *.p12
 *.cer
+*.mobileprovision
+
+# macOS
+.DS_Store
+
+# Claude Code
+CLAUDE.md
+.claude/
 
 # Temporary files
 *.swp
 *~
-.claude/
