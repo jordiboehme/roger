@@ -129,6 +129,7 @@ struct MenuBarView: View {
             }
             .buttonStyle(.plain)
             .simultaneousGesture(TapGesture().onEnded {
+                dismissPopover()
                 DispatchQueue.main.async {
                     NSApp.activate(ignoringOtherApps: true)
                     for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
@@ -163,6 +164,12 @@ struct MenuBarView: View {
             return .orange
         case .error:
             return .red
+        }
+    }
+
+    private func dismissPopover() {
+        if let panel = NSApp.keyWindow as? NSPanel {
+            panel.close()
         }
     }
 }
