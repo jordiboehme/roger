@@ -2,55 +2,29 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(AppCoordinator.self) private var coordinator
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Status
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 8, height: 8)
-                Text(coordinator.appState.statusText)
-                    .font(.headline)
-                Spacer()
+            // Status header
+            statusHeader
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
 
-                // Error dismiss button
-                if case .error = coordinator.appState.dictationState {
-                    Button(action: { coordinator.dismissError() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-
-            // Error retry
+            // Alerts
             if case .error(let msg) = coordinator.appState.dictationState {
-                if msg.contains("Model") || msg.contains("download") {
-                    MenuBarButton(title: "Retry Model Download") {
-                        coordinator.dismissError()
-                        Task { await coordinator.setupModel() }
-                    }
+                alertBanner(msg, isRetryable: msg.contains("Model") || msg.contains("download")) {
+                    coordinator.dismissError()
+                    Task { await coordinator.setupModel() }
+                } onDismiss: {
+                    coordinator.dismissError()
                 }
             }
 
-            // Hotkey status warning
             if !coordinator.hotkeyActive && coordinator.appState.dictationState == .idle {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .font(.caption)
-                    Text("Hotkey not active — grant Accessibility permission")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
+                alertBanner("Hotkey not active — grant Accessibility in Settings", isRetryable: false, onRetry: {}, onDismiss: nil)
             }
 
-            // Model loading indicator
             if coordinator.isSettingUpModel {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -59,7 +33,7 @@ struct MenuBarView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
 
@@ -70,82 +44,91 @@ struct MenuBarView: View {
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
-                    .background(.quaternary.opacity(0.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .background(.quaternary.opacity(0.4))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .padding(.horizontal, 14)
                     .padding(.bottom, 8)
             }
 
-            Divider()
-                .padding(.vertical, 4)
+            Divider().padding(.horizontal, 10)
 
-            // Mode picker
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mode")
-                    Text(coordinator.appState.transcriptionMode.modelDescription)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-                @Bindable var state = coordinator.appState
-                Picker("", selection: $state.transcriptionMode) {
-                    ForEach(TranscriptionMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
+            // Controls
+            VStack(spacing: 2) {
+                controlRow(label: "Mode", detail: coordinator.appState.transcriptionMode.modelDescription) {
+                    @Bindable var state = coordinator.appState
+                    Picker("", selection: $state.transcriptionMode) {
+                        ForEach(TranscriptionMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                .labelsHidden()
-                .fixedSize()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
 
-            // Preset picker
-            HStack {
-                Text("Preset")
-                Spacer()
-                @Bindable var state2 = coordinator.appState
-                Picker("", selection: $state2.activePresetID) {
-                    ForEach(coordinator.appState.presets) { preset in
-                        Text(preset.name).tag(preset.id)
+                controlRow(label: "Preset") {
+                    @Bindable var state = coordinator.appState
+                    Picker("", selection: $state.activePresetID) {
+                        ForEach(coordinator.appState.presets) { preset in
+                            Text(preset.name).tag(preset.id)
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                .labelsHidden()
-                .fixedSize()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
 
-            Divider()
-                .padding(.vertical, 4)
+            Divider().padding(.horizontal, 10)
 
             // Actions
-            SettingsLink {
-                Text("Settings…")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 5)
-            }
-            .buttonStyle(.plain)
-            .simultaneousGesture(TapGesture().onEnded {
-                dismissPopover()
-                DispatchQueue.main.async {
-                    NSApp.activate(ignoringOtherApps: true)
-                    for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
-                        window.makeKeyAndOrderFront(nil)
+            VStack(spacing: 0) {
+                SettingsLink {
+                    HStack(spacing: 8) {
+                        Image(systemName: "gear")
+                            .frame(width: 16)
+                            .foregroundStyle(.secondary)
+                        Text("Settings…")
+                            .font(.system(size: 13))
+                        Spacer()
                     }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 5)
                 }
-            })
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    dismissPopover()
+                    DispatchQueue.main.async {
+                        NSApp.activate(ignoringOtherApps: true)
+                        for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
+                            window.makeKeyAndOrderFront(nil)
+                        }
+                    }
+                })
 
-            MenuBarButton(title: "Quit Roger") {
-                NSApp.terminate(nil)
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "power")
+                            .frame(width: 16)
+                            .foregroundStyle(.secondary)
+                        Text("Quit Roger")
+                            .font(.system(size: 13))
+                        Spacer()
+                        Text("over & out")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 5)
+                }
+                .buttonStyle(.plain)
             }
-
-            Spacer()
-                .frame(height: 6)
+            .padding(.vertical, 4)
         }
-        .frame(width: 260)
+        .frame(width: 280)
         .task {
             coordinator.permissionManager.checkPermissions()
         }
@@ -154,16 +137,104 @@ struct MenuBarView: View {
         }
     }
 
+    // MARK: - Components
+
+    private var statusHeader: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.2))
+                    .frame(width: 24, height: 24)
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(coordinator.appState.statusText)
+                    .font(.system(size: 13, weight: .semibold))
+                if coordinator.transcriptionEngine.isReady {
+                    Text("Model loaded")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private func alertBanner(_ message: String, isRetryable: Bool, onRetry: @escaping () -> Void, onDismiss: (() -> Void)?) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.caption)
+            Text(message)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer()
+            if isRetryable {
+                Button("Retry") { onRetry() }
+                    .buttonStyle(.borderless)
+                    .font(.caption2)
+            }
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(8)
+        .background(.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
+    }
+
+    private func controlRow(label: String, detail: String? = nil, @ViewBuilder control: () -> some View) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 12))
+                if let detail {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            control()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+    }
+
+    private func menuItem(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .frame(width: 16)
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 13))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 16)
+            .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var statusColor: Color {
         switch coordinator.appState.dictationState {
-        case .idle:
-            return .green
-        case .listening:
-            return .red
-        case .transcribing, .processing, .inserting:
-            return .orange
-        case .error:
-            return .red
+        case .idle: .green
+        case .listening: .red
+        case .transcribing, .processing, .inserting: .orange
+        case .error: .red
         }
     }
 
@@ -171,23 +242,5 @@ struct MenuBarView: View {
         if let panel = NSApp.keyWindow as? NSPanel {
             panel.close()
         }
-    }
-}
-
-struct MenuBarButton: View {
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(title)
-                Spacer()
-            }
-            .contentShape(Rectangle())
-            .padding(.horizontal, 14)
-            .padding(.vertical, 5)
-        }
-        .buttonStyle(.plain)
     }
 }
