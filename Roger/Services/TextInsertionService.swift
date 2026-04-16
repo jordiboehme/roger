@@ -83,36 +83,38 @@ final class TextInsertionService {
         let pasteboard = NSPasteboard.general
 
         // Save current clipboard if requested
-        var savedItems: [NSPasteboardItem]?
+        var savedData: Data?
+        var savedType: NSPasteboard.PasteboardType?
         if restoreClipboard {
-            savedItems = pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
-                let newItem = NSPasteboardItem()
-                for type in item.types {
-                    if let data = item.data(forType: type) {
-                        newItem.setData(data, forType: type)
-                    }
-                }
-                return newItem
-            }
+            // Save just the primary string representation
+            savedData = pasteboard.data(forType: .string)
+            savedType = .string
         }
 
-        // Set our text
+        // Set our text on the clipboard
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+
+        // Small delay to ensure clipboard is committed
+        usleep(50_000) // 50ms
 
         // Simulate Cmd+V
         simulatePaste()
 
-        // Restore clipboard after giving the target app time to process the paste
-        if restoreClipboard, let savedItems {
-            Thread.sleep(forTimeInterval: 0.5)
-            pasteboard.clearContents()
-            pasteboard.writeObjects(savedItems)
+        // Restore clipboard after the target app has had time to process
+        if restoreClipboard, let savedData, let savedType {
+            let restoredData = savedData
+            let restoredType = savedType
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setData(restoredData, forType: restoredType)
+            }
         }
     }
 
     private func simulatePaste() {
-        let source = CGEventSource(stateID: .hidSystemState)
+        let source = CGEventSource(stateID: .combinedSessionState)
 
         // Key code 9 = V
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true)
@@ -121,7 +123,8 @@ final class TextInsertionService {
         keyDown?.flags = .maskCommand
         keyUp?.flags = .maskCommand
 
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
+        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
+        usleep(10_000) // 10ms between key down and up
+        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
     }
 }
