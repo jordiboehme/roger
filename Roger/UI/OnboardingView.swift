@@ -201,11 +201,11 @@ struct OnboardingView: View {
             if coordinator.transcriptionEngine.isReady {
                 Label("Model ready", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-            } else if let progress = coordinator.appState.modelDownloadProgress {
+            } else if coordinator.isSettingUpModel {
                 VStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(width: 200)
-                    Text(progress < 1.0 ? "Downloading…" : "Setting up…")
+                    ProgressView()
+                        .controlSize(.regular)
+                    Text("Loading model…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -17,7 +17,7 @@ final class AppCoordinator {
     let floatingPanel = FloatingPanel()
 
     var hotkeyActive = false
-    private var isSettingUpModel = false
+    var isSettingUpModel = false
     private var recordingStartTime: Date?
 
     init() {
@@ -185,20 +185,13 @@ final class AppCoordinator {
         }
 
         isSettingUpModel = true
-        appState.modelDownloadProgress = 0
 
         do {
-            try await transcriptionEngine.setup(mode: mode) { progress in
-                Task { @MainActor [weak self] in
-                    self?.appState.modelDownloadProgress = progress
-                }
-            }
-            appState.modelDownloadProgress = nil
+            try await transcriptionEngine.setup(mode: mode) { _ in }
             isSettingUpModel = false
             logger.info("Model setup complete")
         } catch {
             logger.error("Model setup failed: \(error)")
-            appState.modelDownloadProgress = nil
             isSettingUpModel = false
             appState.dictationState = .error("Model download failed — check your connection and retry")
         }

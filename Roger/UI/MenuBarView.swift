@@ -50,13 +50,14 @@ struct MenuBarView: View {
                 .padding(.bottom, 8)
             }
 
-            // Model download progress
-            if let progress = coordinator.appState.modelDownloadProgress {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Downloading model…")
+            // Model loading indicator
+            if coordinator.isSettingUpModel {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading model…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    ProgressView(value: progress)
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 8)

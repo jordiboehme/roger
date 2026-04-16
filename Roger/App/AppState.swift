@@ -17,7 +17,6 @@ final class AppState {
 
     var dictationState: DictationState = .idle
     var lastTranscription: String?
-    var modelDownloadProgress: Double?
 
     // MARK: - General Settings
 

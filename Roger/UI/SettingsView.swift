@@ -24,7 +24,7 @@ struct SettingsView: View {
 
             ModelSettingsView(
                 engine: coordinator.transcriptionEngine,
-                downloadProgress: coordinator.appState.modelDownloadProgress,
+                isSettingUp: coordinator.isSettingUpModel,
                 onSetup: { Task { await coordinator.setupModel() } }
             )
                 .tabItem { Label("Model", systemImage: "cpu") }
@@ -284,15 +284,19 @@ struct PermissionsSettingsView: View {
 
 struct ModelSettingsView: View {
     var engine: TranscriptionEngine
-    var downloadProgress: Double?
+    var isSettingUp: Bool
     var onSetup: () -> Void
 
     var body: some View {
         Form {
             LabeledContent("Status") {
-                if let progress = downloadProgress {
-                    ProgressView(value: progress)
-                        .frame(width: 120)
+                if isSettingUp {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading…")
+                            .font(.caption)
+                    }
                 } else if engine.isReady {
                     Label("Ready", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -303,7 +307,7 @@ struct ModelSettingsView: View {
                 }
             }
 
-            Text("Roger uses WhisperKit for on-device speech recognition. The model (~500 MB) runs entirely on your Mac using the Neural Engine.")
+            Text("Roger uses WhisperKit for on-device speech recognition. The model runs entirely on your Mac using the Neural Engine.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
