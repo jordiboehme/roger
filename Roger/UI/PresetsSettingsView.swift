@@ -60,6 +60,13 @@ struct PresetsSettingsView: View {
                 .buttonStyle(.plain)
                 .disabled(selectedPresetIsBuiltIn)
 
+                Button(action: duplicateSelectedPreset) {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.plain)
+                .disabled(selectedPresetID == nil)
+                .help("Duplicate preset")
+
                 Spacer()
             }
             .padding(8)
@@ -72,9 +79,16 @@ struct PresetsSettingsView: View {
         Form {
             if preset.wrappedValue.isBuiltIn {
                 Section {
-                    Text("Built-in presets cannot be edited. Create a custom preset to customize.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Built-in presets are read-only.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Duplicate to Edit") {
+                            duplicatePreset(preset.wrappedValue)
+                        }
+                        .controlSize(.small)
+                    }
                 }
             }
 
@@ -168,6 +182,31 @@ struct PresetsSettingsView: View {
             aiPrompt: "Add proper punctuation and capitalization to this dictated text. Return only the corrected text, nothing else.",
             rewritePrompt: "",
             dictionaryEntries: []
+        )
+        coordinator.appState.presets.append(newPreset)
+        selectedPresetID = newPreset.id
+    }
+
+    private func duplicateSelectedPreset() {
+        guard let id = selectedPresetID,
+              let preset = coordinator.appState.presets.first(where: { $0.id == id })
+        else { return }
+        duplicatePreset(preset)
+    }
+
+    private func duplicatePreset(_ source: DictationPreset) {
+        let newPreset = DictationPreset(
+            id: UUID(),
+            name: "\(source.name) Copy",
+            isBuiltIn: false,
+            enableFillerRemoval: source.enableFillerRemoval,
+            enableDedup: source.enableDedup,
+            enableAIFormatting: source.enableAIFormatting,
+            enableCustomDictionary: source.enableCustomDictionary,
+            enableRewrite: source.enableRewrite,
+            aiPrompt: source.aiPrompt,
+            rewritePrompt: source.rewritePrompt,
+            dictionaryEntries: source.dictionaryEntries
         )
         coordinator.appState.presets.append(newPreset)
         selectedPresetID = newPreset.id
