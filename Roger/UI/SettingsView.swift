@@ -42,32 +42,89 @@ struct GeneralSettingsView: View {
     @Bindable var state: AppState
 
     var body: some View {
-        Form {
-            Picker("Transcription Mode", selection: $state.transcriptionMode) {
-                ForEach(TranscriptionMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
+        ScrollView {
+            VStack(spacing: 16) {
+                // Transcription
+                settingsCard(icon: "waveform", title: "Transcription") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        settingsRow("Mode") {
+                            Picker("", selection: $state.transcriptionMode) {
+                                ForEach(TranscriptionMode.allCases) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+
+                        settingsRow("Model") {
+                            Text(state.transcriptionMode.modelDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                // Activation
+                settingsCard(icon: "keyboard", title: "Activation") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        settingsRow("Mode") {
+                            Picker("", selection: $state.activationMode) {
+                                ForEach(ActivationMode.allCases) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+
+                        settingsRow("Min. duration") {
+                            HStack(spacing: 4) {
+                                TextField("", value: $state.minimumRecordingDuration, format: .number)
+                                    .frame(width: 44)
+                                    .textFieldStyle(.roundedBorder)
+                                Text("sec")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                // Text insertion
+                settingsCard(icon: "text.cursor", title: "Text Insertion") {
+                    Toggle("Restore clipboard after paste fallback", isOn: $state.restoreClipboard)
+                        .font(.system(size: 12))
                 }
             }
-
-            Picker("Activation Mode", selection: $state.activationMode) {
-                ForEach(ActivationMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-
-            Toggle("Restore clipboard after paste", isOn: $state.restoreClipboard)
-
-            HStack {
-                Text("Minimum recording duration")
-                Spacer()
-                TextField("", value: $state.minimumRecordingDuration, format: .number)
-                    .frame(width: 50)
-                    .textFieldStyle(.roundedBorder)
-                Text("seconds")
-                    .foregroundStyle(.secondary)
-            }
+            .padding()
         }
-        .formStyle(.grouped)
+    }
+
+    private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                Text(title)
+                    .font(.headline)
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func settingsRow(_ label: String, @ViewBuilder trailing: () -> some View) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12))
+            Spacer()
+            trailing()
+        }
     }
 }
 
@@ -342,30 +399,60 @@ struct ModelSettingsView: View {
     var onSetup: () -> Void
 
     var body: some View {
-        Form {
-            LabeledContent("Status") {
-                if isSettingUp {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Status card
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Loading…")
-                            .font(.caption)
+                        Image(systemName: "cpu")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20)
+                        Text("Speech Model")
+                            .font(.headline)
+                        Spacer()
+
+                        if isSettingUp {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Loading…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if engine.isReady {
+                            Text("Ready")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(.green.opacity(0.15))
+                                .foregroundStyle(.green)
+                                .clipShape(Capsule())
+                        } else {
+                            Text("Not loaded")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(.red.opacity(0.15))
+                                .foregroundStyle(.red)
+                                .clipShape(Capsule())
+                        }
                     }
-                } else if engine.isReady {
-                    Label("Ready", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    Button("Download Model") {
-                        onSetup()
+
+                    Text("Roger uses WhisperKit for on-device speech recognition. Models run entirely on your Mac using the Neural Engine — your voice data never leaves your machine.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if !engine.isReady && !isSettingUp {
+                        Button("Download Model") { onSetup() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                     }
                 }
+                .padding(14)
+                .background(.quaternary.opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-
-            Text("Roger uses WhisperKit for on-device speech recognition. The model runs entirely on your Mac using the Neural Engine.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .padding()
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -412,23 +499,21 @@ struct AboutView: View {
 
             Spacer()
 
-            VStack(spacing: 8) {
-                Text("Powered by")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                HStack(spacing: 16) {
+            VStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Text("Powered by")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     Link("WhisperKit", destination: URL(string: "https://github.com/argmaxinc/WhisperKit")!)
+                        .font(.caption2)
+                    Text("&")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     Link("OpenAI Whisper", destination: URL(string: "https://github.com/openai/whisper")!)
+                        .font(.caption2)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
 
-            VStack(spacing: 6) {
-                Text("Created with \u{2764}\u{FE0F} by Jordi Böhme")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("\u{00A9} 2026 Jordi Böhme. MIT License.")
+                Text("Created with \u{2764}\u{FE0F} by Jordi Böhme  \u{00B7}  MIT License")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
