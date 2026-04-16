@@ -8,10 +8,8 @@ final class FloatingPanel {
     func show() {
         guard panel == nil else { return }
 
-        let hostingView = NSHostingView(rootView: FloatingIndicatorContent())
-        hostingView.frame = NSRect(x: 0, y: 0, width: 190, height: 56)
-        hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = .clear
+        let hostingView = NSHostingView(rootView: FloatingIndicatorContent().padding(20))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 230, height: 96)
 
         let p = NSPanel(
             contentRect: hostingView.frame,
@@ -56,21 +54,17 @@ private struct FloatingIndicatorContent: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .background {
-            ZStack {
-                // Red-tinted glass
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial)
-
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.red.opacity(0.35))
-
-                // Pulsing border
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.red.opacity(pulseOpacity), lineWidth: 1.5)
-            }
-            .shadow(color: .red.opacity(0.3), radius: 16, y: 4)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.red.opacity(0.35))
         }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.red.opacity(pulseOpacity), lineWidth: 1.5)
+        }
+        .shadow(color: .red.opacity(0.3), radius: 16, y: 4)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                 pulseOpacity = 0.15
