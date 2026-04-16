@@ -5,7 +5,7 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "PostP
 
 struct PostProcessor: Sendable {
 
-    func process(_ text: String, preset: DictationPreset, llmService: (any LLMService)?) async throws -> String {
+    func process(_ text: String, preset: DictationPreset, language: String, llmService: (any LLMService)?) async throws -> String {
         var result = text
 
         if preset.enableFillerRemoval {
@@ -18,11 +18,14 @@ struct PostProcessor: Sendable {
             logger.debug("After dedup: \(result)")
         }
 
+        let languageContext = "The text is in \(language). Do not translate it — keep it in \(language)."
+
         if preset.enableAIFormatting {
             guard let llm = llmService else {
                 throw PostProcessingError.noAIProviderAvailable
             }
-            result = try await llm.processText(result, prompt: preset.aiPrompt)
+            let prompt = "\(preset.aiPrompt)\n\n\(languageContext)"
+            result = try await llm.processText(result, prompt: prompt)
             logger.debug("After AI formatting: \(result)")
         }
 
@@ -34,7 +37,8 @@ struct PostProcessor: Sendable {
             guard let llm = llmService else {
                 throw PostProcessingError.noAIProviderAvailable
             }
-            result = try await llm.processText(result, prompt: preset.rewritePrompt)
+            let prompt = "\(preset.rewritePrompt)\n\n\(languageContext)"
+            result = try await llm.processText(result, prompt: prompt)
             logger.debug("After rewrite: \(result)")
         }
 

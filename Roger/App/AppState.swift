@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WhisperKit
 
 @Observable
 final class AppState {
@@ -20,8 +21,8 @@ final class AppState {
 
     // MARK: - General Settings
 
-    var selectedLanguage: Language {
-        didSet { defaults.set(selectedLanguage.rawValue, forKey: "selectedLanguage") }
+    var transcriptionMode: TranscriptionMode {
+        didSet { defaults.set(transcriptionMode.rawValue, forKey: "transcriptionMode") }
     }
     var activationMode: ActivationMode {
         didSet { defaults.set(activationMode.rawValue, forKey: "activationMode") }
@@ -145,7 +146,7 @@ final class AppState {
     private let defaults = UserDefaults.standard
 
     init() {
-        self.selectedLanguage = Language(rawValue: defaults.string(forKey: "selectedLanguage") ?? "") ?? .english
+        self.transcriptionMode = TranscriptionMode(rawValue: defaults.string(forKey: "transcriptionMode") ?? "") ?? .multilingual
         self.activationMode = ActivationMode(rawValue: defaults.string(forKey: "activationMode") ?? "") ?? .pushToTalk
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
@@ -176,16 +177,41 @@ final class AppState {
     }
 }
 
-enum Language: String, CaseIterable, Identifiable, Codable {
-    case english = "en"
-    case german = "de"
+enum TranscriptionMode: String, CaseIterable, Identifiable, Codable {
+    case englishOnly
+    case multilingual
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .english: return "English"
-        case .german: return "Deutsch"
+        case .englishOnly: return "English Only (faster)"
+        case .multilingual: return "Multilingual"
+        }
+    }
+
+    var modelName: String {
+        switch self {
+        case .englishOnly: return "distil-large-v3"
+        case .multilingual:
+            // Use WhisperKit's recommended model for this device
+            return WhisperKit.recommendedModels().default
+        }
+    }
+
+    /// Language code passed to WhisperKit. Nil = auto-detect.
+    var whisperLanguage: String? {
+        switch self {
+        case .englishOnly: return "en"
+        case .multilingual: return nil // auto-detect
+        }
+    }
+
+    /// Human-readable language name for AI prompts
+    var languageHint: String? {
+        switch self {
+        case .englishOnly: return "English"
+        case .multilingual: return nil // detected at runtime
         }
     }
 }

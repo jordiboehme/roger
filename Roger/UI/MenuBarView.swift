@@ -80,12 +80,12 @@ struct MenuBarView: View {
 
             // Language picker
             HStack {
-                Text("Language")
+                Text("Mode")
                 Spacer()
                 @Bindable var state = coordinator.appState
-                Picker("", selection: $state.selectedLanguage) {
-                    ForEach(Language.allCases) { lang in
-                        Text(lang.displayName).tag(lang)
+                Picker("", selection: $state.transcriptionMode) {
+                    ForEach(TranscriptionMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
                 }
                 .labelsHidden()

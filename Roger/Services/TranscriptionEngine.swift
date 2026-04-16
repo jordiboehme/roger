@@ -6,20 +6,21 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Trans
 
 final class TranscriptionEngine: @unchecked Sendable {
     private var whisperKit: WhisperKit?
+    private var currentModelName: String?
 
     var isReady: Bool {
         whisperKit != nil
     }
 
-    func setup(progressHandler: @Sendable @escaping (Double) -> Void) async throws {
-        logger.info("Setting up WhisperKit…")
+    /// Returns true if the loaded model matches the requested mode.
+    func isReady(for mode: TranscriptionMode) -> Bool {
+        guard whisperKit != nil else { return false }
+        return currentModelName == mode.modelName
+    }
 
-        // Let WhisperKit pick the best model for this device.
-        // Do NOT hardcode distil-large-v3 — it's English-only.
-        // WhisperKit auto-selects a multilingual model (e.g. large-v3-turbo).
-        let recommended = WhisperKit.recommendedModels()
-        let modelName = recommended.default
-        logger.info("Using model: \(modelName)")
+    func setup(mode: TranscriptionMode, progressHandler: @Sendable @escaping (Double) -> Void) async throws {
+        let modelName = mode.modelName
+        logger.info("Setting up WhisperKit with model: \(modelName)")
 
         let config = WhisperKitConfig(
             model: modelName,
@@ -32,18 +33,24 @@ final class TranscriptionEngine: @unchecked Sendable {
 
         let pipe = try await WhisperKit(config)
         whisperKit = pipe
+        currentModelName = modelName
         progressHandler(1.0)
 
-        logger.info("WhisperKit ready")
+        logger.info("WhisperKit ready with model: \(modelName)")
     }
 
-    func transcribe(audioBuffer: [Float], language: Language) async throws -> String {
+    struct TranscriptionResult {
+        let text: String
+        let detectedLanguage: String?
+    }
+
+    func transcribe(audioBuffer: [Float], mode: TranscriptionMode) async throws -> TranscriptionResult {
         guard let whisperKit else {
             throw TranscriptionError.engineNotReady
         }
 
         let options = DecodingOptions(
-            language: language.rawValue,
+            language: mode.whisperLanguage, // nil = auto-detect
             skipSpecialTokens: true,
             suppressBlank: true
         )
@@ -58,8 +65,11 @@ final class TranscriptionEngine: @unchecked Sendable {
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        logger.info("Transcribed \(text.count) characters")
-        return text
+        // Extract detected language from first result
+        let detectedLanguage = results.first?.language
+
+        logger.info("Transcribed \(text.count) characters, language: \(detectedLanguage ?? "unknown")")
+        return TranscriptionResult(text: text, detectedLanguage: detectedLanguage)
     }
 }
 

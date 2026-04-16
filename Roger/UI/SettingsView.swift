@@ -43,9 +43,9 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Picker("Language", selection: $state.selectedLanguage) {
-                ForEach(Language.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+            Picker("Transcription Mode", selection: $state.transcriptionMode) {
+                ForEach(TranscriptionMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
                 }
             }
 

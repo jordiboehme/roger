@@ -114,26 +114,29 @@ final class AppCoordinator {
         appState.dictationState = .transcribing
 
         do {
-            let transcript = try await transcriptionEngine.transcribe(
+            let result = try await transcriptionEngine.transcribe(
                 audioBuffer: audioBuffer,
-                language: appState.selectedLanguage
+                mode: appState.transcriptionMode
             )
 
-            guard !transcript.isEmpty else {
+            guard !result.text.isEmpty else {
                 logger.info("Empty transcription, skipping")
                 appState.dictationState = .idle
                 return
             }
 
             let activePreset = appState.activePreset
-            var processedText = transcript
+            var processedText = result.text
+
+            // Determine language for AI prompt context
+            let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
 
             if activePreset.requiresAI {
                 appState.dictationState = .processing
                 let llmService = appState.currentLLMService()
 
                 if await llmService.isAvailable {
-                    processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: llmService)
+                    processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: llmService)
                 } else {
                     logger.warning("LLM provider not available, applying non-AI steps only")
                     let fallbackPreset = DictationPreset(
@@ -146,10 +149,10 @@ final class AppCoordinator {
                         aiPrompt: "", rewritePrompt: "",
                         dictionaryEntries: activePreset.dictionaryEntries
                     )
-                    processedText = try await postProcessor.process(transcript, preset: fallbackPreset, llmService: nil)
+                    processedText = try await postProcessor.process(result.text, preset: fallbackPreset, language: languageName, llmService: nil)
                 }
             } else {
-                processedText = try await postProcessor.process(transcript, preset: activePreset, llmService: nil)
+                processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: nil)
             }
 
             appState.dictationState = .inserting
@@ -175,8 +178,9 @@ final class AppCoordinator {
             logger.info("Model setup already in progress, skipping")
             return
         }
-        guard !transcriptionEngine.isReady else {
-            logger.info("Model already ready, skipping setup")
+        let mode = appState.transcriptionMode
+        guard !transcriptionEngine.isReady(for: mode) else {
+            logger.info("Model already ready for \(mode.displayName), skipping setup")
             return
         }
 
@@ -184,7 +188,7 @@ final class AppCoordinator {
         appState.modelDownloadProgress = 0
 
         do {
-            try await transcriptionEngine.setup { progress in
+            try await transcriptionEngine.setup(mode: mode) { progress in
                 Task { @MainActor [weak self] in
                     self?.appState.modelDownloadProgress = progress
                 }
