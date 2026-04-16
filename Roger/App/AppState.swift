@@ -157,7 +157,7 @@ final class AppState {
         self.openAIModel = defaults.string(forKey: "openAIModel") ?? "gpt-4o"
 
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
-        self.presets = Self.loadPresets() ?? DictationPreset.builtInPresets
+        self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
     }
 
@@ -166,6 +166,15 @@ final class AppState {
     private func savePresets() {
         guard let data = try? JSONEncoder().encode(presets) else { return }
         defaults.set(data, forKey: "presets")
+    }
+
+    private static func mergeBuiltInPresets(saved: [DictationPreset]?) -> [DictationPreset] {
+        guard var presets = saved else { return DictationPreset.builtInPresets }
+        let existingIDs = Set(presets.map(\.id))
+        for builtIn in DictationPreset.builtInPresets where !existingIDs.contains(builtIn.id) {
+            presets.append(builtIn)
+        }
+        return presets
     }
 
     private static func loadPresets() -> [DictationPreset]? {

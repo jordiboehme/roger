@@ -36,6 +36,7 @@ extension DictationPreset {
     private static let polishedID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
     private static let professionalID = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
     private static let codeID = UUID(uuidString: "00000000-0000-0000-0000-000000000004")!
+    private static let cavemanID = UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
 
     static let plain = DictationPreset(
         id: plainID,
@@ -93,7 +94,21 @@ extension DictationPreset {
         dictionaryEntries: []
     )
 
-    static let builtInPresets: [DictationPreset] = [plain, polished, professional, code]
+    static let caveman = DictationPreset(
+        id: cavemanID,
+        name: "Caveman",
+        isBuiltIn: true,
+        enableFillerRemoval: true,
+        enableDedup: true,
+        enableAIFormatting: false,
+        enableCustomDictionary: false,
+        enableRewrite: true,
+        aiPrompt: "",
+        rewritePrompt: "Rewrite as terse caveman: drop articles (a/an/the), filler, pleasantries, hedging. Fragments OK. Short synonyms. Technical terms exact. Add punctuation. Return only the text.",
+        dictionaryEntries: []
+    )
+
+    static let builtInPresets: [DictationPreset] = [plain, polished, professional, code, caveman]
 
     static let defaultPresetID = polishedID
 }
