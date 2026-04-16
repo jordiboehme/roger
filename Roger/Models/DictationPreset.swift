@@ -75,7 +75,7 @@ extension DictationPreset {
         enableCustomDictionary: true,
         enableRewrite: true,
         aiPrompt: "Add proper punctuation, capitalization, and paragraph breaks to this dictated text. Preserve the original wording exactly. Return only the corrected text, nothing else.",
-        rewritePrompt: "Rewrite this dictated text as clear, professional prose suitable for emails and documents. Maintain the original meaning and tone. Return only the rewritten text, nothing else.",
+        rewritePrompt: "Clean up this dictated text: fix grammar, improve sentence structure, and make it read naturally. Keep the original meaning and words as much as possible — do not change the format, do not add greetings, sign-offs, subject lines, or any text that wasn't in the original. Return only the cleaned-up text, nothing else.",
         dictionaryEntries: []
     )
 
