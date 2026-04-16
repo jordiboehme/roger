@@ -50,7 +50,7 @@ private struct FloatingIndicatorContent: View {
             PanelWaveform()
             Text("Listening")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -80,7 +80,7 @@ private struct PanelWaveform: View {
         HStack(spacing: 3) {
             ForEach(0..<5, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(.white)
+                    .fill(.primary)
                     .frame(width: 3, height: phases[index] ? barHeight(for: index) : 4)
                     .animation(
                         .easeInOut(duration: duration(for: index))
