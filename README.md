@@ -1,22 +1,23 @@
 # Roger
 
-A macOS menu bar app for speech-to-text dictation into any application. Press a hotkey, speak and your words appear at the cursor — powered by on-device AI.
+Speak. It types. Anywhere on your Mac.
 
-**Your voice stays on your machine.** Roger is local-first — speech recognition runs entirely on your Mac using the Neural Engine. Cloud AI providers are available for text cleanup but opt-in.
+Roger lives in your menu bar and turns your voice into text — in any app. Hold a hotkey, say what you need and it appears at your cursor. No cloud. No latency. Just your voice and Apple Silicon.
+
+**Your voice stays on your machine.** Speech recognition runs entirely on-device using the Neural Engine. Cloud AI is available for text cleanup but always opt-in.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V31T6CL9)
 
 ## Features
 
-- **Dictate anywhere** — Text appears at the cursor in any app (Notes, Warp, VS Code, browsers)
-- **On-device transcription** — WhisperKit with CoreML, no cloud required
-- **Multilingual** — English and German with automatic language detection
-- **AI post-processing** — Filler word removal, punctuation and grammar cleanup via configurable presets
-- **Configurable presets** — Plain, Polished, Professional, Code or create your own
-- **Multiple AI providers** — Apple Intelligence, Ollama, Claude and OpenAI (same provider abstraction as [GitCanary](https://github.com/jordiboehme/GitCanary))
-- **Push-to-talk or toggle** — Hold Caps Lock to record or press once to start/stop
-- **Visual feedback** — Floating indicator with orange glow while listening
-- **Menu bar app** — Lives silently in your menu bar, no Dock icon
+- **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
+- **Completely private** — Powered by [WhisperKit](https://github.com/argmaxinc/WhisperKit) on Apple Silicon. Your audio never leaves your Mac
+- **Speaks your language** — English and German with automatic detection. More languages via Whisper's multilingual models
+- **Cleans up after you** — Removes filler words, fixes punctuation and grammar. Choose from built-in presets or create your own
+- **Your rules** — Pick from Plain, Polished, Professional or Code presets. Or build a custom one with your own AI prompt and dictionary
+- **Bring your own AI** — Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
+- **Caps Lock push-to-talk** — Hold to record, release to transcribe. Or toggle mode if you prefer
+- **Stays out of the way** — Menu bar only, no Dock icon. A subtle floating indicator shows when you're recording
 
 ## Installation
 
@@ -45,36 +46,38 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 - **macOS 14 Sonoma** or later
 - **Microphone permission** (prompted on first launch)
-- **Accessibility permission** (required for text insertion and global hotkey)
+- **Accessibility permission** (for text insertion and global hotkey)
 
 ## How It Works
 
-Roger captures audio via `AVAudioEngine`, transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML implementation of [OpenAI Whisper](https://github.com/openai/whisper)), optionally post-processes the text with an AI provider and inserts the result at your cursor using the Accessibility API (with a clipboard+paste fallback for Electron apps).
+Roger captures audio, transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. It uses the Accessibility API for direct insertion with a clipboard+paste fallback for Electron apps.
 
-### Dictation Presets
+### Presets
 
 | Preset | What it does |
 |--------|-------------|
-| **Plain** | Removes filler words and repeated words. No AI needed. |
-| **Polished** | Adds punctuation, capitalization and formatting via AI. |
-| **Professional** | Full cleanup plus AI rewrite for clear professional prose. |
-| **Code** | Developer-aware — preserves technical terms and code references. |
-| **Custom** | Your own pipeline steps, prompts and dictionary. |
+| **Plain** | Strips filler words and repeated words. No AI needed. |
+| **Polished** | Adds punctuation, capitalization and formatting. |
+| **Professional** | Full cleanup with an AI rewrite for send-ready prose. |
+| **Code** | Preserves technical terms, function names and code references. |
+| **Custom** | Your own pipeline — choose which steps run, write your own prompt. |
 
 ### AI Providers
 
 | Provider | Type | Notes |
 |----------|------|-------|
-| **Apple Intelligence** | Local | On-device, macOS 26+, no setup required |
-| **Ollama** | Local | Runs on your Mac or any machine on your network |
-| **Claude** | Cloud | Anthropic API, requires API key |
-| **OpenAI** | Cloud | OpenAI API, requires API key |
+| **Apple Intelligence** | Local | On-device, macOS 26+, zero setup |
+| **Ollama** | Local | Your Mac, your NAS, your homelab |
+| **Claude** | Cloud | Anthropic API |
+| **OpenAI** | Cloud | OpenAI API |
 
 ## Privacy
 
-- **Speech recognition** runs 100% on-device via WhisperKit. Audio never leaves your Mac.
-- **AI post-processing** with local providers (Apple Intelligence, Ollama) keeps text on your machine.
-- **Cloud providers** (Claude, OpenAI) send transcribed text to external servers — only use if you're comfortable with that.
+Roger is built around a simple principle: your voice is yours.
+
+- **Speech recognition** is 100% on-device. Audio never leaves your Mac.
+- **Local AI** (Apple Intelligence, Ollama) keeps your text on your machine too.
+- **Cloud providers** are opt-in and clearly marked. Your text is sent to their servers only if you choose to.
 
 ## License
 
