@@ -192,9 +192,9 @@ enum TranscriptionMode: String, CaseIterable, Identifiable, Codable {
 
     var modelName: String {
         switch self {
-        case .englishOnly: return "distil-large-v3"
+        case .englishOnly: return "distil-whisper_distil-large-v3"
         case .multilingual:
-            // Use WhisperKit's recommended model for this device
+            // Use WhisperKit's recommended multilingual model for this device
             return WhisperKit.recommendedModels().default
         }
     }
