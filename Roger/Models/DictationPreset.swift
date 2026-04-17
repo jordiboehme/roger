@@ -1,5 +1,29 @@
 import Foundation
 
+enum TrailingCharacter: String, Codable, CaseIterable, Identifiable {
+    case none
+    case space
+    case newline
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: return "Nothing"
+        case .space: return "Space"
+        case .newline: return "Newline"
+        }
+    }
+
+    var character: String {
+        switch self {
+        case .none: return ""
+        case .space: return " "
+        case .newline: return "\n"
+        }
+    }
+}
+
 struct DictationPreset: Identifiable, Codable, Equatable {
     var id: UUID
     var name: String
@@ -12,9 +36,58 @@ struct DictationPreset: Identifiable, Codable, Equatable {
     var aiPrompt: String
     var rewritePrompt: String
     var dictionaryEntries: [DictionaryEntry]
+    var trailingCharacter: TrailingCharacter
+    var sendReturnAfterInsert: Bool
 
     var requiresAI: Bool {
         enableAIFormatting || enableRewrite
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        isBuiltIn: Bool,
+        enableFillerRemoval: Bool,
+        enableDedup: Bool,
+        enableAIFormatting: Bool,
+        enableCustomDictionary: Bool,
+        enableRewrite: Bool,
+        aiPrompt: String,
+        rewritePrompt: String,
+        dictionaryEntries: [DictionaryEntry],
+        trailingCharacter: TrailingCharacter = .none,
+        sendReturnAfterInsert: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.isBuiltIn = isBuiltIn
+        self.enableFillerRemoval = enableFillerRemoval
+        self.enableDedup = enableDedup
+        self.enableAIFormatting = enableAIFormatting
+        self.enableCustomDictionary = enableCustomDictionary
+        self.enableRewrite = enableRewrite
+        self.aiPrompt = aiPrompt
+        self.rewritePrompt = rewritePrompt
+        self.dictionaryEntries = dictionaryEntries
+        self.trailingCharacter = trailingCharacter
+        self.sendReturnAfterInsert = sendReturnAfterInsert
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        isBuiltIn = try c.decode(Bool.self, forKey: .isBuiltIn)
+        enableFillerRemoval = try c.decode(Bool.self, forKey: .enableFillerRemoval)
+        enableDedup = try c.decode(Bool.self, forKey: .enableDedup)
+        enableAIFormatting = try c.decode(Bool.self, forKey: .enableAIFormatting)
+        enableCustomDictionary = try c.decode(Bool.self, forKey: .enableCustomDictionary)
+        enableRewrite = try c.decode(Bool.self, forKey: .enableRewrite)
+        aiPrompt = try c.decode(String.self, forKey: .aiPrompt)
+        rewritePrompt = try c.decode(String.self, forKey: .rewritePrompt)
+        dictionaryEntries = try c.decode([DictionaryEntry].self, forKey: .dictionaryEntries)
+        trailingCharacter = try c.decodeIfPresent(TrailingCharacter.self, forKey: .trailingCharacter) ?? .none
+        sendReturnAfterInsert = try c.decodeIfPresent(Bool.self, forKey: .sendReturnAfterInsert) ?? false
     }
 }
 

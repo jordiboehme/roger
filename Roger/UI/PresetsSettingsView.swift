@@ -101,12 +101,28 @@ struct PresetsSettingsView: View {
                     .disabled(preset.wrappedValue.isBuiltIn)
             }
 
-            Section("Pipeline Steps") {
+            Section {
                 Toggle("Remove filler words", isOn: preset.enableFillerRemoval)
                 Toggle("Remove repeated words", isOn: preset.enableDedup)
-                Toggle("AI punctuation & formatting", isOn: preset.enableAIFormatting)
                 Toggle("Apply custom dictionary", isOn: preset.enableCustomDictionary)
-                Toggle("AI rewrite", isOn: preset.enableRewrite)
+            } header: {
+                Text("Text Cleanup")
+            } footer: {
+                Text("Deterministic, offline steps applied to the raw transcription.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .disabled(preset.wrappedValue.isBuiltIn)
+
+            Section {
+                Toggle("Punctuation & formatting", isOn: preset.enableAIFormatting)
+                Toggle("Rewrite", isOn: preset.enableRewrite)
+            } header: {
+                Text("AI Processing")
+            } footer: {
+                Text("Runs through the AI provider configured in Settings › AI Provider.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
             .disabled(preset.wrappedValue.isBuiltIn)
 
@@ -131,6 +147,22 @@ struct PresetsSettingsView: View {
             if preset.wrappedValue.enableCustomDictionary {
                 dictionarySection(preset: preset)
             }
+
+            Section {
+                Picker("Append at end", selection: preset.trailingCharacter) {
+                    ForEach(TrailingCharacter.allCases) { choice in
+                        Text(choice.displayName).tag(choice)
+                    }
+                }
+                Toggle("Press Return after insertion", isOn: preset.sendReturnAfterInsert)
+            } header: {
+                Text("Output")
+            } footer: {
+                Text("Use Return to submit the text automatically — handy for sending a prompt to a chat box or chat app.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .disabled(preset.wrappedValue.isBuiltIn)
         }
         .formStyle(.grouped)
     }

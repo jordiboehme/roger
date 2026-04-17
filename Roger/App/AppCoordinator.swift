@@ -183,10 +183,17 @@ final class AppCoordinator {
             appState.dictationState = .inserting
             appState.lastTranscription = processedText
 
+            let textToInsert = processedText + activePreset.trailingCharacter.character
             try textInsertionService.insertText(
-                processedText,
+                textToInsert,
                 restoreClipboard: appState.restoreClipboard
             )
+
+            if activePreset.sendReturnAfterInsert {
+                // Brief delay so the focused app processes the insertion before Return fires.
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                textInsertionService.simulateReturn()
+            }
 
             logger.info("Dictation complete: \(processedText.prefix(50))…")
             floatingPanel.hide()

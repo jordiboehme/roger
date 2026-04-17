@@ -124,4 +124,18 @@ final class TextInsertionService {
         usleep(50_000) // 50ms between key down and up
         keyUp?.post(tap: .cgAnnotatedSessionEventTap)
     }
+
+    /// Posts a Return keystroke. Used to submit forms/prompts after insertion
+    /// when a preset has `sendReturnAfterInsert` enabled.
+    func simulateReturn() {
+        let source = CGEventSource(stateID: .privateState)
+
+        // Key code 36 = Return
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: false)
+
+        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
+        usleep(50_000)
+        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+    }
 }
