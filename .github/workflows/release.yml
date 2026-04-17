@@ -149,7 +149,7 @@ jobs:
 
             postflight do
               system_command "/usr/bin/open",
-                             args: ["-gj", "#{appdir}/Roger.app"]
+                             args: ["-g", "#{appdir}/Roger.app"]
             end
 
             uninstall quit: "com.jordiboehme.roger"
