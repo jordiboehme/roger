@@ -1,6 +1,10 @@
 import Foundation
 import Observation
+import ServiceManagement
 import WhisperKit
+import os
+
+private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "LaunchAtLogin")
 
 @Observable
 final class AppState {
@@ -32,6 +36,13 @@ final class AppState {
     var minimumRecordingDuration: TimeInterval {
         didSet { defaults.set(minimumRecordingDuration, forKey: "minimumRecordingDuration") }
     }
+    var launchAtLogin: Bool {
+        didSet {
+            guard !isSyncingLaunchAtLogin else { return }
+            applyLaunchAtLogin(launchAtLogin)
+        }
+    }
+    private var isSyncingLaunchAtLogin = false
 
     // MARK: - LLM Settings
 
@@ -196,6 +207,37 @@ final class AppState {
         self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
         self.modifierBindings = Self.loadModifierBindings()
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
+
+        self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
+    }
+
+    // MARK: - Launch at Login
+
+    func syncLaunchAtLogin() {
+        let enabled = (SMAppService.mainApp.status == .enabled)
+        if enabled != launchAtLogin {
+            isSyncingLaunchAtLogin = true
+            launchAtLogin = enabled
+            isSyncingLaunchAtLogin = false
+        }
+    }
+
+    private func applyLaunchAtLogin(_ enable: Bool) {
+        let service = SMAppService.mainApp
+        do {
+            if enable {
+                try service.register()
+                logger.info("Registered for launch at login")
+            } else {
+                try service.unregister()
+                logger.info("Unregistered from launch at login")
+            }
+        } catch {
+            logger.error("Launch-at-login \(enable ? "register" : "unregister") failed: \(error.localizedDescription, privacy: .public)")
+            isSyncingLaunchAtLogin = true
+            launchAtLogin = !enable
+            isSyncingLaunchAtLogin = false
+        }
     }
 
     // MARK: - Persistence

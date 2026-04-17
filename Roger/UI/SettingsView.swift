@@ -96,9 +96,16 @@ struct GeneralSettingsView: View {
                     Toggle("Restore clipboard after paste fallback", isOn: $state.restoreClipboard)
                         .font(.system(size: 12))
                 }
+
+                // Startup
+                settingsCard(icon: "power", title: "Startup") {
+                    Toggle("Launch Roger at login", isOn: $state.launchAtLogin)
+                        .font(.system(size: 12))
+                }
             }
             .padding()
         }
+        .onAppear { state.syncLaunchAtLogin() }
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {

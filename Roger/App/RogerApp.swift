@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Check permissions
         coordinator.permissionManager.checkPermissions()
 
+        // Sync launch-at-login state with SMAppService (catches external changes)
+        coordinator.appState.syncLaunchAtLogin()
+
         // Start model download
         Task {
             if !coordinator.transcriptionEngine.isReady {
