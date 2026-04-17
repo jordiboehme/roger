@@ -20,26 +20,44 @@ struct PostProcessor: Sendable {
 
         let languageContext = "The text is in \(language). Do not translate it — keep it in \(language)."
 
-        if preset.enableAIFormatting {
+        // When both AI steps are enabled, combine them into a single call to
+        // halve latency. The dictionary then always runs last so user-defined
+        // replacements have the final word.
+        if preset.enableAIFormatting && preset.enableRewrite {
+            guard let llm = llmService else {
+                throw PostProcessingError.noAIProviderAvailable
+            }
+            let prompt = """
+            Apply two transformations to the text, in order, and return ONLY the final result — no step labels, no explanations, no markdown fences.
+
+            --- Transformation 1 ---
+            \(preset.aiPrompt)
+
+            --- Transformation 2 (applied to the output of Transformation 1) ---
+            \(preset.rewritePrompt)
+
+            \(languageContext)
+            """
+            result = try await llm.processText(result, prompt: prompt)
+            logger.debug("After merged AI formatting + rewrite: \(result)")
+        } else if preset.enableAIFormatting {
             guard let llm = llmService else {
                 throw PostProcessingError.noAIProviderAvailable
             }
             let prompt = "\(preset.aiPrompt)\n\n\(languageContext)"
             result = try await llm.processText(result, prompt: prompt)
             logger.debug("After AI formatting: \(result)")
-        }
-
-        if preset.enableCustomDictionary {
-            result = applyDictionary(result, entries: preset.dictionaryEntries)
-        }
-
-        if preset.enableRewrite {
+        } else if preset.enableRewrite {
             guard let llm = llmService else {
                 throw PostProcessingError.noAIProviderAvailable
             }
             let prompt = "\(preset.rewritePrompt)\n\n\(languageContext)"
             result = try await llm.processText(result, prompt: prompt)
             logger.debug("After rewrite: \(result)")
+        }
+
+        if preset.enableCustomDictionary {
+            result = applyDictionary(result, entries: preset.dictionaryEntries)
         }
 
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
