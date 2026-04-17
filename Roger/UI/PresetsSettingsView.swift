@@ -43,6 +43,11 @@ struct PresetsSettingsView: View {
                             .foregroundColor(.accentColor)
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    coordinator.appState.activePresetID = preset.id
+                }
+                .help("Double-click to make this the active preset")
                 .tag(preset.id)
             }
 
