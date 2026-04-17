@@ -37,6 +37,8 @@ extension DictationPreset {
     private static let professionalID = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
     private static let codeID = UUID(uuidString: "00000000-0000-0000-0000-000000000004")!
     private static let cavemanID = UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+    private static let yodaID = UUID(uuidString: "00000000-0000-0000-0000-000000000006")!
+    private static let emojiID = UUID(uuidString: "00000000-0000-0000-0000-000000000007")!
 
     static let plain = DictationPreset(
         id: plainID,
@@ -108,7 +110,35 @@ extension DictationPreset {
         dictionaryEntries: []
     )
 
-    static let builtInPresets: [DictationPreset] = [plain, polished, professional, code, caveman]
+    static let yoda = DictationPreset(
+        id: yodaID,
+        name: "Yoda",
+        isBuiltIn: true,
+        enableFillerRemoval: true,
+        enableDedup: true,
+        enableAIFormatting: false,
+        enableCustomDictionary: false,
+        enableRewrite: true,
+        aiPrompt: "",
+        rewritePrompt: "Rewrite in Yoda's speech pattern from Star Wars: reorder to object-subject-verb where natural (\"Strong with the Force, you are\"). Keep original meaning and vocabulary. Short, wise, slightly archaic. Add punctuation. Return only the text.",
+        dictionaryEntries: []
+    )
+
+    static let emoji = DictationPreset(
+        id: emojiID,
+        name: "Emoji",
+        isBuiltIn: true,
+        enableFillerRemoval: true,
+        enableDedup: true,
+        enableAIFormatting: false,
+        enableCustomDictionary: false,
+        enableRewrite: true,
+        aiPrompt: "",
+        rewritePrompt: "Rewrite the text with aggressive emoji use: pack in emojis after every noun, verb, adjective and emotion. More is more — go heavy, be playful, stack multiple emojis where fitting. Do not change the original words. Add punctuation and capitalization. Return only the text.",
+        dictionaryEntries: []
+    )
+
+    static let builtInPresets: [DictationPreset] = [plain, polished, professional, code, caveman, yoda, emoji]
 
     static let defaultPresetID = polishedID
 }
