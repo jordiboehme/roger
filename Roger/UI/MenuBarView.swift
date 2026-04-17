@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MenuBarView: View {
@@ -33,6 +34,12 @@ struct MenuBarView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+            }
+
+            if let text = coordinator.appState.lastTranscription, !text.isEmpty {
+                LastDictationCard(text: text)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
             }
 
             Divider().padding(.horizontal, 10)
@@ -229,6 +236,80 @@ struct MenuBarView: View {
             for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
                 window.makeKeyAndOrderFront(nil)
             }
+        }
+    }
+}
+
+// MARK: - Last-dictation card
+
+private struct LastDictationCard: View {
+    let text: String
+    @State private var isHovering = false
+    @State private var justCopied = false
+
+    var body: some View {
+        Button(action: copy) {
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .truncationMode(.tail)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.quaternary.opacity(isHovering ? 0.55 : 0.3))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)
+        }
+        .overlay(alignment: .topTrailing) {
+            ZStack {
+                if justCopied {
+                    copiedBadge
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                } else if isHovering {
+                    Image(systemName: "doc.on.doc")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial, in: Capsule())
+                        .transition(.opacity)
+                }
+            }
+            .padding(6)
+        }
+        .onHover { isHovering = $0 }
+        .animation(.easeInOut(duration: 0.15), value: isHovering)
+        .animation(.easeInOut(duration: 0.2), value: justCopied)
+        .help("Click to copy")
+    }
+
+    private var copiedBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark")
+            Text("Copied")
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.accentColor, in: Capsule())
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        justCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            justCopied = false
         }
     }
 }
