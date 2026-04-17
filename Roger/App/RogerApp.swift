@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Check permissions
         coordinator.permissionManager.checkPermissions()
 
+        // Warm up the audio HAL so the first Caps Lock press captures reliably
+        Task { await coordinator.warmUpMicrophone() }
+
         // Sync launch-at-login state with SMAppService (catches external changes)
         coordinator.appState.syncLaunchAtLogin()
 

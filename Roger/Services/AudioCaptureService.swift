@@ -4,7 +4,7 @@ import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "AudioCapture")
 
-final class AudioCaptureService {
+final class AudioCaptureService: @unchecked Sendable {
     private var audioEngine: AVAudioEngine?
     private var capturedSamples: [Float] = []
     private let lock = NSLock()
@@ -12,8 +12,29 @@ final class AudioCaptureService {
     /// Target sample rate for WhisperKit (16kHz mono)
     static let targetSampleRate: Double = 16000
 
+    /// Duration of the silent warm-up capture that wakes the CoreAudio HAL.
+    static let warmUpDuration: TimeInterval = 0.5
+
     /// UID of the input device to use, or nil for system default.
     var preferredInputUID: String?
+
+    /// Runs a short silent capture to wake the audio HAL so the next real
+    /// capture gets samples immediately. Never throws; logs and returns.
+    func warmUp() async {
+        do {
+            try startCapture()
+            try? await Task.sleep(nanoseconds: UInt64(Self.warmUpDuration * 1_000_000_000))
+            let samples = stopCapture()
+            let count = samples?.count ?? 0
+            if count == 0 {
+                logger.info("Mic warm-up produced no samples — HAL may be fully asleep")
+            } else {
+                logger.info("Mic warm-up done (\(count) samples)")
+            }
+        } catch {
+            logger.info("Mic warm-up skipped: \(error.localizedDescription)")
+        }
+    }
 
     func startCapture() throws {
         let engine = AVAudioEngine()

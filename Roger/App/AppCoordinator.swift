@@ -20,6 +20,7 @@ final class AppCoordinator {
     var isSettingUpModel = false
     private var recordingStartTime: Date?
     private var activeRecordingPresetID: UUID?
+    private var isWarmingUp = false
 
     init() {
         setupHotkeyCallbacks()
@@ -221,6 +222,21 @@ final class AppCoordinator {
             isSettingUpModel = false
             appState.dictationState = .error("Model download failed — check your connection and retry")
         }
+    }
+
+    // MARK: - Microphone Warm-Up
+
+    /// Fires a brief silent capture so the CoreAudio HAL is warm before the
+    /// user's first real Caps Lock press. Safe to call repeatedly — re-entrant
+    /// calls are coalesced.
+    func warmUpMicrophone() async {
+        guard permissionManager.microphoneAuthorized else { return }
+        guard !isWarmingUp else { return }
+        guard appState.dictationState == .idle else { return }
+        isWarmingUp = true
+        defer { isWarmingUp = false }
+        audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
+        await audioCaptureService.warmUp()
     }
 
     // MARK: - Error Management

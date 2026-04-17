@@ -83,6 +83,7 @@ struct MicrophoneSettingsView: View {
                     isSelected: state.selectedInputDeviceUID == nil
                 ) {
                     state.selectedInputDeviceUID = nil
+                    Task { await coordinator.warmUpMicrophone() }
                 }
 
                 if !devices.isEmpty {
@@ -94,6 +95,7 @@ struct MicrophoneSettingsView: View {
                             isSelected: state.selectedInputDeviceUID == device.id
                         ) {
                             state.selectedInputDeviceUID = device.id
+                            Task { await coordinator.warmUpMicrophone() }
                         }
                     }
                 }

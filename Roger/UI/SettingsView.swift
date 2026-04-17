@@ -182,7 +182,14 @@ struct PermissionsSettingsView: View {
                     title: "Microphone",
                     description: "Required to capture your voice for transcription.",
                     granted: pm.microphoneAuthorized,
-                    action: { Task { await pm.requestMicrophone() } },
+                    action: {
+                        Task {
+                            await pm.requestMicrophone()
+                            if pm.microphoneAuthorized {
+                                await coordinator.warmUpMicrophone()
+                            }
+                        }
+                    },
                     actionLabel: "Grant Access",
                     testAction: pm.microphoneAuthorized ? { testMicrophone() } : nil,
                     testResult: micTestResult
