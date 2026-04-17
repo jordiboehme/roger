@@ -88,7 +88,8 @@ final class AudioCaptureService {
             return nil
         }
 
-        logger.info("Captured \(samples.count) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate))s)")
+        let peakAmplitude = samples.map { abs($0) }.max() ?? 0
+        logger.notice("Captured \(samples.count) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate))s), peak amplitude: \(String(format: "%.4f", peakAmplitude))")
         return samples
     }
 

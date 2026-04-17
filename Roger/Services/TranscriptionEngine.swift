@@ -80,7 +80,7 @@ final class TranscriptionEngine: @unchecked Sendable {
         // Extract detected language from first result
         let detectedLanguage = results.first?.language
 
-        logger.info("Transcribed \(text.count) characters, language: \(detectedLanguage ?? "unknown")")
+        logger.notice("Transcribed \(text.count) characters, language: \(detectedLanguage ?? "unknown")")
         return TranscriptionResult(text: text, detectedLanguage: detectedLanguage)
     }
 }

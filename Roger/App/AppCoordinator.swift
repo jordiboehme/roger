@@ -101,9 +101,11 @@ final class AppCoordinator {
 
         guard let audioBuffer else {
             logger.warning("No audio captured")
-            appState.dictationState = .idle
+            appState.dictationState = .error("No audio captured — check microphone input")
             return
         }
+
+        logger.notice("Recording complete: \(String(format: "%.1f", duration))s, \(audioBuffer.count) samples")
 
         Task {
             await processDictation(audioBuffer: audioBuffer)
@@ -120,8 +122,8 @@ final class AppCoordinator {
             )
 
             guard !result.text.isEmpty else {
-                logger.info("Empty transcription, skipping")
-                appState.dictationState = .idle
+                logger.warning("Empty transcription — no speech detected")
+                appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
                 return
             }
 
