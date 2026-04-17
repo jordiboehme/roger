@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		052616721F819EF9794D879F /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F3487B8EF5F5008F213858 /* LLMService.swift */; };
 		08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BEFEB2CF66FA6DC5DAC61B /* SettingsView.swift */; };
+		1038DD2220D3268A9CCA4830 /* CapsModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC35482E3E7EAD95223FB31C /* CapsModifier.swift */; };
 		15D86F6997A1BFD1CCCF837F /* TextInsertionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */; };
 		20DB81390ADDD91D75C08353 /* AppleIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3743725D72D2E40A31B42614 /* AppleIntelligenceService.swift */; };
 		25391159CBA64CA491757CA1 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346522528C8F2F9999EF7C4F /* AppCoordinator.swift */; };
@@ -62,6 +63,7 @@
 		C29286BD5717F06096DDBD91 /* FloatingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanel.swift; sourceTree = "<group>"; };
 		C33EAC5EA618E542C6F1D9BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D0BEFEB2CF66FA6DC5DAC61B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DC35482E3E7EAD95223FB31C /* CapsModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapsModifier.swift; sourceTree = "<group>"; };
 		DC697D5097263C850B4C7CFE /* DictationPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationPreset.swift; sourceTree = "<group>"; };
 		E4FE02D8F52A5C784CB71EF8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E6972514B1B5E8BA603EE725 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
@@ -95,6 +97,7 @@
 		2AA3C8946DEF851B04CD1F1B /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				DC35482E3E7EAD95223FB31C /* CapsModifier.swift */,
 				DC697D5097263C850B4C7CFE /* DictationPreset.swift */,
 				69BD03DEF1FE8D1DF6DC6727 /* LLMProviderType.swift */,
 				AD0401FF3C26D3570A4B9327 /* PostProcessingError.swift */,
@@ -256,6 +259,7 @@
 				F36323F5B0CAEB1CF8BCDF11 /* AppState.swift in Sources */,
 				20DB81390ADDD91D75C08353 /* AppleIntelligenceService.swift in Sources */,
 				EA5B861EE5B7EECBBC1BA9B4 /* AudioCaptureService.swift in Sources */,
+				1038DD2220D3268A9CCA4830 /* CapsModifier.swift in Sources */,
 				3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */,
 				CF758B7AC9D461C123600C0E /* DictationPreset.swift in Sources */,
 				5EC8899A722FF0E94BA8AE90 /* FloatingIndicator.swift in Sources */,

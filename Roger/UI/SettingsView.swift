@@ -370,7 +370,7 @@ struct PermissionsSettingsView: View {
         let originalStart = coordinator.hotkeyManager.onRecordingStarted
         let originalStop = coordinator.hotkeyManager.onRecordingStopped
 
-        coordinator.hotkeyManager.onRecordingStarted = { [self] in
+        coordinator.hotkeyManager.onRecordingStarted = { [self] _ in
             Task { @MainActor in
                 hotkeyTestResult = "OK — keypress detected!"
                 hotkeyTestActive = false

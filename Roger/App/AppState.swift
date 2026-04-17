@@ -57,7 +57,43 @@ final class AppState {
         didSet { defaults.set(activePresetID.uuidString, forKey: "activePresetID") }
     }
     var presets: [DictationPreset] {
-        didSet { savePresets() }
+        didSet {
+            savePresets()
+            pruneOrphanBindings()
+        }
+    }
+    var modifierBindings: [CapsModifier: UUID] {
+        didSet { saveModifierBindings() }
+    }
+
+    /// Removes a preset by id and cleans up any modifier binding pointing at it.
+    /// Falls back activePresetID to the default if the removed preset was active.
+    func removePreset(id: UUID) {
+        presets.removeAll { $0.id == id }
+        if activePresetID == id {
+            activePresetID = DictationPreset.defaultPresetID
+        }
+    }
+
+    /// Assigns `presetID` to `modifier`, removing any previous binding for that modifier
+    /// and any previous modifier that pointed to this preset.
+    func bindModifier(_ modifier: CapsModifier, to presetID: UUID) {
+        var next = modifierBindings
+        for (mod, id) in next where id == presetID {
+            next.removeValue(forKey: mod)
+        }
+        next[modifier] = presetID
+        modifierBindings = next
+    }
+
+    /// Clears any modifier binding that points at `presetID`.
+    func clearBinding(for presetID: UUID) {
+        modifierBindings = modifierBindings.filter { $0.value != presetID }
+    }
+
+    /// Returns the modifier currently bound to `presetID`, if any.
+    func modifier(for presetID: UUID) -> CapsModifier? {
+        modifierBindings.first { $0.value == presetID }?.key
     }
 
     // MARK: - Onboarding
@@ -158,6 +194,7 @@ final class AppState {
 
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
         self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
+        self.modifierBindings = Self.loadModifierBindings()
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
     }
 
@@ -166,6 +203,30 @@ final class AppState {
     private func savePresets() {
         guard let data = try? JSONEncoder().encode(presets) else { return }
         defaults.set(data, forKey: "presets")
+    }
+
+    private func saveModifierBindings() {
+        let serialisable = Dictionary(uniqueKeysWithValues: modifierBindings.map { ($0.key.rawValue, $0.value.uuidString) })
+        defaults.set(serialisable, forKey: "modifierBindings")
+    }
+
+    private func pruneOrphanBindings() {
+        let validIDs = Set(presets.map(\.id))
+        let cleaned = modifierBindings.filter { validIDs.contains($0.value) }
+        if cleaned.count != modifierBindings.count {
+            modifierBindings = cleaned
+        }
+    }
+
+    private static func loadModifierBindings() -> [CapsModifier: UUID] {
+        guard let raw = UserDefaults.standard.dictionary(forKey: "modifierBindings") as? [String: String] else { return [:] }
+        var result: [CapsModifier: UUID] = [:]
+        for (key, value) in raw {
+            if let mod = CapsModifier(rawValue: key), let id = UUID(uuidString: value) {
+                result[mod] = id
+            }
+        }
+        return result
     }
 
     private static func mergeBuiltInPresets(saved: [DictationPreset]?) -> [DictationPreset] {

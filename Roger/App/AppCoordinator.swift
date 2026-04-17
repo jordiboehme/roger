@@ -19,15 +19,16 @@ final class AppCoordinator {
     var hotkeyActive = false
     var isSettingUpModel = false
     private var recordingStartTime: Date?
+    private var activeRecordingPresetID: UUID?
 
     init() {
         setupHotkeyCallbacks()
     }
 
     private func setupHotkeyCallbacks() {
-        hotkeyManager.onRecordingStarted = { [weak self] in
+        hotkeyManager.onRecordingStarted = { [weak self] modifier in
             Task { @MainActor in
-                self?.startDictation()
+                self?.startDictation(modifier: modifier)
             }
         }
         hotkeyManager.onRecordingStopped = { [weak self] in
@@ -56,7 +57,7 @@ final class AppCoordinator {
 
     // MARK: - Dictation
 
-    func startDictation() {
+    func startDictation(modifier: CapsModifier? = nil) {
         guard appState.dictationState == .idle else {
             logger.warning("Cannot start dictation: state is \(self.appState.statusText)")
             return
@@ -72,14 +73,24 @@ final class AppCoordinator {
             return
         }
 
+        let resolvedPresetID: UUID
+        if let modifier, let boundID = appState.modifierBindings[modifier] {
+            resolvedPresetID = boundID
+        } else {
+            resolvedPresetID = appState.activePresetID
+        }
+        activeRecordingPresetID = resolvedPresetID
+        let presetName = appState.presets.first { $0.id == resolvedPresetID }?.name ?? "Polished"
+
         do {
             appState.dictationState = .listening
             recordingStartTime = Date()
-            floatingPanel.show()
+            floatingPanel.show(presetName: presetName)
             try audioCaptureService.startCapture()
-            logger.info("Dictation started")
+            logger.info("Dictation started (preset: \(presetName))")
         } catch {
             floatingPanel.hide()
+            activeRecordingPresetID = nil
             logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
         }
@@ -96,12 +107,14 @@ final class AppCoordinator {
         guard duration >= appState.minimumRecordingDuration else {
             logger.info("Recording too short (\(String(format: "%.1f", duration))s), discarding")
             appState.dictationState = .idle
+            activeRecordingPresetID = nil
             return
         }
 
         guard let audioBuffer else {
             logger.warning("No audio captured")
             appState.dictationState = .error("No audio captured — check microphone input")
+            activeRecordingPresetID = nil
             return
         }
 
@@ -114,6 +127,7 @@ final class AppCoordinator {
 
     private func processDictation(audioBuffer: [Float]) async {
         appState.dictationState = .transcribing
+        defer { activeRecordingPresetID = nil }
 
         do {
             let result = try await transcriptionEngine.transcribe(
@@ -127,7 +141,7 @@ final class AppCoordinator {
                 return
             }
 
-            let activePreset = appState.activePreset
+            let activePreset = appState.presets.first { $0.id == activeRecordingPresetID } ?? appState.activePreset
             var processedText = result.text
 
             // Determine language for AI prompt context

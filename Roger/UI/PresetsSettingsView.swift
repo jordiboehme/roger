@@ -29,7 +29,7 @@ struct PresetsSettingsView: View {
     private var presetList: some View {
         VStack(spacing: 0) {
             List(coordinator.appState.presets, id: \.id, selection: $selectedPresetID) { preset in
-                HStack {
+                HStack(spacing: 6) {
                     if preset.isBuiltIn {
                         Image(systemName: "lock.fill")
                             .font(.caption2)
@@ -37,6 +37,17 @@ struct PresetsSettingsView: View {
                     }
                     Text(preset.name)
                     Spacer()
+                    if let modifier = coordinator.appState.modifier(for: preset.id) {
+                        Text(modifier.symbol)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.15))
+                            )
+                    }
                     if preset.id == coordinator.appState.activePresetID {
                         Image(systemName: "checkmark")
                             .font(.caption)
@@ -44,10 +55,9 @@ struct PresetsSettingsView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture(count: 2).onEnded {
-                    coordinator.appState.activePresetID = preset.id
-                })
-                .help("Double-click to make this the active preset")
+                .contextMenu {
+                    presetContextMenu(for: preset)
+                }
                 .tag(preset.id)
             }
 
@@ -156,6 +166,39 @@ struct PresetsSettingsView: View {
         }
     }
 
+    // MARK: - Context Menu
+
+    @ViewBuilder
+    private func presetContextMenu(for preset: DictationPreset) -> some View {
+        let isMain = preset.id == coordinator.appState.activePresetID
+        let currentModifier = coordinator.appState.modifier(for: preset.id)
+
+        Button {
+            coordinator.appState.activePresetID = preset.id
+            coordinator.appState.clearBinding(for: preset.id)
+        } label: {
+            Label("Set as main preset", systemImage: isMain ? "checkmark" : "")
+        }
+
+        Divider()
+
+        Button {
+            coordinator.appState.clearBinding(for: preset.id)
+        } label: {
+            Label("No modifier", systemImage: !isMain && currentModifier == nil ? "checkmark" : "")
+        }
+        .disabled(isMain)
+
+        ForEach(CapsModifier.allCases) { modifier in
+            Button {
+                coordinator.appState.bindModifier(modifier, to: preset.id)
+            } label: {
+                Label("\(modifier.symbol) \(modifier.displayName)", systemImage: currentModifier == modifier ? "checkmark" : "")
+            }
+            .disabled(isMain)
+        }
+    }
+
     // MARK: - Components
 
     private func toolbarButton(_ icon: String, action: @escaping () -> Void) -> some View {
@@ -219,10 +262,7 @@ struct PresetsSettingsView: View {
 
     private func removeSelectedPreset() {
         guard let id = selectedPresetID, !selectedPresetIsBuiltIn else { return }
-        coordinator.appState.presets.removeAll { $0.id == id }
-        if coordinator.appState.activePresetID == id {
-            coordinator.appState.activePresetID = DictationPreset.defaultPresetID
-        }
+        coordinator.appState.removePreset(id: id)
         selectedPresetID = coordinator.appState.activePresetID
     }
 }

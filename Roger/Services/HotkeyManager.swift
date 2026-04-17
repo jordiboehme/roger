@@ -5,7 +5,7 @@ import os
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "HotkeyManager")
 
 final class HotkeyManager: @unchecked Sendable {
-    var onRecordingStarted: (@Sendable () -> Void)?
+    var onRecordingStarted: (@Sendable (CapsModifier?) -> Void)?
     var onRecordingStopped: (@Sendable () -> Void)?
 
     private var eventTap: CFMachPort?
@@ -150,13 +150,15 @@ final class HotkeyManager: @unchecked Sendable {
                 isKeyDown = type == .keyDown
             }
 
+            let modifier = CapsModifier.from(event.flags)
+
             switch manager.activationMode {
             case .pushToTalk:
                 if type == .flagsChanged {
                     // For flagsChanged, treat as toggle since we can't reliably detect up/down
                     if !manager.isRecording {
                         manager.isRecording = true
-                        manager.onRecordingStarted?()
+                        manager.onRecordingStarted?(modifier)
                     } else {
                         manager.isRecording = false
                         manager.onRecordingStopped?()
@@ -164,7 +166,7 @@ final class HotkeyManager: @unchecked Sendable {
                 } else {
                     if isKeyDown && !manager.isRecording {
                         manager.isRecording = true
-                        manager.onRecordingStarted?()
+                        manager.onRecordingStarted?(modifier)
                     } else if !isKeyDown && manager.isRecording {
                         manager.isRecording = false
                         manager.onRecordingStopped?()
@@ -177,7 +179,7 @@ final class HotkeyManager: @unchecked Sendable {
                         manager.onRecordingStopped?()
                     } else {
                         manager.isRecording = true
-                        manager.onRecordingStarted?()
+                        manager.onRecordingStarted?(modifier)
                     }
                 }
             }

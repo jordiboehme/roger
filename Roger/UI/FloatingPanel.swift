@@ -5,11 +5,11 @@ import SwiftUI
 final class FloatingPanel {
     private var panel: NSPanel?
 
-    func show() {
+    func show(presetName: String? = nil) {
         guard panel == nil else { return }
 
-        let hostingView = NSHostingView(rootView: FloatingIndicatorContent().padding(20))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 230, height: 96)
+        let hostingView = NSHostingView(rootView: FloatingIndicatorContent(presetName: presetName).padding(20))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 260, height: 110)
 
         let p = NSPanel(
             contentRect: hostingView.frame,
@@ -43,15 +43,24 @@ final class FloatingPanel {
 }
 
 private struct FloatingIndicatorContent: View {
+    let presetName: String?
     @State private var pulseOpacity: Double = 0.6
 
     var body: some View {
         HStack(spacing: 10) {
             PanelWaveform()
-            Text("Listening")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Listening")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                if let presetName {
+                    Text("as \(presetName)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
+        .fixedSize()
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

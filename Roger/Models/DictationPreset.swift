@@ -134,7 +134,7 @@ extension DictationPreset {
         enableCustomDictionary: false,
         enableRewrite: true,
         aiPrompt: "",
-        rewritePrompt: "Rewrite the text with aggressive emoji use: pack in emojis after every noun, verb, adjective and emotion. More is more — go heavy, be playful, stack multiple emojis where fitting. Do not change the original words. Add punctuation and capitalization. Return only the text.",
+        rewritePrompt: "Add emojis to make this text fun and expressive, the way a person would text a friend. Place emojis at natural points — end of sentences, after key words, or to punctuate a thought. Aim for 3–6 emojis spread through the text, not one after every word. Keep the original words unchanged. Add punctuation and capitalization. Return only the rewritten text.",
         dictionaryEntries: []
     )
 
