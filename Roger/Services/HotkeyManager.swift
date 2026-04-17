@@ -134,6 +134,14 @@ final class HotkeyManager: @unchecked Sendable {
                 return Unmanaged.passRetained(event)
             }
 
+            // Ignore OS-injected key-repeat keyDowns. They would flip toggle
+            // mode on every repeat tick while Caps Lock is held and double-fire
+            // the arrow-rotation branch. Pass-through so non-trigger repeats
+            // still reach the focused app.
+            if type == .keyDown && event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+                return Unmanaged.passRetained(event)
+            }
+
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
             // While a recording is in progress, let the user cycle presets
@@ -168,26 +176,15 @@ final class HotkeyManager: @unchecked Sendable {
 
             switch manager.activationMode {
             case .pushToTalk:
-                if type == .flagsChanged {
-                    // For flagsChanged, treat as toggle since we can't reliably detect up/down
-                    if !manager.isRecording {
-                        manager.isRecording = true
-                        manager.onRecordingStarted?(modifier)
-                    } else {
-                        manager.isRecording = false
-                        manager.onRecordingStopped?()
-                    }
-                } else {
-                    if isKeyDown && !manager.isRecording {
-                        manager.isRecording = true
-                        manager.onRecordingStarted?(modifier)
-                    } else if !isKeyDown && manager.isRecording {
-                        manager.isRecording = false
-                        manager.onRecordingStopped?()
-                    }
+                if isKeyDown && !manager.isRecording {
+                    manager.isRecording = true
+                    manager.onRecordingStarted?(modifier)
+                } else if !isKeyDown && manager.isRecording {
+                    manager.isRecording = false
+                    manager.onRecordingStopped?()
                 }
             case .toggle:
-                if isKeyDown || type == .flagsChanged {
+                if isKeyDown {
                     if manager.isRecording {
                         manager.isRecording = false
                         manager.onRecordingStopped?()
