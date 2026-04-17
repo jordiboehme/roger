@@ -21,6 +21,7 @@ struct RogerApp: App {
             SettingsView()
                 .environment(sharedCoordinator)
         }
+        .windowResizability(.contentMinSize)
     }
 }
 
