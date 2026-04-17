@@ -5,11 +5,11 @@ import SwiftUI
 final class FloatingPanel {
     private var panel: NSPanel?
 
-    func show(presetName: String? = nil, coordinator: AppCoordinator) {
+    func show(coordinator: AppCoordinator) {
         guard panel == nil else { return }
 
         let hostingView = NSHostingView(
-            rootView: FloatingIndicatorContent(presetName: presetName)
+            rootView: FloatingIndicatorContent()
                 .environment(coordinator)
                 .padding(20)
         )
@@ -48,11 +48,15 @@ final class FloatingPanel {
 
 private struct FloatingIndicatorContent: View {
     @Environment(AppCoordinator.self) private var coordinator
-    let presetName: String?
     @State private var pulseOpacity: Double = 0.6
 
     private var isListening: Bool {
         coordinator.appState.dictationState == .listening
+    }
+
+    private var presetName: String? {
+        guard let id = coordinator.activeRecordingPresetID else { return nil }
+        return coordinator.appState.presets.first { $0.id == id }?.name
     }
 
     var body: some View {

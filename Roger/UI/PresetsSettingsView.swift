@@ -7,7 +7,7 @@ struct PresetsSettingsView: View {
     var body: some View {
         HSplitView {
             presetList
-                .frame(minWidth: 150, maxWidth: 180)
+                .frame(minWidth: 210, idealWidth: 230, maxWidth: 280)
 
             if let selectedID = selectedPresetID,
                let index = coordinator.appState.presets.firstIndex(where: { $0.id == selectedID }) {
@@ -37,21 +37,16 @@ struct PresetsSettingsView: View {
                     }
                     Text(preset.name)
                     Spacer()
-                    if let modifier = coordinator.appState.modifier(for: preset.id) {
-                        Text(modifier.symbol)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(Color.secondary.opacity(0.15))
-                            )
+                    if preset.excludedFromRotation {
+                        Image(systemName: "eye.slash")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .help("Hidden from Caps Lock + ←/→ rotation")
                     }
                     if preset.id == coordinator.appState.activePresetID {
-                        Image(systemName: "checkmark")
-                            .font(.caption)
-                            .foregroundColor(.accentColor)
+                        KeyComboBadge(modifier: nil)
+                    } else if let modifier = coordinator.appState.modifier(for: preset.id) {
+                        KeyComboBadge(modifier: modifier)
                     }
                 }
                 .contentShape(Rectangle())
@@ -229,6 +224,22 @@ struct PresetsSettingsView: View {
             }
             .disabled(isMain)
         }
+
+        Divider()
+
+        Button {
+            toggleExcludeFromRotation(preset.id)
+        } label: {
+            Label(
+                preset.excludedFromRotation ? "Show in rotation" : "Hide from rotation",
+                systemImage: preset.excludedFromRotation ? "eye" : "eye.slash"
+            )
+        }
+    }
+
+    private func toggleExcludeFromRotation(_ presetID: UUID) {
+        guard let index = coordinator.appState.presets.firstIndex(where: { $0.id == presetID }) else { return }
+        coordinator.appState.presets[index].excludedFromRotation.toggle()
     }
 
     // MARK: - Components

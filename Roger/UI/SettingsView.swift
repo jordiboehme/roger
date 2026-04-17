@@ -16,6 +16,11 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gear") }
                 .tag(SettingsTab.general)
 
+            PresetsSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("Presets", systemImage: "antenna.radiowaves.left.and.right") }
+                .tag(SettingsTab.presets)
+
             PermissionsSettingsView()
                 .environment(coordinator)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
@@ -30,11 +35,6 @@ struct SettingsView: View {
                 .environment(coordinator)
                 .tabItem { Label("AI Provider", systemImage: "sparkles") }
                 .tag(SettingsTab.aiProvider)
-
-            PresetsSettingsView()
-                .environment(coordinator)
-                .tabItem { Label("Presets", systemImage: "antenna.radiowaves.left.and.right") }
-                .tag(SettingsTab.presets)
 
             ModelSettingsView(
                 engine: coordinator.transcriptionEngine,

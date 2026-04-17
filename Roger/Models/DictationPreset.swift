@@ -1,5 +1,10 @@
 import Foundation
 
+enum PresetRotationDirection {
+    case previous
+    case next
+}
+
 enum TrailingCharacter: String, Codable, CaseIterable, Identifiable {
     case none
     case space
@@ -38,6 +43,7 @@ struct DictationPreset: Identifiable, Codable, Equatable {
     var dictionaryEntries: [DictionaryEntry]
     var trailingCharacter: TrailingCharacter
     var sendReturnAfterInsert: Bool
+    var excludedFromRotation: Bool
 
     var requiresAI: Bool {
         enableAIFormatting || enableRewrite
@@ -56,7 +62,8 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         rewritePrompt: String,
         dictionaryEntries: [DictionaryEntry],
         trailingCharacter: TrailingCharacter = .none,
-        sendReturnAfterInsert: Bool = false
+        sendReturnAfterInsert: Bool = false,
+        excludedFromRotation: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -71,6 +78,7 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         self.dictionaryEntries = dictionaryEntries
         self.trailingCharacter = trailingCharacter
         self.sendReturnAfterInsert = sendReturnAfterInsert
+        self.excludedFromRotation = excludedFromRotation
     }
 
     init(from decoder: Decoder) throws {
@@ -88,6 +96,7 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         dictionaryEntries = try c.decode([DictionaryEntry].self, forKey: .dictionaryEntries)
         trailingCharacter = try c.decodeIfPresent(TrailingCharacter.self, forKey: .trailingCharacter) ?? .none
         sendReturnAfterInsert = try c.decodeIfPresent(Bool.self, forKey: .sendReturnAfterInsert) ?? false
+        excludedFromRotation = try c.decodeIfPresent(Bool.self, forKey: .excludedFromRotation) ?? false
     }
 }
 

@@ -7,6 +7,7 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Hotke
 final class HotkeyManager: @unchecked Sendable {
     var onRecordingStarted: (@Sendable (CapsModifier?) -> Void)?
     var onRecordingStopped: (@Sendable () -> Void)?
+    var onRotatePreset: (@Sendable (PresetRotationDirection) -> Void)?
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -16,6 +17,9 @@ final class HotkeyManager: @unchecked Sendable {
     /// Virtual key code to listen for.
     /// Default: F18 (0x4F / 79) — Caps Lock remapped via hidutil.
     var triggerKeyCode: CGKeyCode = 79 // F18
+
+    private static let leftArrowKeyCode: CGKeyCode = 123
+    private static let rightArrowKeyCode: CGKeyCode = 124
 
     deinit {
         stop()
@@ -131,6 +135,16 @@ final class HotkeyManager: @unchecked Sendable {
             }
 
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+            // While a recording is in progress, let the user cycle presets
+            // with ← / → without the arrow keys reaching the focused app.
+            if manager.isRecording
+                && type == .keyDown
+                && (keyCode == HotkeyManager.leftArrowKeyCode || keyCode == HotkeyManager.rightArrowKeyCode) {
+                let direction: PresetRotationDirection = keyCode == HotkeyManager.leftArrowKeyCode ? .previous : .next
+                manager.onRotatePreset?(direction)
+                return nil
+            }
 
             guard keyCode == manager.triggerKeyCode else {
                 return Unmanaged.passRetained(event)

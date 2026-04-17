@@ -18,8 +18,8 @@ final class AppCoordinator {
 
     var hotkeyActive = false
     var isSettingUpModel = false
+    private(set) var activeRecordingPresetID: UUID?
     private var recordingStartTime: Date?
-    private var activeRecordingPresetID: UUID?
     private var isWarmingUp = false
 
     init() {
@@ -37,6 +37,29 @@ final class AppCoordinator {
                 self?.stopDictation()
             }
         }
+        hotkeyManager.onRotatePreset = { [weak self] direction in
+            Task { @MainActor in
+                self?.rotatePreset(direction: direction)
+            }
+        }
+    }
+
+    // MARK: - Preset Rotation
+
+    func rotatePreset(direction: PresetRotationDirection) {
+        guard appState.dictationState == .listening else { return }
+        let list = appState.presets.filter { !$0.excludedFromRotation }
+        guard !list.isEmpty else { return }
+        let currentIndex = list.firstIndex { $0.id == activeRecordingPresetID } ?? -1
+        let nextIndex: Int
+        switch direction {
+        case .next:
+            nextIndex = (currentIndex + 1) % list.count
+        case .previous:
+            nextIndex = currentIndex <= 0 ? list.count - 1 : currentIndex - 1
+        }
+        activeRecordingPresetID = list[nextIndex].id
+        logger.debug("Rotated preset to \(list[nextIndex].name)")
     }
 
     // MARK: - Hotkey
@@ -90,7 +113,7 @@ final class AppCoordinator {
         do {
             appState.dictationState = .listening
             recordingStartTime = Date()
-            floatingPanel.show(presetName: presetName, coordinator: self)
+            floatingPanel.show(coordinator: self)
             audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
             try audioCaptureService.startCapture()
             logger.info("Dictation started (preset: \(presetName))")
