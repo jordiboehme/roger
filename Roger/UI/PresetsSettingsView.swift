@@ -44,9 +44,9 @@ struct PresetsSettingsView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
                     coordinator.appState.activePresetID = preset.id
-                }
+                })
                 .help("Double-click to make this the active preset")
                 .tag(preset.id)
             }
