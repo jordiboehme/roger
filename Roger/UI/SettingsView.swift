@@ -113,6 +113,17 @@ struct GeneralSettingsView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+
+                        settingsRow("Max. duration") {
+                            HStack(spacing: 4) {
+                                TextField("", value: $state.maximumRecordingDuration, format: .number)
+                                    .frame(width: 44)
+                                    .textFieldStyle(.roundedBorder)
+                                Text("sec")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
 

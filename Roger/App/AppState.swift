@@ -36,6 +36,16 @@ final class AppState {
     var minimumRecordingDuration: TimeInterval {
         didSet { defaults.set(minimumRecordingDuration, forKey: "minimumRecordingDuration") }
     }
+    var maximumRecordingDuration: TimeInterval {
+        didSet {
+            let clamped = min(600, max(30, maximumRecordingDuration))
+            if clamped != maximumRecordingDuration {
+                maximumRecordingDuration = clamped
+                return
+            }
+            defaults.set(maximumRecordingDuration, forKey: "maximumRecordingDuration")
+        }
+    }
     var launchAtLogin: Bool {
         didSet {
             guard !isSyncingLaunchAtLogin else { return }
@@ -211,6 +221,7 @@ final class AppState {
         self.activationMode = ActivationMode(rawValue: defaults.string(forKey: "activationMode") ?? "") ?? .pushToTalk
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
+        self.maximumRecordingDuration = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval ?? 120
         self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence

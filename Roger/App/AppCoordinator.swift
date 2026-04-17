@@ -19,8 +19,9 @@ final class AppCoordinator {
     var hotkeyActive = false
     var isSettingUpModel = false
     private(set) var activeRecordingPresetID: UUID?
-    private var recordingStartTime: Date?
+    private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
+    private var maxDurationTask: Task<Void, Never>?
 
     init() {
         setupHotkeyCallbacks()
@@ -116,6 +117,7 @@ final class AppCoordinator {
             floatingPanel.show(coordinator: self)
             audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
             try audioCaptureService.startCapture()
+            scheduleMaxDurationStop()
             logger.info("Dictation started (preset: \(presetName))")
         } catch {
             floatingPanel.hide()
@@ -125,9 +127,28 @@ final class AppCoordinator {
         }
     }
 
+    private func scheduleMaxDurationStop() {
+        maxDurationTask?.cancel()
+        let cap = appState.maximumRecordingDuration
+        maxDurationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(cap * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            if self.appState.dictationState == .listening {
+                logger.info("Max recording duration (\(cap)s) reached — auto-stopping")
+                self.stopDictation()
+            }
+        }
+    }
+
+    private func cancelMaxDurationTask() {
+        maxDurationTask?.cancel()
+        maxDurationTask = nil
+    }
+
     func stopDictation() {
         guard appState.dictationState == .listening else { return }
 
+        cancelMaxDurationTask()
         let audioBuffer = audioCaptureService.stopCapture()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
