@@ -5,13 +5,11 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Status header
             statusHeader
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
 
-            // Alerts
             if case .error(let msg) = coordinator.appState.dictationState {
                 alertBanner(msg, isRetryable: msg.contains("Model") || msg.contains("download")) {
                     coordinator.dismissError()
@@ -37,50 +35,13 @@ struct MenuBarView: View {
                 .padding(.bottom, 8)
             }
 
-            // Last transcription
-            if let text = coordinator.appState.lastTranscription {
-                Text(text)
-                    .font(.callout)
-                    .lineLimit(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(.quaternary.opacity(0.4))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 8)
-            }
+            Divider().padding(.horizontal, 10)
+
+            shortcutsSection
+                .padding(.vertical, 8)
 
             Divider().padding(.horizontal, 10)
 
-            // Controls
-            VStack(spacing: 2) {
-                controlRow(label: "Mode", detail: coordinator.appState.transcriptionMode.modelDescription) {
-                    @Bindable var state = coordinator.appState
-                    Picker("", selection: $state.transcriptionMode) {
-                        ForEach(TranscriptionMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-
-                controlRow(label: "Preset") {
-                    @Bindable var state = coordinator.appState
-                    Picker("", selection: $state.activePresetID) {
-                        ForEach(coordinator.appState.presets) { preset in
-                            Text(preset.name).tag(preset.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-            }
-            .padding(.vertical, 6)
-
-            Divider().padding(.horizontal, 10)
-
-            // Actions
             VStack(spacing: 0) {
                 SettingsLink {
                     HStack(spacing: 8) {
@@ -97,13 +58,7 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.plain)
                 .simultaneousGesture(TapGesture().onEnded {
-                    dismissPopover()
-                    DispatchQueue.main.async {
-                        NSApp.activate(ignoringOtherApps: true)
-                        for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
-                            window.makeKeyAndOrderFront(nil)
-                        }
-                    }
+                    activateSettingsWindow()
                 })
 
                 Button {
@@ -132,12 +87,9 @@ struct MenuBarView: View {
         .task {
             coordinator.permissionManager.checkPermissions()
         }
-        .onChange(of: coordinator.appState.transcriptionMode) { _, _ in
-            Task { await coordinator.setupModel() }
-        }
     }
 
-    // MARK: - Components
+    // MARK: - Status
 
     private var statusHeader: some View {
         HStack(spacing: 10) {
@@ -153,15 +105,71 @@ struct MenuBarView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(coordinator.appState.statusText)
                     .font(.system(size: 13, weight: .semibold))
-                if coordinator.transcriptionEngine.isReady {
-                    Text("Model loaded")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+                Text(statusSubtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
             Spacer()
         }
     }
+
+    private var statusSubtitle: String {
+        let mode = coordinator.appState.transcriptionMode.displayName
+        return coordinator.transcriptionEngine.isReady ? "\(mode) · Model loaded" : mode
+    }
+
+    // MARK: - Shortcuts cheat sheet
+
+    private var shortcutsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Shortcuts")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                Spacer()
+                SettingsLink {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    coordinator.appState.pendingSettingsTab = .presets
+                    activateSettingsWindow()
+                })
+                .help("Edit presets")
+            }
+            .padding(.horizontal, 16)
+
+            VStack(spacing: 2) {
+                ForEach(Array(shortcutRows.enumerated()), id: \.offset) { _, row in
+                    PresetCheatSheetRow(
+                        preset: row.preset,
+                        modifier: row.modifier,
+                        isPrimary: row.modifier == nil
+                    )
+                }
+            }
+        }
+    }
+
+    private var shortcutRows: [(modifier: CapsModifier?, preset: DictationPreset)] {
+        var rows: [(CapsModifier?, DictationPreset)] = [(nil, coordinator.appState.activePreset)]
+        for modifier in CapsModifier.allCases {
+            if let presetID = coordinator.appState.modifierBindings[modifier],
+               let preset = coordinator.appState.presets.first(where: { $0.id == presetID }) {
+                rows.append((modifier, preset))
+            }
+        }
+        return rows
+    }
+
+    // MARK: - Alert banner
 
     private func alertBanner(_ message: String, isRetryable: Bool, onRetry: @escaping () -> Void, onDismiss: (() -> Void)?) -> some View {
         HStack(spacing: 8) {
@@ -188,46 +196,16 @@ struct MenuBarView: View {
             }
         }
         .padding(8)
-        .background(.orange.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.orange.opacity(0.35), lineWidth: 1)
+        )
         .padding(.horizontal, 14)
         .padding(.bottom, 8)
     }
 
-    private func controlRow(label: String, detail: String? = nil, @ViewBuilder control: () -> some View) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .font(.system(size: 12))
-                if let detail {
-                    Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Spacer()
-            control()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
-    }
-
-    private func menuItem(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .frame(width: 16)
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.system(size: 13))
-                Spacer()
-            }
-            .contentShape(Rectangle())
-            .padding(.horizontal, 16)
-            .padding(.vertical, 5)
-        }
-        .buttonStyle(.plain)
-    }
+    // MARK: - Helpers
 
     private var statusColor: Color {
         switch coordinator.appState.dictationState {
@@ -241,6 +219,76 @@ struct MenuBarView: View {
     private func dismissPopover() {
         if let panel = NSApp.keyWindow as? NSPanel {
             panel.close()
+        }
+    }
+
+    private func activateSettingsWindow() {
+        dismissPopover()
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
+}
+
+// MARK: - Cheat-sheet row
+
+private struct PresetCheatSheetRow: View {
+    let preset: DictationPreset
+    let modifier: CapsModifier?
+    let isPrimary: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            KeyComboBadge(modifier: modifier)
+            Text(preset.name)
+                .font(.system(size: 13, weight: isPrimary ? .semibold : .regular))
+                .foregroundStyle(.primary)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isPrimary ? Color.accentColor.opacity(0.08) : Color.clear)
+        )
+        .padding(.horizontal, 6)
+    }
+}
+
+private struct KeyComboBadge: View {
+    let modifier: CapsModifier?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "capslock")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.primary)
+            if let modifier {
+                Text("+")
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(.tertiary)
+                Image(systemName: symbolName(for: modifier))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(.quaternary.opacity(0.4))
+        )
+    }
+
+    private func symbolName(for modifier: CapsModifier) -> String {
+        switch modifier {
+        case .shift: return "shift"
+        case .option: return "option"
+        case .control: return "control"
+        case .command: return "command"
         }
     }
 }

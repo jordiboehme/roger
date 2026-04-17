@@ -1,26 +1,35 @@
 import ApplicationServices
 import SwiftUI
 
+enum SettingsTab: String, Hashable {
+    case general, permissions, aiProvider, presets, model, about
+}
+
 struct SettingsView: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @State private var selectedTab: SettingsTab = .general
 
     var body: some View {
         @Bindable var state = coordinator.appState
-        TabView {
+        TabView(selection: $selectedTab) {
             GeneralSettingsView(state: state)
                 .tabItem { Label("General", systemImage: "gear") }
+                .tag(SettingsTab.general)
 
             PermissionsSettingsView()
                 .environment(coordinator)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
+                .tag(SettingsTab.permissions)
 
             AIProviderSettingsView()
                 .environment(coordinator)
                 .tabItem { Label("AI Provider", systemImage: "sparkles") }
+                .tag(SettingsTab.aiProvider)
 
             PresetsSettingsView()
                 .environment(coordinator)
                 .tabItem { Label("Presets", systemImage: "antenna.radiowaves.left.and.right") }
+                .tag(SettingsTab.presets)
 
             ModelSettingsView(
                 engine: coordinator.transcriptionEngine,
@@ -28,17 +37,28 @@ struct SettingsView: View {
                 onSetup: { Task { await coordinator.setupModel() } }
             )
                 .tabItem { Label("Model", systemImage: "cpu") }
+                .tag(SettingsTab.model)
 
             AboutView()
                 .tabItem { Label("About", systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
         .frame(minWidth: 600, idealWidth: 720, maxWidth: .infinity, minHeight: 500, idealHeight: 580, maxHeight: .infinity)
+        .onAppear { consumePendingTab() }
+        .onChange(of: state.pendingSettingsTab) { _, _ in consumePendingTab() }
+    }
+
+    private func consumePendingTab() {
+        guard let pending = coordinator.appState.pendingSettingsTab else { return }
+        selectedTab = pending
+        coordinator.appState.pendingSettingsTab = nil
     }
 }
 
 // MARK: - General
 
 struct GeneralSettingsView: View {
+    @Environment(AppCoordinator.self) private var coordinator
     @Bindable var state: AppState
 
     var body: some View {
@@ -106,6 +126,9 @@ struct GeneralSettingsView: View {
             .padding()
         }
         .onAppear { state.syncLaunchAtLogin() }
+        .onChange(of: state.transcriptionMode) { _, _ in
+            Task { await coordinator.setupModel() }
+        }
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {

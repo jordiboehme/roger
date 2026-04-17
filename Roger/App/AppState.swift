@@ -113,6 +113,10 @@ final class AppState {
         didSet { defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
     }
 
+    // MARK: - UI Navigation (runtime-only)
+
+    var pendingSettingsTab: SettingsTab?
+
     var activePreset: DictationPreset {
         presets.first { $0.id == activePresetID } ?? .polished
     }
