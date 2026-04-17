@@ -17,11 +17,15 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
 - **Completely private** — Powered by [WhisperKit](https://github.com/argmaxinc/WhisperKit) on Apple Silicon. Your audio never leaves your Mac
 - **Speaks your language** — English and German with automatic detection. More languages via Whisper's multilingual models
-- **Cleans up after you** — Removes filler words, fixes punctuation and grammar. Choose from built-in presets or create your own
-- **Your rules** — Pick from Plain, Polished, Professional or Code presets. Or build a custom one with your own AI prompt and dictionary
+- **Cheat-sheet menu bar** — one glance at the popup tells you which Caps Lock combo maps to which preset
+- **Modifier-bound presets** — bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
+- **Switch presets mid-sentence** — hold Caps Lock and tap ← / → to swap how Roger will process what you're still dictating. The overlay updates live
+- **Seven built-in presets** — Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Or build your own with a custom prompt and dictionary
 - **Bring your own AI** — Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
-- **Caps Lock push-to-talk** — Hold to record, release to transcribe. Or toggle mode if you prefer
-- **Stays out of the way** — Menu bar only, no Dock icon. A subtle floating indicator shows when you're recording
+- **Auto-submit prompts** — configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
+- **Pick your mic** — dedicated Microphone tab lets you pin a specific input or follow the system default
+- **Caps Lock push-to-talk** — hold to record, release to transcribe. Toggle mode and configurable minimum duration if you prefer
+- **Stays out of the way** — menu bar only, no Dock icon. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
 
 ## Installation
 
@@ -54,17 +58,22 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## How It Works
 
-Roger captures audio, transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. It uses the Accessibility API for direct insertion with a clipboard+paste fallback for Electron apps.
+Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. It uses the Accessibility API for direct insertion with a clipboard+paste fallback for Electron apps.
 
 ### Presets
 
 | Preset | What it does |
 |--------|-------------|
 | **Plain** | Strips filler words and repeated words. No AI needed. |
-| **Polished** | Adds punctuation, capitalization and formatting. |
+| **Polished** | Adds punctuation, capitalization and paragraph breaks. |
 | **Professional** | Full cleanup with an AI rewrite for send-ready prose. |
 | **Code** | Preserves technical terms, function names and code references. |
-| **Custom** | Your own pipeline — choose which steps run, write your own prompt. |
+| **Caveman** | Drops articles and pleasantries. Short, blunt, fragments OK. |
+| **Yoda** | Rewrites in Yoda's speech pattern. Fun, you will have. |
+| **Emoji** | Sprinkles emojis through the text the way a friend would text. |
+| **Custom** | Your own pipeline — pick which steps run, write your own prompts, add a dictionary. |
+
+Each preset also controls what lands at the cursor: append nothing, a space or a newline, and optionally press Return after insertion — useful for firing dictated prompts directly into a chatbox.
 
 ### AI Providers
 
