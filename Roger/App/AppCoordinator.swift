@@ -58,6 +58,10 @@ final class AppCoordinator {
     // MARK: - Dictation
 
     func startDictation(modifier: CapsModifier? = nil) {
+        if case .error = appState.dictationState {
+            appState.dictationState = .idle
+        }
+
         guard appState.dictationState == .idle else {
             logger.warning("Cannot start dictation: state is \(self.appState.statusText)")
             return
@@ -113,9 +117,10 @@ final class AppCoordinator {
         }
 
         guard let audioBuffer else {
-            logger.warning("No audio captured")
+            let uid = appState.selectedInputDeviceUID ?? "automatic"
+            logger.warning("No audio captured (duration: \(String(format: "%.1f", duration))s, input: \(uid)) — likely device warm-up")
             floatingPanel.hide()
-            appState.dictationState = .error("No audio captured — check microphone input")
+            appState.dictationState = .error("No audio captured — your microphone may still be waking up. Try again.")
             activeRecordingPresetID = nil
             return
         }
