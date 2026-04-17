@@ -44,6 +44,17 @@ final class AppState {
     }
     private var isSyncingLaunchAtLogin = false
 
+    /// UID of the preferred input device, or nil for system default (automatic).
+    var selectedInputDeviceUID: String? {
+        didSet {
+            if let uid = selectedInputDeviceUID {
+                defaults.set(uid, forKey: "selectedInputDeviceUID")
+            } else {
+                defaults.removeObject(forKey: "selectedInputDeviceUID")
+            }
+        }
+    }
+
     // MARK: - LLM Settings
 
     var selectedLLMProvider: LLMProviderType {
@@ -200,6 +211,7 @@ final class AppState {
         self.activationMode = ActivationMode(rawValue: defaults.string(forKey: "activationMode") ?? "") ?? .pushToTalk
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
+        self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence
         self.ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"

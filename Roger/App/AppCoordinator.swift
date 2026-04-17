@@ -85,7 +85,8 @@ final class AppCoordinator {
         do {
             appState.dictationState = .listening
             recordingStartTime = Date()
-            floatingPanel.show(presetName: presetName)
+            floatingPanel.show(presetName: presetName, coordinator: self)
+            audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
             try audioCaptureService.startCapture()
             logger.info("Dictation started (preset: \(presetName))")
         } catch {
@@ -99,13 +100,13 @@ final class AppCoordinator {
     func stopDictation() {
         guard appState.dictationState == .listening else { return }
 
-        floatingPanel.hide()
         let audioBuffer = audioCaptureService.stopCapture()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
 
         guard duration >= appState.minimumRecordingDuration else {
             logger.info("Recording too short (\(String(format: "%.1f", duration))s), discarding")
+            floatingPanel.hide()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
             return
@@ -113,6 +114,7 @@ final class AppCoordinator {
 
         guard let audioBuffer else {
             logger.warning("No audio captured")
+            floatingPanel.hide()
             appState.dictationState = .error("No audio captured — check microphone input")
             activeRecordingPresetID = nil
             return
@@ -137,6 +139,7 @@ final class AppCoordinator {
 
             guard !result.text.isEmpty else {
                 logger.warning("Empty transcription — no speech detected")
+                floatingPanel.hide()
                 appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
                 return
             }
@@ -180,9 +183,11 @@ final class AppCoordinator {
             )
 
             logger.info("Dictation complete: \(processedText.prefix(50))…")
+            floatingPanel.hide()
             appState.dictationState = .idle
         } catch {
             logger.error("Dictation failed: \(error)")
+            floatingPanel.hide()
             appState.dictationState = .error(error.localizedDescription)
         }
     }

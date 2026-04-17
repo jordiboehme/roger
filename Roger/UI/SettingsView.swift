@@ -2,7 +2,7 @@ import ApplicationServices
 import SwiftUI
 
 enum SettingsTab: String, Hashable {
-    case general, permissions, aiProvider, presets, model, about
+    case general, permissions, microphone, aiProvider, presets, model, about
 }
 
 struct SettingsView: View {
@@ -20,6 +20,11 @@ struct SettingsView: View {
                 .environment(coordinator)
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
                 .tag(SettingsTab.permissions)
+
+            MicrophoneSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("Microphone", systemImage: "mic.fill") }
+                .tag(SettingsTab.microphone)
 
             AIProviderSettingsView()
                 .environment(coordinator)

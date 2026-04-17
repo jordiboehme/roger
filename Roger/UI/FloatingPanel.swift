@@ -5,10 +5,14 @@ import SwiftUI
 final class FloatingPanel {
     private var panel: NSPanel?
 
-    func show(presetName: String? = nil) {
+    func show(presetName: String? = nil, coordinator: AppCoordinator) {
         guard panel == nil else { return }
 
-        let hostingView = NSHostingView(rootView: FloatingIndicatorContent(presetName: presetName).padding(20))
+        let hostingView = NSHostingView(
+            rootView: FloatingIndicatorContent(presetName: presetName)
+                .environment(coordinator)
+                .padding(20)
+        )
         hostingView.frame = NSRect(x: 0, y: 0, width: 260, height: 110)
 
         let p = NSPanel(
@@ -43,22 +47,40 @@ final class FloatingPanel {
 }
 
 private struct FloatingIndicatorContent: View {
+    @Environment(AppCoordinator.self) private var coordinator
     let presetName: String?
     @State private var pulseOpacity: Double = 0.6
 
+    private var isListening: Bool {
+        coordinator.appState.dictationState == .listening
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            PanelWaveform()
+            ZStack {
+                if isListening {
+                    PanelWaveform()
+                        .transition(.opacity)
+                } else {
+                    SweepBar()
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 27, height: 20)
+            .animation(.easeInOut(duration: 0.2), value: isListening)
+
             VStack(alignment: .leading, spacing: 1) {
-                Text("Listening")
+                Text(isListening ? "Listening" : "Thinking")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
+                    .contentTransition(.opacity)
                 if let presetName {
                     Text("as \(presetName)")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: isListening)
         }
         .fixedSize()
         .padding(.horizontal, 20)
@@ -128,5 +150,31 @@ private struct PanelWaveform: View {
         case 4: return 0.55
         default: return 0.4
         }
+    }
+}
+
+private struct SweepBar: View {
+    private let trackWidth: CGFloat = 27
+    private let trackHeight: CGFloat = 3
+    private let highlightWidth: CGFloat = 11
+    @State private var offsetX: CGFloat = -11
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: trackHeight / 2, style: .continuous)
+            .fill(.primary.opacity(0.18))
+            .frame(width: trackWidth, height: trackHeight)
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: trackHeight / 2, style: .continuous)
+                    .fill(.primary)
+                    .frame(width: highlightWidth, height: trackHeight)
+                    .offset(x: offsetX)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: trackHeight / 2, style: .continuous))
+            .onAppear {
+                offsetX = -highlightWidth
+                withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                    offsetX = trackWidth
+                }
+            }
     }
 }

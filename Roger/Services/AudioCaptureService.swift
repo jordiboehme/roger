@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "AudioCapture")
@@ -11,9 +12,17 @@ final class AudioCaptureService {
     /// Target sample rate for WhisperKit (16kHz mono)
     static let targetSampleRate: Double = 16000
 
+    /// UID of the input device to use, or nil for system default.
+    var preferredInputUID: String?
+
     func startCapture() throws {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+
+        if let uid = preferredInputUID, let deviceID = AudioDeviceLookup.deviceID(forUID: uid) {
+            applyDeviceID(deviceID, to: inputNode)
+        }
+
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard inputFormat.sampleRate > 0 else {
@@ -91,6 +100,27 @@ final class AudioCaptureService {
         let peakAmplitude = samples.map { abs($0) }.max() ?? 0
         logger.notice("Captured \(samples.count) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate))s), peak amplitude: \(String(format: "%.4f", peakAmplitude))")
         return samples
+    }
+
+    private func applyDeviceID(_ deviceID: AudioDeviceID, to inputNode: AVAudioInputNode) {
+        guard let audioUnit = inputNode.audioUnit else {
+            logger.warning("Input node has no underlying AudioUnit; cannot set device")
+            return
+        }
+        var id = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        if status != noErr {
+            logger.error("Failed to set input device \(deviceID): OSStatus \(status)")
+        } else {
+            logger.info("Input device set to \(deviceID)")
+        }
     }
 
     private func appendSamples(from buffer: AVAudioPCMBuffer) {
