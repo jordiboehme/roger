@@ -46,13 +46,6 @@ final class AppState {
             defaults.set(maximumRecordingDuration, forKey: "maximumRecordingDuration")
         }
     }
-    /// Feeds audio to WhisperKit while the user is still holding the hotkey
-    /// so the post-release wait is closer to the time of the tail segment
-    /// rather than the whole buffer. Off by default while the path is being
-    /// validated end-to-end.
-    var enableStreamingTranscription: Bool {
-        didSet { defaults.set(enableStreamingTranscription, forKey: "enableStreamingTranscription") }
-    }
     var launchAtLogin: Bool {
         didSet {
             guard !isSyncingLaunchAtLogin else { return }
@@ -229,7 +222,6 @@ final class AppState {
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
         self.maximumRecordingDuration = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval ?? 120
-        self.enableStreamingTranscription = defaults.object(forKey: "enableStreamingTranscription") as? Bool ?? false
         self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence

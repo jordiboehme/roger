@@ -1,5 +1,8 @@
+import AVFoundation
 import CoreAudio
+import CoreML
 import Foundation
+import NaturalLanguage
 import os
 import WhisperKit
 
@@ -10,6 +13,7 @@ final class TranscriptionEngine: @unchecked Sendable {
     private var currentModelName: String?
     private var streamTranscriber: AudioStreamTranscriber?
     private var streamLoopTask: Task<Void, Never>?
+    private var streamMode: TranscriptionMode?
     private let latestStreamSnapshot = OSAllocatedUnfairLock<StreamSnapshot?>(initialState: nil)
 
     private struct StreamSnapshot: Sendable {
@@ -71,10 +75,11 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamTranscriber != nil
     }
 
-    /// Starts a streaming transcription session. WhisperKit's own AudioProcessor
-    /// takes ownership of the microphone (via AVAudioEngine) and runs a 100 ms
-    /// transcription loop in the background. Use `finishStreaming` to stop and
-    /// harvest the final text.
+    /// Starts a streaming transcription session. A `DevicePinnedAudioProcessor`
+    /// wraps WhisperKit's `AudioProcessor` so the user's selected input device
+    /// is honored while WhisperKit's `AudioStreamTranscriber` actor runs its
+    /// 100 ms transcription loop in the background. Use `finishStreaming` to
+    /// stop and harvest the final text.
     func startStreaming(mode: TranscriptionMode, inputDeviceID: AudioDeviceID?) async throws {
         guard let whisperKit else {
             throw TranscriptionError.engineNotReady
@@ -96,6 +101,16 @@ final class TranscriptionEngine: @unchecked Sendable {
             suppressBlank: true
         )
 
+        // Pin the user's selected input device into the AudioProcessor so
+        // AudioStreamTranscriber's own startRecordingLive() call routes to it.
+        let audioProcessor: any AudioProcessing
+        if let deviceID = inputDeviceID {
+            audioProcessor = DevicePinnedAudioProcessor(deviceID: deviceID)
+            logger.info("Streaming with pinned input device \(deviceID)")
+        } else {
+            audioProcessor = whisperKit.audioProcessor
+        }
+
         // Capture a latest-state snapshot via the actor's state callback so we
         // can read the final segments after stopping without crossing the
         // actor boundary twice.
@@ -105,7 +120,7 @@ final class TranscriptionEngine: @unchecked Sendable {
             segmentSeeker: whisperKit.segmentSeeker,
             textDecoder: whisperKit.textDecoder,
             tokenizer: tokenizer,
-            audioProcessor: whisperKit.audioProcessor,
+            audioProcessor: audioProcessor,
             decodingOptions: options,
             useVAD: false,
             stateChangeCallback: { [weak self] _, newState in
@@ -113,14 +128,7 @@ final class TranscriptionEngine: @unchecked Sendable {
             }
         )
         streamTranscriber = transcriber
-
-        // Tell WhisperKit's AudioProcessor to use the caller-chosen device.
-        // The AudioStreamTranscriber internally calls startRecordingLive()
-        // with no device argument, so pre-assign by starting and stopping once
-        // — instead, we wire device selection via setInputDevice when available.
-        // For now WhisperKit's default (system-default input) is what the user
-        // gets during streaming; explicit device selection is a follow-up.
-        _ = inputDeviceID
+        streamMode = mode
 
         streamLoopTask = Task.detached {
             do {
@@ -142,6 +150,8 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamLoopTask?.cancel()
         streamLoopTask = nil
         streamTranscriber = nil
+        let mode = streamMode
+        streamMode = nil
 
         let snapshot = latestStreamSnapshot.withLock { value -> StreamSnapshot? in
             let snap = value
@@ -157,8 +167,27 @@ final class TranscriptionEngine: @unchecked Sendable {
             .joined(separator: " ")
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
-        logger.notice("Streaming finished: \(text.count) chars (\(confirmedSegments.count) confirmed + \(unconfirmedSegments.count) unconfirmed segments)")
-        return TranscriptionResult(text: text, detectedLanguage: nil)
+        // AudioStreamTranscriber.State doesn't surface Whisper's language hint.
+        // If we locked the decoder to a specific language (English-only mode)
+        // we already know the answer and can skip NLLanguageRecognizer entirely.
+        // Otherwise (multilingual) run a quick local detection on the output.
+        let detectedLanguage: String?
+        if let forced = mode?.whisperLanguage {
+            detectedLanguage = forced
+        } else if text.isEmpty {
+            detectedLanguage = nil
+        } else {
+            detectedLanguage = Self.detectLanguage(in: text)
+        }
+
+        logger.notice("Streaming finished: \(text.count) chars (\(confirmedSegments.count) confirmed + \(unconfirmedSegments.count) unconfirmed segments), language: \(detectedLanguage ?? "unknown", privacy: .public)")
+        return TranscriptionResult(text: text, detectedLanguage: detectedLanguage)
+    }
+
+    private static func detectLanguage(in text: String) -> String? {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        return recognizer.dominantLanguage?.rawValue
     }
 
     /// Cancels a streaming session without harvesting results.
@@ -168,6 +197,7 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamLoopTask?.cancel()
         streamLoopTask = nil
         streamTranscriber = nil
+        streamMode = nil
         latestStreamSnapshot.withLock { $0 = nil }
     }
 
@@ -219,5 +249,88 @@ enum TranscriptionError: LocalizedError {
         case .engineNotReady:
             return "Speech recognition model not loaded. Check Settings to download it."
         }
+    }
+}
+
+/// Wraps WhisperKit's `AudioProcessor` so every call that would otherwise
+/// default to the system input is redirected to a specific CoreAudio device.
+/// `AudioStreamTranscriber.startStreamTranscription()` invokes
+/// `startRecordingLive(callback:)` with no device ID — this shim substitutes
+/// the pinned ID so the user's Microphone-tab selection is honored in
+/// streaming mode.
+final class DevicePinnedAudioProcessor: NSObject, AudioProcessing, @unchecked Sendable {
+    private let wrapped: AudioProcessor
+    private let pinnedDeviceID: AudioDeviceID
+
+    init(deviceID: AudioDeviceID) {
+        self.wrapped = AudioProcessor()
+        self.pinnedDeviceID = deviceID
+        super.init()
+    }
+
+    // MARK: - Forwarding
+
+    var audioSamples: ContiguousArray<Float> { wrapped.audioSamples }
+    var relativeEnergy: [Float] { wrapped.relativeEnergy }
+    var relativeEnergyWindow: Int {
+        get { wrapped.relativeEnergyWindow }
+        set { wrapped.relativeEnergyWindow = newValue }
+    }
+
+    func purgeAudioSamples(keepingLast keep: Int) {
+        wrapped.purgeAudioSamples(keepingLast: keep)
+    }
+
+    func startRecordingLive(inputDeviceID: DeviceID?, callback: (([Float]) -> Void)?) throws {
+        try wrapped.startRecordingLive(inputDeviceID: pinnedDeviceID, callback: callback)
+    }
+
+    func startStreamingRecordingLive(inputDeviceID: DeviceID?) -> (AsyncThrowingStream<[Float], Error>, AsyncThrowingStream<[Float], Error>.Continuation) {
+        wrapped.startStreamingRecordingLive(inputDeviceID: pinnedDeviceID)
+    }
+
+    func pauseRecording() { wrapped.pauseRecording() }
+    func stopRecording() { wrapped.stopRecording() }
+
+    func resumeRecordingLive(inputDeviceID: DeviceID?, callback: (([Float]) -> Void)?) throws {
+        try wrapped.resumeRecordingLive(inputDeviceID: pinnedDeviceID, callback: callback)
+    }
+
+    func padOrTrim(fromArray audioArray: [Float], startAt startIndex: Int, toLength frameLength: Int) -> (any AudioProcessorOutputType)? {
+        wrapped.padOrTrim(fromArray: audioArray, startAt: startIndex, toLength: frameLength)
+    }
+
+    static func loadAudio(
+        fromPath audioFilePath: String,
+        channelMode: ChannelMode,
+        startTime: Double?,
+        endTime: Double?,
+        maxReadFrameSize: AVAudioFrameCount?
+    ) throws -> AVAudioPCMBuffer {
+        try AudioProcessor.loadAudio(
+            fromPath: audioFilePath,
+            channelMode: channelMode,
+            startTime: startTime,
+            endTime: endTime,
+            maxReadFrameSize: maxReadFrameSize
+        )
+    }
+
+    static func loadAudio(at audioPaths: [String], channelMode: ChannelMode) async -> [Result<[Float], Error>] {
+        await AudioProcessor.loadAudio(at: audioPaths, channelMode: channelMode)
+    }
+
+    static func padOrTrimAudio(
+        fromArray audioArray: [Float],
+        startAt startIndex: Int,
+        toLength frameLength: Int,
+        saveSegment: Bool
+    ) -> MLMultiArray? {
+        AudioProcessor.padOrTrimAudio(
+            fromArray: audioArray,
+            startAt: startIndex,
+            toLength: frameLength,
+            saveSegment: saveSegment
+        )
     }
 }

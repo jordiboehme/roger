@@ -132,33 +132,23 @@ final class AppCoordinator {
             recordingStartTime = Date()
             floatingPanel.show(coordinator: self)
 
-            let useStreaming = appState.enableStreamingTranscription && transcriptionEngine.isReady
-            if useStreaming {
-                let deviceID = appState.selectedInputDeviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
-                try await startStreamingSession(deviceID: deviceID)
-            } else {
-                audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
-                try audioCaptureService.startCapture()
-            }
+            let deviceID = appState.selectedInputDeviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
+            try await transcriptionEngine.startStreaming(
+                mode: appState.transcriptionMode,
+                inputDeviceID: deviceID
+            )
+            streamingSessionActive = true
 
             scheduleMaxDurationStop()
-            logger.info("Dictation started (preset: \(presetName), streaming: \(useStreaming))")
+            logger.info("Dictation started (preset: \(presetName))")
         } catch {
             floatingPanel.hide()
             activeRecordingPresetID = nil
             streamingSessionActive = false
             await transcriptionEngine.cancelStreaming()
-            logger.error("Failed to start capture: \(error)")
+            logger.error("Failed to start streaming transcription: \(error)")
             appState.dictationState = .error("Failed to start recording")
         }
-    }
-
-    private func startStreamingSession(deviceID: AudioDeviceID?) async throws {
-        try await transcriptionEngine.startStreaming(
-            mode: appState.transcriptionMode,
-            inputDeviceID: deviceID
-        )
-        streamingSessionActive = true
     }
 
     private func scheduleMaxDurationStop() {
@@ -183,63 +173,24 @@ final class AppCoordinator {
         guard appState.dictationState == .listening else { return }
 
         cancelMaxDurationTask()
+        streamingSessionActive = false
 
-        if streamingSessionActive {
-            streamingSessionActive = false
-            let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-            recordingStartTime = nil
-
-            guard duration >= appState.minimumRecordingDuration else {
-                logger.info("Streaming recording too short (\(String(format: "%.1f", duration))s), discarding")
-                Task { await self.transcriptionEngine.cancelStreaming() }
-                floatingPanel.hide()
-                appState.dictationState = .idle
-                activeRecordingPresetID = nil
-                return
-            }
-
-            let mode = appState.transcriptionMode
-            Task {
-                await self.runPipeline(audioSeconds: duration) {
-                    let result = try await self.transcriptionEngine.finishStreaming()
-                    // Streaming doesn't always return a detected language — fall back.
-                    if result.detectedLanguage == nil {
-                        return TranscriptionEngine.TranscriptionResult(text: result.text, detectedLanguage: mode.languageHint)
-                    }
-                    return result
-                }
-            }
-            return
-        }
-
-        let audioBuffer = audioCaptureService.stopCapture()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
 
         guard duration >= appState.minimumRecordingDuration else {
-            logger.info("Recording too short (\(String(format: "%.1f", duration))s), discarding")
+            logger.info("Recording too short (\(String(format: "%.1f", duration), privacy: .public)s), discarding")
+            Task { await self.transcriptionEngine.cancelStreaming() }
             floatingPanel.hide()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
             return
         }
 
-        guard let audioBuffer else {
-            let uid = appState.selectedInputDeviceUID ?? "automatic"
-            logger.warning("No audio captured (duration: \(String(format: "%.1f", duration))s, input: \(uid)) — likely device warm-up")
-            floatingPanel.hide()
-            appState.dictationState = .error("No audio captured — your microphone may still be waking up. Try again.")
-            activeRecordingPresetID = nil
-            return
-        }
-
-        logger.notice("Recording complete: \(String(format: "%.1f", duration))s, \(audioBuffer.count) samples")
-
-        let mode = appState.transcriptionMode
-        let audioSeconds = Double(audioBuffer.count) / AudioCaptureService.targetSampleRate
+        logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
         Task {
-            await self.runPipeline(audioSeconds: audioSeconds) {
-                try await self.transcriptionEngine.transcribe(audioBuffer: audioBuffer, mode: mode)
+            await self.runPipeline(audioSeconds: duration) {
+                try await self.transcriptionEngine.finishStreaming()
             }
         }
     }
@@ -315,7 +266,7 @@ final class AppCoordinator {
             let insertMs = Date().timeIntervalSince(insertStart) * 1000
             let totalMs = Date().timeIntervalSince(pipelineStart) * 1000
 
-            logger.notice("Dictation timings: audio=\(String(format: "%.1fs", audioSeconds)) whisper=\(String(format: "%.0fms", whisperMs)) llm=\(String(format: "%.0fms", llmMs)) insert=\(String(format: "%.0fms", insertMs)) total=\(String(format: "%.0fms", totalMs))")
+            logger.notice("Dictation timings: audio=\(String(format: "%.1fs", audioSeconds), privacy: .public) whisper=\(String(format: "%.0fms", whisperMs), privacy: .public) llm=\(String(format: "%.0fms", llmMs), privacy: .public) insert=\(String(format: "%.0fms", insertMs), privacy: .public) total=\(String(format: "%.0fms", totalMs), privacy: .public)")
             logger.info("Dictation complete: \(processedText.prefix(50))…")
             floatingPanel.hide()
             appState.dictationState = .idle

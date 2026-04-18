@@ -87,18 +87,6 @@ struct GeneralSettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-
-                        Toggle(isOn: $state.enableStreamingTranscription) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("Stream to WhisperKit while recording")
-                                    .font(.system(size: 12))
-                                Text("Reduces the wait after releasing the hotkey. Experimental — may slightly vary transcript accuracy.")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
                     }
                 }
 
