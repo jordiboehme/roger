@@ -27,6 +27,20 @@ final class AppCoordinator {
 
     init() {
         setupHotkeyCallbacks()
+        setupPermissionCallbacks()
+    }
+
+    private func setupPermissionCallbacks() {
+        permissionManager.onAccessibilityGranted = { [weak self] in
+            guard let self, !self.hotkeyActive else { return }
+            logger.info("Accessibility permission granted — auto-starting hotkey")
+            self.startHotkey()
+        }
+        permissionManager.onMicrophoneGranted = { [weak self] in
+            guard let self else { return }
+            logger.info("Microphone permission granted — warming up input HAL")
+            Task { await self.warmUpMicrophone() }
+        }
     }
 
     private func setupHotkeyCallbacks() {
