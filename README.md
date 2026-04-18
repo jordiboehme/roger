@@ -14,22 +14,27 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 ## Features
 
+- **Near-instant results** — a full minute of dictation lands in about two seconds after you release the key. On-device streaming transcription runs on Apple Silicon's Neural Engine while you speak
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
 - **Completely private** — Powered by [WhisperKit](https://github.com/argmaxinc/WhisperKit) on Apple Silicon. Your audio never leaves your Mac
 - **Speaks your language** — English and German with automatic detection. More languages via Whisper's multilingual models
 - **Cheat-sheet menu bar** — one glance at the popup tells you which Caps Lock combo maps to which preset
+- **Quick copy** — click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
 - **Modifier-bound presets** — bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
 - **Switch presets mid-sentence** — hold Caps Lock and tap ← / → to swap how Roger will process what you're still dictating. The overlay updates live
 - **Seven built-in presets** — Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Or build your own with a custom prompt and dictionary
 - **Bring your own AI** — Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
 - **Auto-submit prompts** — configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
 - **Pick your mic** — dedicated Microphone tab lets you pin a specific input or follow the system default
-- **Caps Lock push-to-talk** — hold to record, release to transcribe. Toggle mode and configurable minimum duration if you prefer
+- **Caps Lock push-to-talk** — hold to listen, release to transcribe. Toggle mode and configurable minimum duration if you prefer
+- **Session safety** — a configurable recording cap (default two minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
 - **Stays out of the way** — menu bar only, no Dock icon. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
 
 ## Installation
 
 ### Homebrew (recommended)
+
+New to [Homebrew](https://brew.sh/)? It's the standard macOS package manager — install it first, then:
 
 ```bash
 brew tap jordiboehme/tap
@@ -58,7 +63,7 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## How It Works
 
-Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. It uses the Accessibility API for direct insertion with a clipboard+paste fallback for Electron apps.
+Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription streams while you're still speaking, so the text lands almost the instant you release the key. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
 
 ### Presets
 
