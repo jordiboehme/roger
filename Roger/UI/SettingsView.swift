@@ -157,6 +157,9 @@ struct GeneralSettingsView: View {
         .onChange(of: state.transcriptionMode) { _, _ in
             Task { await coordinator.setupModel() }
         }
+        .onChange(of: state.activationMode) { _, newMode in
+            coordinator.hotkeyManager.activationMode = newMode
+        }
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {

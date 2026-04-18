@@ -12,7 +12,14 @@ final class HotkeyManager: @unchecked Sendable {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var isRecording = false
-    private var activationMode: ActivationMode = .pushToTalk
+    var activationMode: ActivationMode = .pushToTalk {
+        didSet {
+            // Reset recording state so the next event is interpreted cleanly
+            // under the new mode. Otherwise a stale isRecording=true could
+            // treat a fresh push-to-talk press as a toggle-stop.
+            isRecording = false
+        }
+    }
 
     /// Virtual key code to listen for.
     /// Default: F18 (0x4F / 79) — Caps Lock remapped via hidutil.
