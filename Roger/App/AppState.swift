@@ -377,7 +377,7 @@ enum ActivationMode: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .pushToTalk: return "Push to Talk (hold to record)"
+        case .pushToTalk: return "Push to Talk (hold to listen)"
         case .toggle: return "Toggle (press to start/stop)"
         }
     }
