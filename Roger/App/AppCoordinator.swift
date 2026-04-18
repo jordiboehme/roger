@@ -1,3 +1,4 @@
+import CoreAudio
 import Foundation
 import Observation
 import os
@@ -22,6 +23,7 @@ final class AppCoordinator {
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
     private var maxDurationTask: Task<Void, Never>?
+    private var streamingSessionActive = false
 
     init() {
         setupHotkeyCallbacks()
@@ -30,7 +32,7 @@ final class AppCoordinator {
     private func setupHotkeyCallbacks() {
         hotkeyManager.onRecordingStarted = { [weak self] modifier in
             Task { @MainActor in
-                self?.startDictation(modifier: modifier)
+                await self?.startDictation(modifier: modifier)
             }
         }
         hotkeyManager.onRecordingStopped = { [weak self] in
@@ -82,7 +84,7 @@ final class AppCoordinator {
 
     // MARK: - Dictation
 
-    func startDictation(modifier: CapsModifier? = nil) {
+    func startDictation(modifier: CapsModifier? = nil) async {
         if case .error = appState.dictationState {
             appState.dictationState = .idle
         }
@@ -115,16 +117,34 @@ final class AppCoordinator {
             appState.dictationState = .listening
             recordingStartTime = Date()
             floatingPanel.show(coordinator: self)
-            audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
-            try audioCaptureService.startCapture()
+
+            let useStreaming = appState.enableStreamingTranscription && transcriptionEngine.isReady
+            if useStreaming {
+                let deviceID = appState.selectedInputDeviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
+                try await startStreamingSession(deviceID: deviceID)
+            } else {
+                audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
+                try audioCaptureService.startCapture()
+            }
+
             scheduleMaxDurationStop()
-            logger.info("Dictation started (preset: \(presetName))")
+            logger.info("Dictation started (preset: \(presetName), streaming: \(useStreaming))")
         } catch {
             floatingPanel.hide()
             activeRecordingPresetID = nil
+            streamingSessionActive = false
+            await transcriptionEngine.cancelStreaming()
             logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
         }
+    }
+
+    private func startStreamingSession(deviceID: AudioDeviceID?) async throws {
+        try await transcriptionEngine.startStreaming(
+            mode: appState.transcriptionMode,
+            inputDeviceID: deviceID
+        )
+        streamingSessionActive = true
     }
 
     private func scheduleMaxDurationStop() {
@@ -149,6 +169,35 @@ final class AppCoordinator {
         guard appState.dictationState == .listening else { return }
 
         cancelMaxDurationTask()
+
+        if streamingSessionActive {
+            streamingSessionActive = false
+            let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            recordingStartTime = nil
+
+            guard duration >= appState.minimumRecordingDuration else {
+                logger.info("Streaming recording too short (\(String(format: "%.1f", duration))s), discarding")
+                Task { await self.transcriptionEngine.cancelStreaming() }
+                floatingPanel.hide()
+                appState.dictationState = .idle
+                activeRecordingPresetID = nil
+                return
+            }
+
+            let mode = appState.transcriptionMode
+            Task {
+                await self.runPipeline(audioSeconds: duration) {
+                    let result = try await self.transcriptionEngine.finishStreaming()
+                    // Streaming doesn't always return a detected language — fall back.
+                    if result.detectedLanguage == nil {
+                        return TranscriptionEngine.TranscriptionResult(text: result.text, detectedLanguage: mode.languageHint)
+                    }
+                    return result
+                }
+            }
+            return
+        }
+
         let audioBuffer = audioCaptureService.stopCapture()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
@@ -172,20 +221,28 @@ final class AppCoordinator {
 
         logger.notice("Recording complete: \(String(format: "%.1f", duration))s, \(audioBuffer.count) samples")
 
+        let mode = appState.transcriptionMode
+        let audioSeconds = Double(audioBuffer.count) / AudioCaptureService.targetSampleRate
         Task {
-            await processDictation(audioBuffer: audioBuffer)
+            await self.runPipeline(audioSeconds: audioSeconds) {
+                try await self.transcriptionEngine.transcribe(audioBuffer: audioBuffer, mode: mode)
+            }
         }
     }
 
-    private func processDictation(audioBuffer: [Float]) async {
+    private func runPipeline(
+        audioSeconds: Double,
+        transcribe: @escaping () async throws -> TranscriptionEngine.TranscriptionResult
+    ) async {
         appState.dictationState = .transcribing
         defer { activeRecordingPresetID = nil }
 
+        let pipelineStart = Date()
+
         do {
-            let result = try await transcriptionEngine.transcribe(
-                audioBuffer: audioBuffer,
-                mode: appState.transcriptionMode
-            )
+            let whisperStart = Date()
+            let result = try await transcribe()
+            let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
 
             guard !result.text.isEmpty else {
                 logger.warning("Empty transcription — no speech detected")
@@ -200,6 +257,7 @@ final class AppCoordinator {
             // Determine language for AI prompt context
             let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
 
+            let llmStart = Date()
             if activePreset.requiresAI {
                 appState.dictationState = .processing
                 let llmService = appState.currentLLMService()
@@ -223,11 +281,13 @@ final class AppCoordinator {
             } else {
                 processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: nil)
             }
+            let llmMs = Date().timeIntervalSince(llmStart) * 1000
 
             appState.dictationState = .inserting
             appState.lastTranscription = processedText
 
             let textToInsert = processedText + activePreset.trailingCharacter.character
+            let insertStart = Date()
             try textInsertionService.insertText(
                 textToInsert,
                 restoreClipboard: appState.restoreClipboard
@@ -238,7 +298,10 @@ final class AppCoordinator {
                 try? await Task.sleep(nanoseconds: 100_000_000)
                 textInsertionService.simulateReturn()
             }
+            let insertMs = Date().timeIntervalSince(insertStart) * 1000
+            let totalMs = Date().timeIntervalSince(pipelineStart) * 1000
 
+            logger.notice("Dictation timings: audio=\(String(format: "%.1fs", audioSeconds)) whisper=\(String(format: "%.0fms", whisperMs)) llm=\(String(format: "%.0fms", llmMs)) insert=\(String(format: "%.0fms", insertMs)) total=\(String(format: "%.0fms", totalMs))")
             logger.info("Dictation complete: \(processedText.prefix(50))…")
             floatingPanel.hide()
             appState.dictationState = .idle
