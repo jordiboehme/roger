@@ -40,8 +40,12 @@ final class AudioCaptureService: @unchecked Sendable {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        if let uid = preferredInputUID, let deviceID = AudioDeviceLookup.deviceID(forUID: uid) {
-            applyDeviceID(deviceID, to: inputNode)
+        if let uid = preferredInputUID {
+            if let deviceID = AudioDeviceLookup.deviceID(forUID: uid) {
+                applyDeviceID(deviceID, to: inputNode)
+            } else {
+                logger.warning("Preferred input UID \(uid, privacy: .public) not present among available devices — using system default")
+            }
         }
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
@@ -100,7 +104,14 @@ final class AudioCaptureService: @unchecked Sendable {
         engine.prepare()
         try engine.start()
         audioEngine = engine
-        logger.info("Audio capture started at \(inputFormat.sampleRate)Hz, converting to \(Self.targetSampleRate)Hz")
+        let boundDeviceID = currentDeviceID(for: inputNode)
+        let boundDeviceDescription: String
+        if let id = boundDeviceID {
+            boundDeviceDescription = "device \(id)"
+        } else {
+            boundDeviceDescription = "unknown device"
+        }
+        logger.info("Audio capture started on \(boundDeviceDescription, privacy: .public) at \(inputFormat.sampleRate)Hz (\(inputFormat.channelCount)ch), converting to \(Self.targetSampleRate)Hz")
     }
 
     func stopCapture() -> [Float]? {
@@ -138,10 +149,29 @@ final class AudioCaptureService: @unchecked Sendable {
             UInt32(MemoryLayout<AudioDeviceID>.size)
         )
         if status != noErr {
-            logger.error("Failed to set input device \(deviceID): OSStatus \(status)")
+            let fallback = currentDeviceID(for: inputNode).map(String.init) ?? "unknown"
+            logger.error("Failed to set input device \(deviceID) (OSStatus \(status)) — engine will use current device \(fallback, privacy: .public)")
         } else {
             logger.info("Input device set to \(deviceID)")
         }
+    }
+
+    /// Reads back the CoreAudio device currently bound to the input node.
+    /// Returns nil when the node has no AudioUnit or the property query fails —
+    /// this is best-effort diagnostic telemetry, not a correctness check.
+    private func currentDeviceID(for inputNode: AVAudioInputNode) -> AudioDeviceID? {
+        guard let audioUnit = inputNode.audioUnit else { return nil }
+        var id: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            &size
+        )
+        return status == noErr ? id : nil
     }
 
     private func appendSamples(from buffer: AVAudioPCMBuffer) {

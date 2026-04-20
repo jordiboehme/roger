@@ -174,15 +174,20 @@ struct MicrophoneSettingsView: View {
         testing = true
         let service = coordinator.audioCaptureService
         service.preferredInputUID = coordinator.appState.selectedInputDeviceUID
+        let expectedDeviceName = activeDeviceName
         do {
             try service.startCapture()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 let samples = service.stopCapture()
+                let actualDefault = AudioDeviceLookup.systemDefaultInputName ?? "unknown"
                 if let samples, !samples.isEmpty {
                     let peak = samples.map { abs($0) }.max() ?? 0
                     testResult = "OK — peak \(String(format: "%.3f", peak))"
                 } else {
-                    testResult = "Failed — no audio captured"
+                    let routingHint = expectedDeviceName != actualDefault
+                        ? " (system default: \(actualDefault))"
+                        : ""
+                    testResult = "Failed — 0 samples from \(expectedDeviceName)\(routingHint). Check mic privacy settings or MDM audio policy."
                 }
                 testing = false
             }

@@ -210,7 +210,9 @@ final class AppCoordinator {
             let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
 
             guard !result.text.isEmpty else {
-                logger.warning("Empty transcription — no speech detected")
+                let uid = appState.selectedInputDeviceUID ?? "automatic"
+                let deviceResolved = appState.selectedInputDeviceUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
+                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)), peak energy \(String(format: "%.3f", self.transcriptionEngine.lastStreamPeakEnergy), privacy: .public). If peak is ~0 the HAL delivered no samples — check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
                 return

@@ -14,7 +14,19 @@ final class TranscriptionEngine: @unchecked Sendable {
     private var streamTranscriber: AudioStreamTranscriber?
     private var streamLoopTask: Task<Void, Never>?
     private var streamMode: TranscriptionMode?
+    // `any AudioProcessing` isn't Sendable, but we only touch this reference
+    // before `startStreamTranscription` returns and after `streamLoopTask`
+    // has awaited to completion — the actor's loop never runs concurrently
+    // with our reads of `audioSamples` in `finishStreaming`.
+    nonisolated(unsafe) private var streamAudioProcessor: (any AudioProcessing)?
     private let latestStreamSnapshot = OSAllocatedUnfairLock<StreamSnapshot?>(initialState: nil)
+    private let streamPeakEnergy = OSAllocatedUnfairLock<Float>(initialState: 0)
+
+    /// Peak audio energy observed during the most recently completed streaming
+    /// session. Zero after a session where CoreAudio delivered no samples —
+    /// the key signal that something below Roger (TCC, MDM, HAL routing)
+    /// silently dropped input.
+    private(set) var lastStreamPeakEnergy: Float = 0
 
     private struct StreamSnapshot: Sendable {
         var confirmedSegments: [TranscriptionSegment]
@@ -93,6 +105,8 @@ final class TranscriptionEngine: @unchecked Sendable {
         }
 
         latestStreamSnapshot.withLock { $0 = nil }
+        streamPeakEnergy.withLock { $0 = 0 }
+        lastStreamPeakEnergy = 0
 
         let options = DecodingOptions(
             language: mode.whisperLanguage,
@@ -103,12 +117,16 @@ final class TranscriptionEngine: @unchecked Sendable {
 
         // Pin the user's selected input device into the AudioProcessor so
         // AudioStreamTranscriber's own startRecordingLive() call routes to it.
-        let audioProcessor: any AudioProcessing
+        // Assigning to `streamAudioProcessor` before handing the reference to
+        // the actor initializer avoids Swift 6's region-based "sending"
+        // warning: the local variable goes out of scope immediately after the
+        // assignment, leaving only one path to the object.
         if let deviceID = inputDeviceID {
-            audioProcessor = DevicePinnedAudioProcessor(deviceID: deviceID)
+            streamAudioProcessor = DevicePinnedAudioProcessor(deviceID: deviceID)
             logger.info("Streaming with pinned input device \(deviceID)")
         } else {
-            audioProcessor = whisperKit.audioProcessor
+            streamAudioProcessor = whisperKit.audioProcessor
+            logger.info("Streaming with system default input device")
         }
 
         // Capture a latest-state snapshot via the actor's state callback so we
@@ -120,7 +138,7 @@ final class TranscriptionEngine: @unchecked Sendable {
             segmentSeeker: whisperKit.segmentSeeker,
             textDecoder: whisperKit.textDecoder,
             tokenizer: tokenizer,
-            audioProcessor: audioProcessor,
+            audioProcessor: streamAudioProcessor!,
             decodingOptions: options,
             useVAD: false,
             stateChangeCallback: { [weak self] _, newState in
@@ -140,18 +158,24 @@ final class TranscriptionEngine: @unchecked Sendable {
     }
 
     /// Stops a streaming session and returns the combined text from all
-    /// confirmed and unconfirmed segments.
+    /// confirmed and unconfirmed segments, plus a final batch pass over any
+    /// tail audio the streaming loop skipped.
     func finishStreaming() async throws -> TranscriptionResult {
         guard let transcriber = streamTranscriber else {
             throw TranscriptionError.engineNotReady
         }
 
+        // Stop first so `isRecording` flips; then await the loop task so any
+        // in-flight transcription completes and its final state callback
+        // stores the last snapshot. Cancelling here would truncate that.
         await transcriber.stopStreamTranscription()
-        streamLoopTask?.cancel()
+        await streamLoopTask?.value
         streamLoopTask = nil
         streamTranscriber = nil
         let mode = streamMode
         streamMode = nil
+        let audioProcessor = streamAudioProcessor
+        streamAudioProcessor = nil
 
         let snapshot = latestStreamSnapshot.withLock { value -> StreamSnapshot? in
             let snap = value
@@ -162,10 +186,30 @@ final class TranscriptionEngine: @unchecked Sendable {
         let confirmedSegments = snapshot?.confirmedSegments ?? []
         let unconfirmedSegments = snapshot?.unconfirmedSegments ?? []
         let segments = confirmedSegments + unconfirmedSegments
-        let text = segments
+        let streamedText = segments
             .map { $0.text }
             .joined(separator: " ")
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
+        // WhisperKit's `realtimeLoop` only transcribes when >1s of new audio
+        // has accumulated since the last pass — anything spoken in the final
+        // <1s before stop never gets transcribed. Pull the raw buffer and run
+        // a batch pass over just the tail.
+        let tailText = await transcribeTail(
+            audioProcessor: audioProcessor,
+            confirmedSegments: confirmedSegments,
+            unconfirmedSegments: unconfirmedSegments,
+            mode: mode
+        )
+
+        let text: String
+        if tailText.isEmpty {
+            text = streamedText
+        } else if streamedText.isEmpty {
+            text = tailText
+        } else {
+            text = streamedText + " " + tailText
+        }
 
         // AudioStreamTranscriber.State doesn't surface Whisper's language hint.
         // If we locked the decoder to a specific language (English-only mode)
@@ -180,8 +224,51 @@ final class TranscriptionEngine: @unchecked Sendable {
             detectedLanguage = Self.detectLanguage(in: text)
         }
 
-        logger.notice("Streaming finished: \(text.count) chars (\(confirmedSegments.count) confirmed + \(unconfirmedSegments.count) unconfirmed segments), language: \(detectedLanguage ?? "unknown", privacy: .public)")
+        let peakEnergy = streamPeakEnergy.withLock { $0 }
+        lastStreamPeakEnergy = peakEnergy
+        logger.notice("Streaming finished: \(text.count) chars (\(confirmedSegments.count) confirmed + \(unconfirmedSegments.count) unconfirmed + \(tailText.isEmpty ? "no" : "\(tailText.count)-char") tail), peak energy \(String(format: "%.3f", peakEnergy), privacy: .public), language: \(detectedLanguage ?? "unknown", privacy: .public)")
         return TranscriptionResult(text: text, detectedLanguage: detectedLanguage)
+    }
+
+    private func transcribeTail(
+        audioProcessor: (any AudioProcessing)?,
+        confirmedSegments: [TranscriptionSegment],
+        unconfirmedSegments: [TranscriptionSegment],
+        mode: TranscriptionMode?
+    ) async -> String {
+        guard let audioProcessor, let whisperKit, let mode else { return "" }
+
+        let lastSegmentEnd = max(
+            confirmedSegments.last?.end ?? 0,
+            unconfirmedSegments.last?.end ?? 0
+        )
+        let samples = audioProcessor.audioSamples
+        let sampleRate = Int(AudioCaptureService.targetSampleRate)
+        let tailStartIndex = Int(Double(lastSegmentEnd) * Double(sampleRate))
+        let tailSampleCount = samples.count - tailStartIndex
+        let minTailSamples = sampleRate / 10  // 100 ms — skip silence/click tails
+        guard tailStartIndex >= 0, tailSampleCount >= minTailSamples else { return "" }
+
+        let tail = Array(samples[tailStartIndex..<samples.count])
+        let options = DecodingOptions(
+            language: mode.whisperLanguage,
+            detectLanguage: mode.whisperLanguage == nil,
+            skipSpecialTokens: true,
+            suppressBlank: true
+        )
+
+        do {
+            let results = try await whisperKit.transcribe(audioArray: tail, decodeOptions: options)
+            let text = results
+                .compactMap(\.text)
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            logger.info("Tail transcription: \(String(format: "%.2f", Double(tailSampleCount) / Double(sampleRate)))s, \(text.count) chars")
+            return text
+        } catch {
+            logger.error("Tail transcription failed: \(error.localizedDescription) — keeping streamed text only")
+            return ""
+        }
     }
 
     private static func detectLanguage(in text: String) -> String? {
@@ -198,6 +285,7 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamLoopTask = nil
         streamTranscriber = nil
         streamMode = nil
+        streamAudioProcessor = nil
         latestStreamSnapshot.withLock { $0 = nil }
     }
 
@@ -207,6 +295,11 @@ final class TranscriptionEngine: @unchecked Sendable {
             unconfirmedSegments: state.unconfirmedSegments
         )
         latestStreamSnapshot.withLock { $0 = snapshot }
+        if let peak = state.bufferEnergy.max() {
+            streamPeakEnergy.withLock { current in
+                if peak > current { current = peak }
+            }
+        }
     }
 
     // MARK: - Batch Transcription
