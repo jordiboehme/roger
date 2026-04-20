@@ -28,6 +28,11 @@ final class TranscriptionEngine: @unchecked Sendable {
     /// silently dropped input.
     private(set) var lastStreamPeakEnergy: Float = 0
 
+    /// Fires on every state-change callback from WhisperKit with the most
+    /// recent per-chunk energy. Invoked off the main actor — hop before
+    /// touching main-actor state.
+    var onLevelUpdate: (@Sendable (Float) -> Void)?
+
     private struct StreamSnapshot: Sendable {
         var confirmedSegments: [TranscriptionSegment]
         var unconfirmedSegments: [TranscriptionSegment]
@@ -299,6 +304,9 @@ final class TranscriptionEngine: @unchecked Sendable {
             streamPeakEnergy.withLock { current in
                 if peak > current { current = peak }
             }
+        }
+        if let last = state.bufferEnergy.last {
+            onLevelUpdate?(last)
         }
     }
 

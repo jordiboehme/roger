@@ -16,6 +16,7 @@ final class AppCoordinator {
     let textInsertionService = TextInsertionService()
     let hotkeyManager = HotkeyManager()
     let floatingPanel = FloatingPanel()
+    let audioLevelMeter = AudioLevelMeter()
 
     var hotkeyActive = false
     var isSettingUpModel = false
@@ -28,6 +29,9 @@ final class AppCoordinator {
     init() {
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
+        transcriptionEngine.onLevelUpdate = { [weak self] raw in
+            Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
+        }
     }
 
     private func setupPermissionCallbacks() {
@@ -128,6 +132,7 @@ final class AppCoordinator {
         let presetName = appState.presets.first { $0.id == resolvedPresetID }?.name ?? "Polished"
 
         do {
+            audioLevelMeter.reset()
             appState.dictationState = .listening
             recordingStartTime = Date()
             floatingPanel.show(coordinator: self)
@@ -143,6 +148,7 @@ final class AppCoordinator {
             logger.info("Dictation started (preset: \(presetName))")
         } catch {
             floatingPanel.hide()
+            audioLevelMeter.reset()
             activeRecordingPresetID = nil
             streamingSessionActive = false
             await transcriptionEngine.cancelStreaming()
@@ -182,6 +188,7 @@ final class AppCoordinator {
             logger.info("Recording too short (\(String(format: "%.1f", duration), privacy: .public)s), discarding")
             Task { await self.transcriptionEngine.cancelStreaming() }
             floatingPanel.hide()
+            audioLevelMeter.reset()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
             return
@@ -214,6 +221,7 @@ final class AppCoordinator {
                 let deviceResolved = appState.selectedInputDeviceUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
                 logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)), peak energy \(String(format: "%.3f", self.transcriptionEngine.lastStreamPeakEnergy), privacy: .public). If peak is ~0 the HAL delivered no samples — check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
+                audioLevelMeter.reset()
                 appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
                 return
             }
@@ -271,10 +279,12 @@ final class AppCoordinator {
             logger.notice("Dictation timings: audio=\(String(format: "%.1fs", audioSeconds), privacy: .public) whisper=\(String(format: "%.0fms", whisperMs), privacy: .public) llm=\(String(format: "%.0fms", llmMs), privacy: .public) insert=\(String(format: "%.0fms", insertMs), privacy: .public) total=\(String(format: "%.0fms", totalMs), privacy: .public)")
             logger.info("Dictation complete: \(processedText.prefix(50))…")
             floatingPanel.hide()
+            audioLevelMeter.reset()
             appState.dictationState = .idle
         } catch {
             logger.error("Dictation failed: \(error)")
             floatingPanel.hide()
+            audioLevelMeter.reset()
             appState.dictationState = .error(error.localizedDescription)
         }
     }

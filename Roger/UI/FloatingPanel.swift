@@ -11,6 +11,7 @@ final class FloatingPanel {
         let hostingView = NSHostingView(
             rootView: FloatingIndicatorContent()
                 .environment(coordinator)
+                .environment(coordinator.audioLevelMeter)
                 .padding(20)
         )
         hostingView.frame = NSRect(x: 0, y: 0, width: 260, height: 110)
@@ -130,50 +131,30 @@ private struct FloatingIndicatorContent: View {
 }
 
 private struct PanelWaveform: View {
-    @State private var phases: [Bool] = Array(repeating: false, count: 5)
+    @Environment(AudioLevelMeter.self) private var meter
+
+    // Staggered sine phases so bars breathe slightly out of sync.
+    private static let phases: [Double] = [0, 0.9, 1.8, 2.7, 3.6]
+    // Angular frequency of the idle oscillation (rad/s) — ~1.9 Hz.
+    private static let omega: Double = 12.0
+    private static let baseline: CGFloat = 5
+    private static let idleAmp: CGFloat = 1.5
+    private static let peakExtra: CGFloat = 13
 
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<5, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(.primary)
-                    .frame(width: 3, height: phases[index] ? barHeight(for: index) : 4)
-                    .animation(
-                        .easeInOut(duration: duration(for: index))
-                        .repeatForever(autoreverses: true),
-                        value: phases[index]
-                    )
-            }
-        }
-        .frame(width: 27, height: 20)
-        .onAppear {
-            for i in 0..<5 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.08) {
-                    phases[i] = true
+        TimelineView(.animation) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            let level = CGFloat(meter.level)
+            HStack(spacing: 3) {
+                ForEach(0..<5, id: \.self) { i in
+                    let wave = 0.5 + 0.5 * sin(t * Self.omega + Self.phases[i])
+                    let h = Self.baseline + (Self.idleAmp + level * Self.peakExtra) * CGFloat(wave)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(.primary)
+                        .frame(width: 3, height: h)
                 }
             }
-        }
-    }
-
-    private func barHeight(for index: Int) -> CGFloat {
-        switch index {
-        case 0: return 12
-        case 1: return 18
-        case 2: return 20
-        case 3: return 16
-        case 4: return 10
-        default: return 14
-        }
-    }
-
-    private func duration(for index: Int) -> Double {
-        switch index {
-        case 0: return 0.5
-        case 1: return 0.4
-        case 2: return 0.35
-        case 3: return 0.45
-        case 4: return 0.55
-        default: return 0.4
+            .frame(width: 27, height: 20)
         }
     }
 }
