@@ -81,6 +81,22 @@ final class AppState {
             }
         }
     }
+    /// Preset used to post-process dropped-file transcripts. Constrained to
+    /// presets that don't require an LLM — file transcription should never
+    /// silently reach out to an AI provider.
+    var fileTranscriptionPresetID: UUID {
+        didSet { defaults.set(fileTranscriptionPresetID.uuidString, forKey: "fileTranscriptionPresetID") }
+    }
+
+    /// Resolves `fileTranscriptionPresetID` to a live preset, guaranteeing no
+    /// AI steps are enabled. Falls back to Plain if the configured preset was
+    /// deleted or accidentally flipped to require AI.
+    var fileTranscriptionPreset: DictationPreset {
+        if let preset = presets.first(where: { $0.id == fileTranscriptionPresetID }), !preset.requiresAI {
+            return preset
+        }
+        return DictationPreset.plain
+    }
 
     // MARK: - LLM Settings
 
@@ -249,6 +265,8 @@ final class AppState {
         } else {
             self.fileTranscriptOutputFolder = nil
         }
+        self.fileTranscriptionPresetID = UUID(uuidString: defaults.string(forKey: "fileTranscriptionPresetID") ?? "")
+            ?? DictationPreset.plain.id
 
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence
         self.ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"

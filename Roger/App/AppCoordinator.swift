@@ -431,34 +431,16 @@ final class AppCoordinator {
             )
             try Task.checkCancellation()
 
-            let activePreset = appState.activePreset
+            // File transcripts never run through the LLM — `fileTranscriptionPreset`
+            // is guaranteed to have no AI steps enabled (see AppState).
+            let preset = appState.fileTranscriptionPreset
             let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
-
-            let processedText: String
-            if activePreset.requiresAI {
-                let llmService = appState.currentLLMService()
-                if await llmService.isAvailable {
-                    do {
-                        processedText = try await postProcessor.process(
-                            result.text,
-                            preset: activePreset,
-                            language: languageName,
-                            llmService: llmService
-                        )
-                    } catch LLMError.guardrailViolation {
-                        // On-device safety filter blocked the AI pass — keep the raw transcript
-                        // + non-AI steps so the user still gets a file.
-                        logger.warning("AI guardrail blocked for file transcription — saving non-AI result")
-                        let fallback = Self.nonAIFallback(from: activePreset)
-                        processedText = (try? await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)) ?? result.text
-                    }
-                } else {
-                    let fallback = Self.nonAIFallback(from: activePreset)
-                    processedText = try await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)
-                }
-            } else {
-                processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: nil)
-            }
+            let processedText = try await postProcessor.process(
+                result.text,
+                preset: preset,
+                language: languageName,
+                llmService: nil
+            )
             try Task.checkCancellation()
 
             guard !processedText.isEmpty else {

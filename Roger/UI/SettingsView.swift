@@ -460,39 +460,82 @@ struct FileTranscriptionSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                settingsCard(icon: "doc.text.magnifyingglass", title: "File Transcription") {
+                // Output destination
+                settingsCard(icon: "doc.text.magnifyingglass", title: "Output") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Drop an audio or video file on Roger's menu bar icon and the transcript lands on disk as a `.txt` file.")
+                        Text("Drop an audio or video file on Roger's menu bar icon — the transcript lands on disk as a .txt file.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Picker("Save to", selection: $state.fileTranscriptOutputLocation) {
-                            ForEach(FileTranscriptOutputLocation.allCases) { option in
-                                Text(option.displayName).tag(option)
+                        settingsRow("Save to") {
+                            Picker("", selection: $state.fileTranscriptOutputLocation) {
+                                ForEach(FileTranscriptOutputLocation.allCases) { option in
+                                    Text(option.displayName).tag(option)
+                                }
                             }
+                            .labelsHidden()
+                            .fixedSize()
                         }
-                        .pickerStyle(.radioGroup)
 
                         if state.fileTranscriptOutputLocation == .customFolder {
-                            HStack(spacing: 8) {
-                                Text(folderLabel)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(state.fileTranscriptOutputFolder == nil ? .secondary : .primary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer()
-                                Button("Choose…") { showingFolderPicker = true }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
+                            settingsRow("Folder") {
+                                HStack(spacing: 6) {
+                                    Text(folderLabel)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(state.fileTranscriptOutputFolder == nil ? .secondary : .primary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .frame(maxWidth: 220, alignment: .trailing)
+                                    Button("Choose…") { showingFolderPicker = true }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                }
                             }
-                            .padding(.leading, 20)
                         }
 
-                        Divider()
-
-                        Text(explanationText)
+                        Text(filenameRuleText)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
+                    }
+                }
+
+                // Post-processing
+                settingsCard(icon: "slider.horizontal.3", title: "Post-Processing") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("File transcription runs entirely on-device. Presets with AI steps are disabled — pick one that only uses filler removal, dedup and your custom dictionary.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        settingsRow("Preset") {
+                            Menu {
+                                ForEach(state.presets) { preset in
+                                    Button {
+                                        if !preset.requiresAI {
+                                            state.fileTranscriptionPresetID = preset.id
+                                        }
+                                    } label: {
+                                        HStack {
+                                            if preset.id == state.fileTranscriptionPresetID {
+                                                Image(systemName: "checkmark")
+                                            }
+                                            Text(preset.requiresAI ? "\(preset.name) (requires AI)" : preset.name)
+                                        }
+                                    }
+                                    .disabled(preset.requiresAI)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(state.fileTranscriptionPreset.name)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.primary)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                        }
                     }
                 }
             }
@@ -510,16 +553,11 @@ struct FileTranscriptionSettingsView: View {
     }
 
     private var folderLabel: String {
-        state.fileTranscriptOutputFolder?.path ?? "No folder selected yet"
+        state.fileTranscriptOutputFolder?.path ?? "No folder selected"
     }
 
-    private var explanationText: String {
-        switch state.fileTranscriptOutputLocation {
-        case .alongsideSource:
-            return "Transcripts are saved next to the source file as <filename>.txt (e.g. meeting.m4a.txt). If that file already exists, Roger appends -1, -2 … to avoid overwriting."
-        case .customFolder:
-            return "Transcripts are saved into the selected folder. Filenames follow the same <filename>.txt pattern with auto-numbered duplicates."
-        }
+    private var filenameRuleText: String {
+        "Saved as <filename>.txt. Existing files are never overwritten — Roger appends -1, -2, …"
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -537,6 +575,15 @@ struct FileTranscriptionSettingsView: View {
         .padding(14)
         .background(.quaternary.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func settingsRow(_ label: String, @ViewBuilder trailing: () -> some View) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12))
+            Spacer()
+            trailing()
+        }
     }
 }
 

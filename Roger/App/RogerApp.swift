@@ -23,10 +23,11 @@ struct RogerApp: App {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
+    private var dropView: StatusBarDropView?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let coordinator = sharedCoordinator
@@ -83,14 +84,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.statusItem = item
         self.popover = popover
 
-        // Wire drag-drop on the button's backing window. Menu-bar drops land
-        // on Roger for transcription-from-file.
-        if let window = button.window {
-            window.registerForDraggedTypes([.fileURL])
-            window.delegate = self
+        // Install a transparent `StatusBarDropView` on top of the status-item
+        // button. Registering drag types on the button's backing window is
+        // unreliable on macOS 26 / LSUIElement apps; a dedicated
+        // NSDraggingDestination subview is the robust pattern. `hitTest`
+        // returns nil so mouse clicks fall through to the button below.
+        let drop = StatusBarDropView(frame: button.bounds)
+        drop.autoresizingMask = [.width, .height]
+        drop.isAcceptable = { [weak self] url in
+            self?.isTranscribable(url) ?? false
         }
+        drop.onDrop = { [weak self] url in
+            self?.handleDrop(url: url)
+        }
+        button.addSubview(drop)
+        self.dropView = drop
 
         observeMenuBarIcon(coordinator: coordinator)
+    }
+
+    fileprivate func handleDrop(url: URL) {
+        sharedCoordinator.handleDroppedMediaFile(url: url)
     }
 
     /// Re-registers an `@Observable` tracker each time `menuBarIcon` changes so
@@ -135,42 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Drag & Drop
 
-    func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        acceptableURL(from: sender) != nil ? .copy : []
-    }
-
-    func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        acceptableURL(from: sender) != nil ? .copy : []
-    }
-
-    func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        guard let url = acceptableURL(from: sender) else { return false }
-        sharedCoordinator.handleDroppedMediaFile(url: url)
-        return true
-    }
-
-    /// Fallback for OpenRadar #1745403 — drops originating from Dock stack
-    /// popovers skip `performDragOperation`. If the drop ended inside the
-    /// status-item button frame and the pasteboard still has a usable URL,
-    /// run the same handler. `draggingLocation` is in window coords.
-    func draggingEnded(_ sender: any NSDraggingInfo) {
-        guard let button = statusItem?.button else { return }
-        let buttonPoint = button.convert(sender.draggingLocation, from: nil)
-        guard button.bounds.contains(buttonPoint) else { return }
-        if let url = acceptableURL(from: sender) {
-            sharedCoordinator.handleDroppedMediaFile(url: url)
-        }
-    }
-
-    private func acceptableURL(from sender: any NSDraggingInfo) -> URL? {
-        let pasteboard = sender.draggingPasteboard
-        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
-            return nil
-        }
-        return urls.first { isTranscribable($0) }
-    }
-
-    private func isTranscribable(_ url: URL) -> Bool {
+    fileprivate func isTranscribable(_ url: URL) -> Bool {
         guard let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType) else {
             return false
         }
@@ -203,5 +182,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// Transparent overlay hosted as a subview of the status-item button. Receives
+/// drag-and-drop events directly (via `registerForDraggedTypes`) because the
+/// `NSStatusItem.button.window` delegate pattern is unreliable on macOS 26 /
+/// LSUIElement apps. `hitTest` returns nil so mouse clicks fall through to the
+/// button beneath for the regular popover-toggle behaviour.
+final class StatusBarDropView: NSView {
+    var isAcceptable: (URL) -> Bool = { _ in false }
+    var onDrop: (URL) -> Void = { _ in }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // Pass all mouse events through to the real button below.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        acceptableURL(from: sender) != nil ? .copy : []
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        acceptableURL(from: sender) != nil ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard let url = acceptableURL(from: sender) else { return false }
+        onDrop(url)
+        return true
+    }
+
+    private func acceptableURL(from sender: any NSDraggingInfo) -> URL? {
+        let pb = sender.draggingPasteboard
+        guard let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+            return nil
+        }
+        return urls.first(where: isAcceptable)
     }
 }
