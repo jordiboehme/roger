@@ -65,6 +65,23 @@ final class AppState {
         }
     }
 
+    // MARK: - File Transcription Settings
+
+    var fileTranscriptOutputLocation: FileTranscriptOutputLocation {
+        didSet { defaults.set(fileTranscriptOutputLocation.rawValue, forKey: "fileTranscriptOutputLocation") }
+    }
+    /// Destination folder when `fileTranscriptOutputLocation == .customFolder`.
+    /// Stored as a file URL; nil means the user hasn't picked one yet.
+    var fileTranscriptOutputFolder: URL? {
+        didSet {
+            if let url = fileTranscriptOutputFolder {
+                defaults.set(url.path, forKey: "fileTranscriptOutputFolder")
+            } else {
+                defaults.removeObject(forKey: "fileTranscriptOutputFolder")
+            }
+        }
+    }
+
     // MARK: - LLM Settings
 
     var selectedLLMProvider: LLMProviderType {
@@ -224,6 +241,15 @@ final class AppState {
         self.maximumRecordingDuration = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval ?? 120
         self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
+        self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
+            rawValue: defaults.string(forKey: "fileTranscriptOutputLocation") ?? ""
+        ) ?? .alongsideSource
+        if let path = defaults.string(forKey: "fileTranscriptOutputFolder") {
+            self.fileTranscriptOutputFolder = URL(fileURLWithPath: path)
+        } else {
+            self.fileTranscriptOutputFolder = nil
+        }
+
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence
         self.ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
         self.ollamaModel = defaults.string(forKey: "ollamaModel") ?? "llama3.2"
@@ -365,6 +391,20 @@ enum TranscriptionMode: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .englishOnly: return "English"
         case .multilingual: return nil // detected at runtime
+        }
+    }
+}
+
+enum FileTranscriptOutputLocation: String, CaseIterable, Identifiable, Codable {
+    case alongsideSource
+    case customFolder
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .alongsideSource: return "Next to the source file"
+        case .customFolder: return "Custom folder"
         }
     }
 }

@@ -2,7 +2,7 @@ import ApplicationServices
 import SwiftUI
 
 enum SettingsTab: String, Hashable {
-    case general, permissions, microphone, aiProvider, presets, model, about
+    case general, permissions, microphone, aiProvider, presets, model, fileTranscription, about
 }
 
 struct SettingsView: View {
@@ -43,6 +43,10 @@ struct SettingsView: View {
             )
                 .tabItem { Label("Model", systemImage: "cpu") }
                 .tag(SettingsTab.model)
+
+            FileTranscriptionSettingsView(state: state)
+                .tabItem { Label("File Transcription", systemImage: "doc.text.magnifyingglass") }
+                .tag(SettingsTab.fileTranscription)
 
             AboutView()
                 .tabItem { Label("About", systemImage: "info.circle") }
@@ -444,6 +448,95 @@ struct PermissionsSettingsView: View {
                 coordinator.hotkeyManager.onRecordingStopped = originalStop
             }
         }
+    }
+}
+
+// MARK: - File Transcription
+
+struct FileTranscriptionSettingsView: View {
+    @Bindable var state: AppState
+    @State private var showingFolderPicker = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                settingsCard(icon: "doc.text.magnifyingglass", title: "File Transcription") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Drop an audio or video file on Roger's menu bar icon and the transcript lands on disk as a `.txt` file.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Picker("Save to", selection: $state.fileTranscriptOutputLocation) {
+                            ForEach(FileTranscriptOutputLocation.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
+
+                        if state.fileTranscriptOutputLocation == .customFolder {
+                            HStack(spacing: 8) {
+                                Text(folderLabel)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(state.fileTranscriptOutputFolder == nil ? .secondary : .primary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button("Choose…") { showingFolderPicker = true }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                            }
+                            .padding(.leading, 20)
+                        }
+
+                        Divider()
+
+                        Text(explanationText)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .padding()
+        }
+        .fileImporter(
+            isPresented: $showingFolderPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                state.fileTranscriptOutputFolder = url
+            }
+        }
+    }
+
+    private var folderLabel: String {
+        state.fileTranscriptOutputFolder?.path ?? "No folder selected yet"
+    }
+
+    private var explanationText: String {
+        switch state.fileTranscriptOutputLocation {
+        case .alongsideSource:
+            return "Transcripts are saved next to the source file as <filename>.txt (e.g. meeting.m4a.txt). If that file already exists, Roger appends -1, -2 … to avoid overwriting."
+        case .customFolder:
+            return "Transcripts are saved into the selected folder. Filenames follow the same <filename>.txt pattern with auto-numbered duplicates."
+        }
+    }
+
+    private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                Text(title)
+                    .font(.headline)
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

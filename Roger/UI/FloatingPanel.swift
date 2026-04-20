@@ -51,13 +51,17 @@ private struct FloatingIndicatorContent: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var pulseOpacity: Double = 1.0
 
-    // Neon accent: hot pink while listening, electric cyan while thinking.
+    // Neon accent: hot pink while listening, electric cyan while thinking / file-transcribing.
     // Drives the stroke, drop shadow and countdown warning tint.
     private static let listeningAccent = Color(red: 1.0, green: 0.2, blue: 0.48)
     private static let thinkingAccent = Color(red: 0.2, green: 0.87, blue: 1.0)
 
+    private var fileJob: AppCoordinator.FileTranscriptionJob? {
+        coordinator.activeFileTranscription
+    }
+
     private var isListening: Bool {
-        coordinator.appState.dictationState == .listening
+        fileJob == nil && coordinator.appState.dictationState == .listening
     }
 
     private var accent: Color {
@@ -94,20 +98,45 @@ private struct FloatingIndicatorContent: View {
             .frame(width: 27, height: 20)
             .animation(.easeInOut(duration: 0.2), value: isListening)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(isListening ? "Listening" : "Thinking")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .contentTransition(.opacity)
-                if let presetName {
-                    Text("as \(presetName)")
+            if let job = fileJob {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Transcribing")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text(job.displayName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 220, alignment: .leading)
                 }
-            }
-            .animation(.easeInOut(duration: 0.2), value: isListening)
 
-            countdown
+                Button {
+                    coordinator.cancelFileTranscription()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .help("Cancel transcription")
+            } else {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(isListening ? "Listening" : "Thinking")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .contentTransition(.opacity)
+                    if let presetName {
+                        Text("as \(presetName)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: isListening)
+
+                countdown
+            }
         }
         .fixedSize()
         .padding(.horizontal, 20)

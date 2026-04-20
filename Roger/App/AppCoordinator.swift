@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Foundation
 import Observation
@@ -25,6 +26,10 @@ final class AppCoordinator {
     private var isWarmingUp = false
     private var maxDurationTask: Task<Void, Never>?
     private var streamingSessionActive = false
+    /// Currently-transcribing file, or nil when nothing is in flight. The
+    /// floating indicator observes this to show the "Transcribing X" overlay.
+    private(set) var activeFileTranscription: FileTranscriptionJob?
+    private var fileTranscriptionTask: Task<Void, Never>?
 
     init() {
         setupHotkeyCallbacks()
@@ -358,6 +363,135 @@ final class AppCoordinator {
         defer { isWarmingUp = false }
         audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
         await audioCaptureService.warmUp()
+    }
+
+    // MARK: - File Transcription (drag-and-drop)
+
+    struct FileTranscriptionJob: Sendable, Equatable {
+        let sourceURL: URL
+        let displayName: String
+    }
+
+    /// Entry point for a file dropped on the menu bar icon. Rejected if
+    /// another transcription (hotkey or file) is already running, or the
+    /// model isn't ready.
+    func handleDroppedMediaFile(url: URL) {
+        guard activeFileTranscription == nil else {
+            logger.info("Dropped file while another file transcription is in flight — ignored: \(url.lastPathComponent, privacy: .public)")
+            return
+        }
+        guard appState.dictationState == .idle || {
+            if case .error = appState.dictationState { return true }
+            return false
+        }() else {
+            logger.info("Dropped file while dictation is busy — ignored: \(url.lastPathComponent, privacy: .public)")
+            return
+        }
+        guard transcriptionEngine.isReady else {
+            appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+            return
+        }
+
+        // Clear any prior error so the user sees the transcription overlay.
+        if case .error = appState.dictationState {
+            appState.dictationState = .idle
+        }
+
+        let job = FileTranscriptionJob(sourceURL: url, displayName: url.lastPathComponent)
+        activeFileTranscription = job
+        floatingPanel.show(coordinator: self)
+
+        fileTranscriptionTask = Task { [weak self] in
+            await self?.runFileTranscription(job: job)
+        }
+    }
+
+    /// Cancels an in-flight file transcription (triggered by the overlay's
+    /// Cancel button). The running Task throws `CancellationError` at the
+    /// next `await`; cleanup happens in `runFileTranscription`.
+    func cancelFileTranscription() {
+        fileTranscriptionTask?.cancel()
+    }
+
+    private func runFileTranscription(job: FileTranscriptionJob) async {
+        logger.info("File transcription started: \(job.displayName, privacy: .public)")
+        var tempURL: URL?
+        defer {
+            if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
+        }
+
+        do {
+            let prepared = try await MediaAudioExtractor.prepare(source: job.sourceURL)
+            if prepared.isTemporary { tempURL = prepared.url }
+            try Task.checkCancellation()
+
+            let result = try await transcriptionEngine.transcribeFile(
+                url: prepared.url,
+                mode: appState.transcriptionMode
+            )
+            try Task.checkCancellation()
+
+            let activePreset = appState.activePreset
+            let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
+
+            let processedText: String
+            if activePreset.requiresAI {
+                let llmService = appState.currentLLMService()
+                if await llmService.isAvailable {
+                    do {
+                        processedText = try await postProcessor.process(
+                            result.text,
+                            preset: activePreset,
+                            language: languageName,
+                            llmService: llmService
+                        )
+                    } catch LLMError.guardrailViolation {
+                        // On-device safety filter blocked the AI pass — keep the raw transcript
+                        // + non-AI steps so the user still gets a file.
+                        logger.warning("AI guardrail blocked for file transcription — saving non-AI result")
+                        let fallback = Self.nonAIFallback(from: activePreset)
+                        processedText = (try? await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)) ?? result.text
+                    }
+                } else {
+                    let fallback = Self.nonAIFallback(from: activePreset)
+                    processedText = try await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)
+                }
+            } else {
+                processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: nil)
+            }
+            try Task.checkCancellation()
+
+            guard !processedText.isEmpty else {
+                logger.warning("File transcription produced empty text: \(job.displayName, privacy: .public)")
+                await finishFileTranscription(error: "No speech detected in \(job.displayName)")
+                return
+            }
+
+            let outputURL = try TranscriptOutputWriter.write(
+                transcript: processedText,
+                source: job.sourceURL,
+                location: appState.fileTranscriptOutputLocation,
+                customFolder: appState.fileTranscriptOutputFolder
+            )
+            logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
+            NSWorkspace.shared.activateFileViewerSelecting([outputURL])
+            await finishFileTranscription(error: nil)
+        } catch is CancellationError {
+            logger.info("File transcription cancelled: \(job.displayName, privacy: .public)")
+            await finishFileTranscription(error: nil)
+        } catch {
+            logger.error("File transcription failed: \(error.localizedDescription, privacy: .public)")
+            await finishFileTranscription(error: error.localizedDescription)
+        }
+    }
+
+    private func finishFileTranscription(error: String?) async {
+        activeFileTranscription = nil
+        fileTranscriptionTask = nil
+        floatingPanel.hide()
+        if let error {
+            appState.dictationState = .error(error)
+        }
     }
 
     // MARK: - Error Management

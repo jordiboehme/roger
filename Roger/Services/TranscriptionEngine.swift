@@ -487,6 +487,42 @@ final class TranscriptionEngine: @unchecked Sendable {
         }
     }
 
+    // MARK: - File Transcription
+
+    /// Transcribes an audio file directly (no microphone capture). Used for
+    /// the menu bar drag-and-drop flow. WhisperKit loads and chunks the file
+    /// internally via `transcribe(audioPath:decodeOptions:)`.
+    func transcribeFile(url: URL, mode: TranscriptionMode) async throws -> TranscriptionResult {
+        guard let whisperKit else {
+            throw TranscriptionError.engineNotReady
+        }
+
+        let options = DecodingOptions(
+            language: mode.whisperLanguage,
+            detectLanguage: mode.whisperLanguage == nil,
+            skipSpecialTokens: true,
+            suppressBlank: true
+        )
+
+        let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
+        let text = results
+            .compactMap(\.text)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let detectedLanguage: String?
+        if let forced = mode.whisperLanguage {
+            detectedLanguage = forced
+        } else if text.isEmpty {
+            detectedLanguage = nil
+        } else {
+            detectedLanguage = Self.detectLanguage(in: text)
+        }
+
+        logger.notice("File transcription: \(url.lastPathComponent, privacy: .public) → \(text.count) chars, language \(detectedLanguage ?? "unknown", privacy: .public)")
+        return TranscriptionResult(text: text, detectedLanguage: detectedLanguage)
+    }
+
     // MARK: - Batch Transcription
 
     func transcribe(audioBuffer: [Float], mode: TranscriptionMode) async throws -> TranscriptionResult {
