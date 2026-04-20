@@ -21,6 +21,24 @@ final class TranscriptionEngine: @unchecked Sendable {
     nonisolated(unsafe) private var streamAudioProcessor: (any AudioProcessing)?
     private let latestStreamSnapshot = OSAllocatedUnfairLock<StreamSnapshot?>(initialState: nil)
     private let streamPeakEnergy = OSAllocatedUnfairLock<Float>(initialState: 0)
+    private let streamFailure = OSAllocatedUnfairLock<StreamFailure?>(initialState: nil)
+
+    struct StreamFailure: Sendable {
+        let reason: String
+        let deviceID: AudioDeviceID
+    }
+
+    /// Reads and clears the most recent stream-open failure captured by the
+    /// 300 ms post-start verification task or by a throwing
+    /// `startStreamTranscription()`. The caller (AppCoordinator) uses this to
+    /// surface a clear error instead of the misleading "No speech detected".
+    func consumeStreamFailure() -> StreamFailure? {
+        streamFailure.withLock { value in
+            let snap = value
+            value = nil
+            return snap
+        }
+    }
 
     /// Peak audio energy observed during the most recently completed streaming
     /// session. Zero after a session where CoreAudio delivered no samples —
@@ -111,6 +129,7 @@ final class TranscriptionEngine: @unchecked Sendable {
 
         latestStreamSnapshot.withLock { $0 = nil }
         streamPeakEnergy.withLock { $0 = 0 }
+        streamFailure.withLock { $0 = nil }
         lastStreamPeakEnergy = 0
 
         let options = DecodingOptions(
@@ -153,13 +172,85 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamTranscriber = transcriber
         streamMode = mode
 
+        let pinnedDeviceID = (streamAudioProcessor as? DevicePinnedAudioProcessor)?.pinnedDevice ?? 0
+        let failureLock = streamFailure
         streamLoopTask = Task.detached {
             do {
                 try await transcriber.startStreamTranscription()
             } catch {
                 logger.error("Streaming transcription loop failed: \(error.localizedDescription)")
+                failureLock.withLock { current in
+                    if current == nil {
+                        current = StreamFailure(
+                            reason: "startStreamTranscription threw: \(error.localizedDescription)",
+                            deviceID: pinnedDeviceID
+                        )
+                    }
+                }
             }
         }
+
+        // Verify 300 ms after stream start that the HAL actually opened. On
+        // corporate Macs with MDM-controlled audio the transcriber can
+        // silently report "recording" while the underlying AVAudioEngine
+        // never engages — no orange mic indicator, zero samples, and today's
+        // flow surfaces that as the misleading "No speech detected".
+        let transcriberIdentity = ObjectIdentifier(transcriber)
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let self else { return }
+            // Guard against a stale verify firing after a subsequent start.
+            guard let current = self.streamTranscriber, ObjectIdentifier(current) == transcriberIdentity else {
+                return
+            }
+            guard let processor = self.streamAudioProcessor as? DevicePinnedAudioProcessor else {
+                return
+            }
+            let engine = processor.audioEngine
+            let engineRunning = engine?.isRunning ?? false
+            let deviceRunning = Self.deviceIsRunning(pinnedDeviceID)
+            let bound = Self.boundDevice(for: engine?.inputNode)
+            let boundStr = bound.map(String.init) ?? "unknown"
+            logger.notice("Stream verify: engine.isRunning=\(engineRunning, privacy: .public), device[\(pinnedDeviceID, privacy: .public)].isRunning=\(deviceRunning, privacy: .public), boundDevice=\(boundStr, privacy: .public)")
+            if !engineRunning && !deviceRunning {
+                failureLock.withLock { current in
+                    if current == nil {
+                        current = StreamFailure(
+                            reason: "engine and device both not running 300 ms after start (bound=\(boundStr))",
+                            deviceID: pinnedDeviceID
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private static func deviceIsRunning(_ id: AudioDeviceID) -> Bool {
+        guard id != 0 else { return false }
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunning,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &value)
+        return status == noErr && value != 0
+    }
+
+    private static func boundDevice(for inputNode: AVAudioInputNode?) -> AudioDeviceID? {
+        guard let audioUnit = inputNode?.audioUnit else { return nil }
+        var id: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            &size
+        )
+        return status == noErr ? id : nil
     }
 
     /// Stops a streaming session and returns the combined text from all
@@ -361,13 +452,18 @@ enum TranscriptionError: LocalizedError {
 /// streaming mode.
 final class DevicePinnedAudioProcessor: NSObject, AudioProcessing, @unchecked Sendable {
     private let wrapped: AudioProcessor
-    private let pinnedDeviceID: AudioDeviceID
+    let pinnedDevice: AudioDeviceID
 
     init(deviceID: AudioDeviceID) {
         self.wrapped = AudioProcessor()
-        self.pinnedDeviceID = deviceID
+        self.pinnedDevice = deviceID
         super.init()
     }
+
+    /// Reads the underlying AVAudioEngine that WhisperKit builds inside
+    /// `startRecordingLive`. Used by `TranscriptionEngine` to verify the
+    /// engine actually started after `startStreamTranscription()` returns.
+    var audioEngine: AVAudioEngine? { wrapped.audioEngine }
 
     // MARK: - Forwarding
 
@@ -383,18 +479,18 @@ final class DevicePinnedAudioProcessor: NSObject, AudioProcessing, @unchecked Se
     }
 
     func startRecordingLive(inputDeviceID: DeviceID?, callback: (([Float]) -> Void)?) throws {
-        try wrapped.startRecordingLive(inputDeviceID: pinnedDeviceID, callback: callback)
+        try wrapped.startRecordingLive(inputDeviceID: pinnedDevice, callback: callback)
     }
 
     func startStreamingRecordingLive(inputDeviceID: DeviceID?) -> (AsyncThrowingStream<[Float], Error>, AsyncThrowingStream<[Float], Error>.Continuation) {
-        wrapped.startStreamingRecordingLive(inputDeviceID: pinnedDeviceID)
+        wrapped.startStreamingRecordingLive(inputDeviceID: pinnedDevice)
     }
 
     func pauseRecording() { wrapped.pauseRecording() }
     func stopRecording() { wrapped.stopRecording() }
 
     func resumeRecordingLive(inputDeviceID: DeviceID?, callback: (([Float]) -> Void)?) throws {
-        try wrapped.resumeRecordingLive(inputDeviceID: pinnedDeviceID, callback: callback)
+        try wrapped.resumeRecordingLive(inputDeviceID: pinnedDevice, callback: callback)
     }
 
     func padOrTrim(fromArray audioArray: [Float], startAt startIndex: Int, toLength frameLength: Int) -> (any AudioProcessorOutputType)? {

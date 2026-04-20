@@ -25,16 +25,6 @@ final class AppCoordinator {
     private var isWarmingUp = false
     private var maxDurationTask: Task<Void, Never>?
     private var streamingSessionActive = false
-    /// Timestamp of the last moment the CoreAudio input HAL was definitely
-    /// engaged (warm-up finished or a streaming session started/ended). Used
-    /// to decide whether the next `startDictation` needs a pre-flight warm.
-    /// Corporate / MDM-managed Macs put the HAL back to sleep within seconds
-    /// of idleness, which silently delivers zero samples on the next press.
-    private var lastMicActivity: Date?
-    /// Pre-flight warm threshold. Aggressive on purpose — the 500 ms warm
-    /// latency is hidden behind the floating indicator, and the downside of
-    /// under-warming on a sleep-happy HAL is a silent "No speech detected".
-    private static let staleMicThreshold: TimeInterval = 5
 
     init() {
         setupHotkeyCallbacks()
@@ -147,15 +137,11 @@ final class AppCoordinator {
             recordingStartTime = Date()
             floatingPanel.show(coordinator: self)
 
-            let deviceUID = appState.selectedInputDeviceUID
-            await preflightWarmIfStale(deviceUID: deviceUID)
-
-            let deviceID = deviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
+            let deviceID = appState.selectedInputDeviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
             try await transcriptionEngine.startStreaming(
                 mode: appState.transcriptionMode,
                 inputDeviceID: deviceID
             )
-            lastMicActivity = Date()
             streamingSessionActive = true
 
             scheduleMaxDurationStop()
@@ -205,7 +191,6 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
-            lastMicActivity = Date()
             return
         }
 
@@ -230,7 +215,14 @@ final class AppCoordinator {
             let whisperStart = Date()
             let result = try await transcribe()
             let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
-            lastMicActivity = Date()
+
+            if let failure = transcriptionEngine.consumeStreamFailure() {
+                logger.error("Stream failed to open: \(failure.reason, privacy: .public) on device \(failure.deviceID)")
+                floatingPanel.hide()
+                audioLevelMeter.reset()
+                appState.dictationState = .error("Microphone stream never opened — check Console logs and mic permission")
+                return
+            }
 
             guard !result.text.isEmpty else {
                 let uid = appState.selectedInputDeviceUID ?? "automatic"
@@ -366,33 +358,6 @@ final class AppCoordinator {
         defer { isWarmingUp = false }
         audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
         await audioCaptureService.warmUp()
-        lastMicActivity = Date()
-    }
-
-    /// Runs a brief silent capture to wake the HAL iff it's been idle long
-    /// enough that it's likely asleep. Safe inside `startDictation` — shares
-    /// the `isWarmingUp` re-entry flag with `warmUpMicrophone()` so the two
-    /// can't collide. Caller passes the already-resolved device UID so a
-    /// mid-warm device switch can't split the warm and the stream onto
-    /// different inputs.
-    private func preflightWarmIfStale(deviceUID: String?) async {
-        if let last = lastMicActivity,
-           Date().timeIntervalSince(last) < Self.staleMicThreshold {
-            return
-        }
-        guard !isWarmingUp else { return }
-        isWarmingUp = true
-        defer { isWarmingUp = false }
-        audioCaptureService.preferredInputUID = deviceUID
-        let started = Date()
-        await audioCaptureService.warmUp()
-        lastMicActivity = Date()
-        let elapsedMs = Date().timeIntervalSince(started) * 1000
-        logger.info("Pre-flight warm (\(String(format: "%.0f", elapsedMs), privacy: .public)ms) before stream start")
-        // Let the AudioUnit graph fully tear down before WhisperKit rebuilds
-        // it on the same device — otherwise the first ~100 ms of the stream
-        // can come through silent.
-        try? await Task.sleep(nanoseconds: 50_000_000)
     }
 
     // MARK: - Error Management
