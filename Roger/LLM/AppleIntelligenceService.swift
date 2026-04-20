@@ -20,8 +20,15 @@ struct AppleIntelligenceService: LLMService {
 
         let session = LanguageModelSession()
         let fullPrompt = "\(prompt)\n\nText to process:\n\(text)"
-        let response = try await session.respond(to: fullPrompt)
-        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let response = try await session.respond(to: fullPrompt)
+            return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch let genErr as LanguageModelSession.GenerationError {
+            if case .guardrailViolation = genErr {
+                throw LLMError.guardrailViolation
+            }
+            throw genErr
+        }
     }
 
     private var unavailabilityReason: String {

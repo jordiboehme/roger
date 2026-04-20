@@ -238,19 +238,26 @@ final class AppCoordinator {
                 let llmService = appState.currentLLMService()
 
                 if await llmService.isAvailable {
-                    processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: llmService)
+                    do {
+                        processedText = try await postProcessor.process(result.text, preset: activePreset, language: languageName, llmService: llmService)
+                    } catch LLMError.guardrailViolation {
+                        // Apple Intelligence's on-device safety filter flagged the
+                        // text. Rerun the deterministic steps, stash the result
+                        // in `lastTranscription` for manual copy and bail out —
+                        // pasting unprocessed dictation into the focused app
+                        // would surprise the user.
+                        logger.warning("AI guardrail blocked — falling back to non-AI pipeline, skipping insertion")
+                        let fallback = Self.nonAIFallback(from: activePreset)
+                        let safeText = (try? await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)) ?? result.text
+                        appState.lastTranscription = safeText
+                        floatingPanel.hide()
+                        audioLevelMeter.reset()
+                        appState.dictationState = .error("AI declined this dictation — copy the transcript from the menu bar")
+                        return
+                    }
                 } else {
                     logger.warning("LLM provider not available, applying non-AI steps only")
-                    let fallbackPreset = DictationPreset(
-                        id: activePreset.id, name: activePreset.name, isBuiltIn: activePreset.isBuiltIn,
-                        enableFillerRemoval: activePreset.enableFillerRemoval,
-                        enableDedup: activePreset.enableDedup,
-                        enableAIFormatting: false,
-                        enableCustomDictionary: activePreset.enableCustomDictionary,
-                        enableRewrite: false,
-                        aiPrompt: "", rewritePrompt: "",
-                        dictionaryEntries: activePreset.dictionaryEntries
-                    )
+                    let fallbackPreset = Self.nonAIFallback(from: activePreset)
                     processedText = try await postProcessor.process(result.text, preset: fallbackPreset, language: languageName, llmService: nil)
                 }
             } else {
@@ -287,6 +294,21 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             appState.dictationState = .error(error.localizedDescription)
         }
+    }
+
+    /// Returns a copy of `preset` with every AI step disabled — used when the
+    /// configured LLM provider is unavailable or refuses to process the text.
+    private static func nonAIFallback(from preset: DictationPreset) -> DictationPreset {
+        DictationPreset(
+            id: preset.id, name: preset.name, isBuiltIn: preset.isBuiltIn,
+            enableFillerRemoval: preset.enableFillerRemoval,
+            enableDedup: preset.enableDedup,
+            enableAIFormatting: false,
+            enableCustomDictionary: preset.enableCustomDictionary,
+            enableRewrite: false,
+            aiPrompt: "", rewritePrompt: "",
+            dictionaryEntries: preset.dictionaryEntries
+        )
     }
 
     // MARK: - Model Setup

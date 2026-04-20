@@ -12,6 +12,7 @@ enum LLMError: LocalizedError {
     case requestFailed(String)
     case invalidResponse
     case networkError(Error)
+    case guardrailViolation
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,7 @@ enum LLMError: LocalizedError {
         case .requestFailed(let message): "LLM request failed: \(message)"
         case .invalidResponse: "Invalid response from LLM"
         case .networkError(let error): "Network error: \(error.localizedDescription)"
+        case .guardrailViolation: "The on-device safety filter declined this text"
         }
     }
 }
