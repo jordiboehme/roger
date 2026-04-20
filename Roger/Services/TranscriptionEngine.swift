@@ -22,6 +22,14 @@ final class TranscriptionEngine: @unchecked Sendable {
     private let latestStreamSnapshot = OSAllocatedUnfairLock<StreamSnapshot?>(initialState: nil)
     private let streamPeakEnergy = OSAllocatedUnfairLock<Float>(initialState: 0)
     private let streamFailure = OSAllocatedUnfairLock<StreamFailure?>(initialState: nil)
+    /// Observer that catches WhisperKit's AVAudioEngine auto-stopping on a
+    /// hardware reconfiguration (notably Bluetooth headsets switching into
+    /// HFP mode a few ms after `engine.start()`) and restarts the engine.
+    /// Without this the engine stops itself within ~20 ms of starting, the
+    /// session never delivers samples, and dictation ends in silence.
+    private var configChangeObserver: NSObjectProtocol?
+    private let configChangeRetries = OSAllocatedUnfairLock<Int>(initialState: 0)
+    private static let maxConfigChangeRetries = 3
 
     struct StreamFailure: Sendable {
         let reason: String
@@ -130,7 +138,23 @@ final class TranscriptionEngine: @unchecked Sendable {
         latestStreamSnapshot.withLock { $0 = nil }
         streamPeakEnergy.withLock { $0 = 0 }
         streamFailure.withLock { $0 = nil }
+        configChangeRetries.withLock { $0 = 0 }
         lastStreamPeakEnergy = 0
+
+        // Register the config-change observer BEFORE the detached task fires
+        // `engine.start()` — on Bluetooth-equipped Macs the hardware-reroute
+        // notification can arrive within ~20 ms of start, faster than any
+        // post-hoc observer could beat.
+        if let previous = configChangeObserver {
+            NotificationCenter.default.removeObserver(previous)
+        }
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: nil,
+            queue: nil
+        ) { [weak self] note in
+            self?.handleAudioEngineConfigurationChange(note)
+        }
 
         let options = DecodingOptions(
             language: mode.whisperLanguage,
@@ -191,37 +215,70 @@ final class TranscriptionEngine: @unchecked Sendable {
         }
 
         // Verify 300 ms after stream start that the HAL actually opened. On
-        // corporate Macs with MDM-controlled audio the transcriber can
-        // silently report "recording" while the underlying AVAudioEngine
-        // never engages — no orange mic indicator, zero samples, and today's
-        // flow surfaces that as the misleading "No speech detected".
+        // Bluetooth-equipped Macs the AVAudioEngine can auto-stop on an HFP
+        // reroute; on MDM-managed Macs the input device may never engage.
+        // Both show up as zero samples and today surface as the misleading
+        // "No speech detected" — catch them here and surface a clear error.
         let transcriberIdentity = ObjectIdentifier(transcriber)
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard let self else { return }
-            // Guard against a stale verify firing after a subsequent start.
             guard let current = self.streamTranscriber, ObjectIdentifier(current) == transcriberIdentity else {
                 return
             }
-            guard let processor = self.streamAudioProcessor as? DevicePinnedAudioProcessor else {
-                return
-            }
-            let engine = processor.audioEngine
+            let engine = self.currentStreamEngine()
             let engineRunning = engine?.isRunning ?? false
-            let deviceRunning = Self.deviceIsRunning(pinnedDeviceID)
             let bound = Self.boundDevice(for: engine?.inputNode)
+            let effectiveDeviceID: AudioDeviceID = pinnedDeviceID != 0 ? pinnedDeviceID : (bound ?? 0)
+            let deviceRunning = Self.deviceIsRunning(effectiveDeviceID)
             let boundStr = bound.map(String.init) ?? "unknown"
-            logger.notice("Stream verify: engine.isRunning=\(engineRunning, privacy: .public), device[\(pinnedDeviceID, privacy: .public)].isRunning=\(deviceRunning, privacy: .public), boundDevice=\(boundStr, privacy: .public)")
+            logger.notice("Stream verify: engine.isRunning=\(engineRunning, privacy: .public), device[\(effectiveDeviceID, privacy: .public)].isRunning=\(deviceRunning, privacy: .public), boundDevice=\(boundStr, privacy: .public)")
             if !engineRunning && !deviceRunning {
                 failureLock.withLock { current in
                     if current == nil {
                         current = StreamFailure(
                             reason: "engine and device both not running 300 ms after start (bound=\(boundStr))",
-                            deviceID: pinnedDeviceID
+                            deviceID: effectiveDeviceID
                         )
                     }
                 }
             }
+        }
+    }
+
+    /// Resolves WhisperKit's underlying AVAudioEngine whether streaming runs
+    /// through our `DevicePinnedAudioProcessor` wrapper (Microphone tab has a
+    /// specific device selected) or through WhisperKit's default
+    /// `AudioProcessor` (Automatic input).
+    private func currentStreamEngine() -> AVAudioEngine? {
+        if let pinned = streamAudioProcessor as? DevicePinnedAudioProcessor {
+            return pinned.audioEngine
+        }
+        if let plain = streamAudioProcessor as? AudioProcessor {
+            return plain.audioEngine
+        }
+        return nil
+    }
+
+    private func handleAudioEngineConfigurationChange(_ note: Notification) {
+        guard let posted = note.object as? AVAudioEngine else { return }
+        guard let streamEngine = currentStreamEngine(), posted === streamEngine else { return }
+        let attempt = configChangeRetries.withLock { current -> Int in
+            current += 1
+            return current
+        }
+        guard attempt <= Self.maxConfigChangeRetries else {
+            logger.warning("AVAudioEngine config change fired \(attempt) times — giving up to avoid an infinite restart loop")
+            return
+        }
+        logger.warning("AVAudioEngine config changed (attempt \(attempt)/\(Self.maxConfigChangeRetries)); isRunning=\(streamEngine.isRunning, privacy: .public) — restarting")
+        do {
+            if !streamEngine.isRunning {
+                try streamEngine.start()
+                logger.info("Engine restarted after config change")
+            }
+        } catch {
+            logger.error("Engine restart after config change failed: \(error.localizedDescription)")
         }
     }
 
@@ -272,6 +329,10 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamMode = nil
         let audioProcessor = streamAudioProcessor
         streamAudioProcessor = nil
+        if let obs = configChangeObserver {
+            NotificationCenter.default.removeObserver(obs)
+            configChangeObserver = nil
+        }
 
         let snapshot = latestStreamSnapshot.withLock { value -> StreamSnapshot? in
             let snap = value
@@ -383,6 +444,10 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamMode = nil
         streamAudioProcessor = nil
         latestStreamSnapshot.withLock { $0 = nil }
+        if let obs = configChangeObserver {
+            NotificationCenter.default.removeObserver(obs)
+            configChangeObserver = nil
+        }
     }
 
     private func storeStreamState(_ state: AudioStreamTranscriber.State) {
