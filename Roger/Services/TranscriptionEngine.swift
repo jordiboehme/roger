@@ -214,16 +214,30 @@ final class TranscriptionEngine: @unchecked Sendable {
             }
         }
 
-        // Verify 300 ms after stream start that the HAL actually opened. On
-        // Bluetooth-equipped Macs the AVAudioEngine can auto-stop on an HFP
-        // reroute; on MDM-managed Macs the input device may never engage.
-        // Both show up as zero samples and today surface as the misleading
-        // "No speech detected" — catch them here and surface a clear error.
+        // Poll up to 1.2 s for the HAL to actually come up. WhisperKit's
+        // setupEngine takes ~340 ms on slower Macs, so a single 300 ms read
+        // reports a false "not running" on healthy sessions. The loop exits
+        // the moment the engine flips to running; only a full-budget miss
+        // records a `StreamFailure` for the coordinator to surface.
         let transcriberIdentity = ObjectIdentifier(transcriber)
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard let self else { return }
-            guard let current = self.streamTranscriber, ObjectIdentifier(current) == transcriberIdentity else {
+            let started = Date()
+            let deadline = started.addingTimeInterval(1.2)
+            while Date() < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard let self else { return }
+                guard let current = self.streamTranscriber, ObjectIdentifier(current) == transcriberIdentity else {
+                    return
+                }
+                if self.currentStreamEngine()?.isRunning == true {
+                    let ms = Int(Date().timeIntervalSince(started) * 1000)
+                    logger.notice("Stream verify ok: engine running after \(ms, privacy: .public) ms")
+                    return
+                }
+            }
+            guard let self,
+                  let current = self.streamTranscriber,
+                  ObjectIdentifier(current) == transcriberIdentity else {
                 return
             }
             let engine = self.currentStreamEngine()
@@ -232,12 +246,12 @@ final class TranscriptionEngine: @unchecked Sendable {
             let effectiveDeviceID: AudioDeviceID = pinnedDeviceID != 0 ? pinnedDeviceID : (bound ?? 0)
             let deviceRunning = Self.deviceIsRunning(effectiveDeviceID)
             let boundStr = bound.map(String.init) ?? "unknown"
-            logger.notice("Stream verify: engine.isRunning=\(engineRunning, privacy: .public), device[\(effectiveDeviceID, privacy: .public)].isRunning=\(deviceRunning, privacy: .public), boundDevice=\(boundStr, privacy: .public)")
+            logger.error("Stream verify FAILED after 1.2s: engine.isRunning=\(engineRunning, privacy: .public), device[\(effectiveDeviceID, privacy: .public)].isRunning=\(deviceRunning, privacy: .public), boundDevice=\(boundStr, privacy: .public)")
             if !engineRunning && !deviceRunning {
                 failureLock.withLock { current in
                     if current == nil {
                         current = StreamFailure(
-                            reason: "engine and device both not running 300 ms after start (bound=\(boundStr))",
+                            reason: "engine and device both not running 1.2 s after start (bound=\(boundStr))",
                             deviceID: effectiveDeviceID
                         )
                     }
@@ -262,7 +276,14 @@ final class TranscriptionEngine: @unchecked Sendable {
 
     private func handleAudioEngineConfigurationChange(_ note: Notification) {
         guard let posted = note.object as? AVAudioEngine else { return }
-        guard let streamEngine = currentStreamEngine(), posted === streamEngine else { return }
+        guard streamAudioProcessor != nil else { return }
+        // WhisperKit stores the engine on `AudioProcessor.audioEngine` only
+        // after `setupEngine` returns, but the most important config-change
+        // notification fires *inside* `setupEngine` during `assignAudioInput`.
+        // If our tracked engine is nil we're in that window — trust the
+        // posted object. If it's non-nil, require the references to match so
+        // we don't act on unrelated engines.
+        if let tracked = currentStreamEngine(), posted !== tracked { return }
         let attempt = configChangeRetries.withLock { current -> Int in
             current += 1
             return current
@@ -271,10 +292,10 @@ final class TranscriptionEngine: @unchecked Sendable {
             logger.warning("AVAudioEngine config change fired \(attempt) times — giving up to avoid an infinite restart loop")
             return
         }
-        logger.warning("AVAudioEngine config changed (attempt \(attempt)/\(Self.maxConfigChangeRetries)); isRunning=\(streamEngine.isRunning, privacy: .public) — restarting")
+        logger.warning("AVAudioEngine config changed (attempt \(attempt)/\(Self.maxConfigChangeRetries)); posted.isRunning=\(posted.isRunning, privacy: .public) — restarting")
         do {
-            if !streamEngine.isRunning {
-                try streamEngine.start()
+            if !posted.isRunning {
+                try posted.start()
                 logger.info("Engine restarted after config change")
             }
         } catch {
