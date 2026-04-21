@@ -16,6 +16,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 - **Near-instant results** — a full minute of dictation lands in about two seconds after you release the key. On-device streaming transcription runs on Apple Silicon's Neural Engine while you speak
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
+- **Drop files to transcribe** — drag an audio or video file onto the menu bar icon and Roger writes a `.txt` transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
 - **Completely private** — Powered by [WhisperKit](https://github.com/argmaxinc/WhisperKit) on Apple Silicon. Your audio never leaves your Mac
 - **Speaks your language** — English and German with automatic detection. More languages via Whisper's multilingual models
 - **Cheat-sheet menu bar** — one glance at the popup tells you which Caps Lock combo maps to which preset
@@ -64,6 +65,10 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 ## How It Works
 
 Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription streams while you're still speaking, so the text lands almost the instant you release the key. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
+
+### Transcribing files
+
+Drop any audio or video file on Roger's menu bar icon and it writes the transcript to a `.txt` next to the source — or into a folder you pick once. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
 
 ### Presets
 
