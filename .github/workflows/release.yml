@@ -147,12 +147,14 @@ jobs:
 
             app "Roger.app"
 
+            uninstall quit:   "com.jordiboehme.roger",
+                      signal: ["TERM", "com.jordiboehme.roger"]
+
             postflight do
+              sleep 1
               system_command "/usr/bin/open",
                              args: ["-g", "#{appdir}/Roger.app"]
             end
-
-            uninstall quit: "com.jordiboehme.roger"
 
             zap trash: [
               "~/Library/Preferences/com.jordiboehme.roger.plist",
