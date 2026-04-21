@@ -339,6 +339,14 @@ final class TranscriptionEngine: @unchecked Sendable {
             throw TranscriptionError.engineNotReady
         }
 
+        // Give the AVAudioEngine tap 400 ms to deliver any in-flight CoreAudio
+        // buffers before we stop the engine. AVAudioEngine.stop() doesn't drain
+        // the tap queue, so without this the user's last ~100–300 ms of speech
+        // (whatever was captured but not yet posted to the tap at release time)
+        // never reaches audioSamples and the tail-transcription pass has
+        // nothing to work with — matching the "last word missing" reports.
+        try? await Task.sleep(nanoseconds: 400_000_000)
+
         // Stop first so `isRecording` flips; then await the loop task so any
         // in-flight transcription completes and its final state callback
         // stores the last snapshot. Cancelling here would truncate that.
