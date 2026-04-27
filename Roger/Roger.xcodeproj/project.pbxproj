@@ -20,6 +20,7 @@
 		4DD7DEA2516E85109962320A /* PresetsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A0A4791B4A23ABD03E2E73 /* PresetsSettingsView.swift */; };
 		534265710C94922C09B71061 /* PostProcessingError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0401FF3C26D3570A4B9327 /* PostProcessingError.swift */; };
 		583176DFB9DFFD38937FF20C /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6972514B1B5E8BA603EE725 /* PermissionManager.swift */; };
+		5EC825349D6579F42FA4256C /* WhisperLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD264FA686F59259F35AA09C /* WhisperLanguage.swift */; };
 		6CB21C458EC0B49CE990D65E /* OllamaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD62AA2204EFE4A8FF5B753A /* OllamaService.swift */; };
 		78AD589F34F12F3C0D0CB2B7 /* PostProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 363FE7FFAB640D4E02028622 /* PostProcessor.swift */; };
 		7A64A7D19FA3AABED6442E14 /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76126D47E61F9F1ABC8F3D3F /* OpenAIService.swift */; };
@@ -78,6 +79,7 @@
 		E4FE02D8F52A5C784CB71EF8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E6972514B1B5E8BA603EE725 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		EBCA55416A36AA2C965EA71E /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		FD264FA686F59259F35AA09C /* WhisperLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperLanguage.swift; sourceTree = "<group>"; };
 		FD62AA2204EFE4A8FF5B753A /* OllamaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -111,6 +113,7 @@
 				DC697D5097263C850B4C7CFE /* DictationPreset.swift */,
 				69BD03DEF1FE8D1DF6DC6727 /* LLMProviderType.swift */,
 				AD0401FF3C26D3570A4B9327 /* PostProcessingError.swift */,
+				FD264FA686F59259F35AA09C /* WhisperLanguage.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -300,6 +303,7 @@
 				15D86F6997A1BFD1CCCF837F /* TextInsertionService.swift in Sources */,
 				37232077938661382D5F2A41 /* TranscriptOutputWriter.swift in Sources */,
 				9E56B6E9D4A6E20FE1C99CEC /* TranscriptionEngine.swift in Sources */,
+				5EC825349D6579F42FA4256C /* WhisperLanguage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

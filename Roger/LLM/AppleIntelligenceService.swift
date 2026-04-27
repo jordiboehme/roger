@@ -62,3 +62,24 @@ struct AppleIntelligenceFallbackService: LLMService {
         throw LLMError.providerUnavailable("Apple Intelligence requires macOS 26 or later")
     }
 }
+
+/// Apple Intelligence's FoundationModels supports a small curated language set
+/// that's narrower than Whisper's. Used by the preset editor to warn users
+/// when they pin a Whisper language the local AI step won't be able to follow.
+enum AppleIntelligenceLanguageSupport {
+    /// Hardcoded fallback for builds running on macOS < 26 where the runtime
+    /// list isn't available. The macOS-26 path below wins when present, so
+    /// future expansions of FoundationModels' language set are picked up
+    /// automatically.
+    static let fallbackCodes: Set<String> = ["en", "fr", "de", "it", "pt", "es", "ja", "ko", "zh"]
+
+    static func supports(languageCode code: String) -> Bool {
+        #if canImport(FoundationModels)
+        if #available(macOS 26, *) {
+            let supported = SystemLanguageModel.default.supportedLanguages
+            return supported.contains { $0.languageCode?.identifier == code }
+        }
+        #endif
+        return fallbackCodes.contains(code)
+    }
+}

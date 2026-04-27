@@ -44,6 +44,9 @@ struct DictationPreset: Identifiable, Codable, Equatable {
     var trailingCharacter: TrailingCharacter
     var sendReturnAfterInsert: Bool
     var excludedFromRotation: Bool
+    /// ISO-639-1 language code passed to WhisperKit, or nil for auto-detect.
+    /// Ignored when the active model is English-only (see AppState.resolvedLanguage).
+    var language: String?
 
     var requiresAI: Bool {
         enableAIFormatting || enableRewrite
@@ -63,7 +66,8 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         dictionaryEntries: [DictionaryEntry],
         trailingCharacter: TrailingCharacter = .none,
         sendReturnAfterInsert: Bool = false,
-        excludedFromRotation: Bool = false
+        excludedFromRotation: Bool = false,
+        language: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -79,6 +83,7 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         self.trailingCharacter = trailingCharacter
         self.sendReturnAfterInsert = sendReturnAfterInsert
         self.excludedFromRotation = excludedFromRotation
+        self.language = language
     }
 
     init(from decoder: Decoder) throws {
@@ -97,6 +102,7 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         trailingCharacter = try c.decodeIfPresent(TrailingCharacter.self, forKey: .trailingCharacter) ?? .none
         sendReturnAfterInsert = try c.decodeIfPresent(Bool.self, forKey: .sendReturnAfterInsert) ?? false
         excludedFromRotation = try c.decodeIfPresent(Bool.self, forKey: .excludedFromRotation) ?? false
+        language = try c.decodeIfPresent(String.self, forKey: .language)
     }
 }
 

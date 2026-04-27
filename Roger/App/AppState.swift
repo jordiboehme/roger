@@ -177,6 +177,16 @@ final class AppState {
 
     // MARK: - Computed
 
+    /// Effective WhisperKit `language` for a transcription session. English-only
+    /// models cannot decode anything else, so the preset override is silently
+    /// dropped in that case (the UI separately warns the user).
+    func resolvedLanguage(for preset: DictationPreset) -> String? {
+        if let forced = transcriptionMode.whisperLanguage {
+            return forced
+        }
+        return preset.language
+    }
+
     var isListening: Bool {
         dictationState == .listening
     }

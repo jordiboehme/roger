@@ -14,6 +14,7 @@ final class TranscriptionEngine: @unchecked Sendable {
     private var streamTranscriber: AudioStreamTranscriber?
     private var streamLoopTask: Task<Void, Never>?
     private var streamMode: TranscriptionMode?
+    private var streamLanguageOverride: String?
     // `any AudioProcessing` isn't Sendable, but we only touch this reference
     // before `startStreamTranscription` returns and after `streamLoopTask`
     // has awaited to completion — the actor's loop never runs concurrently
@@ -123,7 +124,7 @@ final class TranscriptionEngine: @unchecked Sendable {
     /// is honored while WhisperKit's `AudioStreamTranscriber` actor runs its
     /// 100 ms transcription loop in the background. Use `finishStreaming` to
     /// stop and harvest the final text.
-    func startStreaming(mode: TranscriptionMode, inputDeviceID: AudioDeviceID?) async throws {
+    func startStreaming(mode: TranscriptionMode, languageOverride: String?, inputDeviceID: AudioDeviceID?) async throws {
         guard let whisperKit else {
             throw TranscriptionError.engineNotReady
         }
@@ -156,9 +157,10 @@ final class TranscriptionEngine: @unchecked Sendable {
             self?.handleAudioEngineConfigurationChange(note)
         }
 
+        let resolvedLanguage = languageOverride ?? mode.whisperLanguage
         let options = DecodingOptions(
-            language: mode.whisperLanguage,
-            detectLanguage: mode.whisperLanguage == nil,
+            language: resolvedLanguage,
+            detectLanguage: resolvedLanguage == nil,
             skipSpecialTokens: true,
             suppressBlank: true
         )
@@ -195,6 +197,7 @@ final class TranscriptionEngine: @unchecked Sendable {
         )
         streamTranscriber = transcriber
         streamMode = mode
+        streamLanguageOverride = languageOverride
 
         let pinnedDeviceID = (streamAudioProcessor as? DevicePinnedAudioProcessor)?.pinnedDevice ?? 0
         let failureLock = streamFailure
@@ -356,6 +359,8 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamTranscriber = nil
         let mode = streamMode
         streamMode = nil
+        let languageOverride = streamLanguageOverride
+        streamLanguageOverride = nil
         let audioProcessor = streamAudioProcessor
         streamAudioProcessor = nil
         if let obs = configChangeObserver {
@@ -385,7 +390,8 @@ final class TranscriptionEngine: @unchecked Sendable {
             audioProcessor: audioProcessor,
             confirmedSegments: confirmedSegments,
             unconfirmedSegments: unconfirmedSegments,
-            mode: mode
+            mode: mode,
+            languageOverride: languageOverride
         )
 
         let text: String
@@ -398,11 +404,11 @@ final class TranscriptionEngine: @unchecked Sendable {
         }
 
         // AudioStreamTranscriber.State doesn't surface Whisper's language hint.
-        // If we locked the decoder to a specific language (English-only mode)
-        // we already know the answer and can skip NLLanguageRecognizer entirely.
-        // Otherwise (multilingual) run a quick local detection on the output.
+        // If we locked the decoder to a specific language (English-only mode
+        // or a per-preset override) we already know the answer and can skip
+        // NLLanguageRecognizer entirely. Otherwise run local detection.
         let detectedLanguage: String?
-        if let forced = mode?.whisperLanguage {
+        if let forced = languageOverride ?? mode?.whisperLanguage {
             detectedLanguage = forced
         } else if text.isEmpty {
             detectedLanguage = nil
@@ -420,7 +426,8 @@ final class TranscriptionEngine: @unchecked Sendable {
         audioProcessor: (any AudioProcessing)?,
         confirmedSegments: [TranscriptionSegment],
         unconfirmedSegments: [TranscriptionSegment],
-        mode: TranscriptionMode?
+        mode: TranscriptionMode?,
+        languageOverride: String?
     ) async -> String {
         guard let audioProcessor, let whisperKit, let mode else { return "" }
 
@@ -436,9 +443,10 @@ final class TranscriptionEngine: @unchecked Sendable {
         guard tailStartIndex >= 0, tailSampleCount >= minTailSamples else { return "" }
 
         let tail = Array(samples[tailStartIndex..<samples.count])
+        let resolvedLanguage = languageOverride ?? mode.whisperLanguage
         let options = DecodingOptions(
-            language: mode.whisperLanguage,
-            detectLanguage: mode.whisperLanguage == nil,
+            language: resolvedLanguage,
+            detectLanguage: resolvedLanguage == nil,
             skipSpecialTokens: true,
             suppressBlank: true
         )
@@ -471,6 +479,7 @@ final class TranscriptionEngine: @unchecked Sendable {
         streamLoopTask = nil
         streamTranscriber = nil
         streamMode = nil
+        streamLanguageOverride = nil
         streamAudioProcessor = nil
         latestStreamSnapshot.withLock { $0 = nil }
         if let obs = configChangeObserver {
@@ -500,14 +509,15 @@ final class TranscriptionEngine: @unchecked Sendable {
     /// Transcribes an audio file directly (no microphone capture). Used for
     /// the menu bar drag-and-drop flow. WhisperKit loads and chunks the file
     /// internally via `transcribe(audioPath:decodeOptions:)`.
-    func transcribeFile(url: URL, mode: TranscriptionMode) async throws -> TranscriptionResult {
+    func transcribeFile(url: URL, mode: TranscriptionMode, languageOverride: String?) async throws -> TranscriptionResult {
         guard let whisperKit else {
             throw TranscriptionError.engineNotReady
         }
 
+        let resolvedLanguage = languageOverride ?? mode.whisperLanguage
         let options = DecodingOptions(
-            language: mode.whisperLanguage,
-            detectLanguage: mode.whisperLanguage == nil,
+            language: resolvedLanguage,
+            detectLanguage: resolvedLanguage == nil,
             skipSpecialTokens: true,
             suppressBlank: true
         )
@@ -519,7 +529,7 @@ final class TranscriptionEngine: @unchecked Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         let detectedLanguage: String?
-        if let forced = mode.whisperLanguage {
+        if let forced = resolvedLanguage {
             detectedLanguage = forced
         } else if text.isEmpty {
             detectedLanguage = nil
@@ -533,14 +543,15 @@ final class TranscriptionEngine: @unchecked Sendable {
 
     // MARK: - Batch Transcription
 
-    func transcribe(audioBuffer: [Float], mode: TranscriptionMode) async throws -> TranscriptionResult {
+    func transcribe(audioBuffer: [Float], mode: TranscriptionMode, languageOverride: String?) async throws -> TranscriptionResult {
         guard let whisperKit else {
             throw TranscriptionError.engineNotReady
         }
 
+        let resolvedLanguage = languageOverride ?? mode.whisperLanguage
         let options = DecodingOptions(
-            language: mode.whisperLanguage,
-            detectLanguage: mode.whisperLanguage == nil, // auto-detect for multilingual
+            language: resolvedLanguage,
+            detectLanguage: resolvedLanguage == nil, // auto-detect for multilingual
             skipSpecialTokens: true,
             suppressBlank: true
         )

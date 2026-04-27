@@ -79,7 +79,7 @@ struct PresetsSettingsView: View {
             if preset.wrappedValue.isBuiltIn {
                 Section {
                     HStack {
-                        Text("Built-in presets are read-only.")
+                        Text("Built-in presets are read-only — language and output settings can still be customized.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -143,6 +143,8 @@ struct PresetsSettingsView: View {
                 dictionarySection(preset: preset)
             }
 
+            languageSection(preset: preset)
+
             Section {
                 Picker("Append at end", selection: preset.trailingCharacter) {
                     ForEach(TrailingCharacter.allCases) { choice in
@@ -157,9 +159,59 @@ struct PresetsSettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .disabled(preset.wrappedValue.isBuiltIn)
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - Language Section
+
+    @ViewBuilder
+    private func languageSection(preset: Binding<DictationPreset>) -> some View {
+        let pinnedCode = preset.wrappedValue.language
+        let isEnglishOnly = coordinator.appState.transcriptionMode == .englishOnly
+        let aiUnsupported = pinnedCode.map { code in
+            preset.wrappedValue.requiresAI
+                && coordinator.appState.selectedLLMProvider == .appleIntelligence
+                && !AppleIntelligenceLanguageSupport.supports(languageCode: code)
+        } ?? false
+
+        Section {
+            Picker("Language", selection: preset.language) {
+                Text("Automatic").tag(String?.none)
+                ForEach(WhisperLanguage.all, id: \.code) { entry in
+                    Text(entry.displayName).tag(Optional(entry.code))
+                }
+            }
+            .pickerStyle(.menu)
+
+            if pinnedCode != nil && isEnglishOnly {
+                warningRow(
+                    "The active model is English-only — this language setting will be ignored. Switch to a multilingual model in General settings."
+                )
+            }
+
+            if aiUnsupported, let code = pinnedCode {
+                warningRow(
+                    "Apple Intelligence doesn't support \(WhisperLanguage.displayName(for: code)) — the AI step in this preset will fail. Switch AI provider in Settings › AI Provider, or pick a different language."
+                )
+            }
+        } header: {
+            Text("Language")
+        } footer: {
+            Text("Pin a language to skip Whisper's auto-detection and avoid short utterances being misheard as the wrong language.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func warningRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Dictionary Editor
@@ -297,7 +349,11 @@ struct PresetsSettingsView: View {
             enableRewrite: source.enableRewrite,
             aiPrompt: source.aiPrompt,
             rewritePrompt: source.rewritePrompt,
-            dictionaryEntries: source.dictionaryEntries
+            dictionaryEntries: source.dictionaryEntries,
+            trailingCharacter: source.trailingCharacter,
+            sendReturnAfterInsert: source.sendReturnAfterInsert,
+            excludedFromRotation: source.excludedFromRotation,
+            language: source.language
         )
         coordinator.appState.presets.append(newPreset)
         selectedPresetID = newPreset.id

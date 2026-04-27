@@ -68,9 +68,22 @@ private struct FloatingIndicatorContent: View {
         isListening ? Self.listeningAccent : Self.thinkingAccent
     }
 
-    private var presetName: String? {
+    private var activePreset: DictationPreset? {
         guard let id = coordinator.activeRecordingPresetID else { return nil }
-        return coordinator.appState.presets.first { $0.id == id }?.name
+        return coordinator.appState.presets.first { $0.id == id }
+    }
+
+    private var presetName: String? {
+        activePreset?.name
+    }
+
+    /// The language Whisper is actually decoding with — `appState.resolvedLanguage`
+    /// applies the English-only-model override, so a German-pinned preset
+    /// running on the English-only model correctly shows EN here.
+    /// Nil (multilingual + Automatic) stays badge-free.
+    private var pinnedLanguageCode: String? {
+        guard let preset = activePreset else { return nil }
+        return coordinator.appState.resolvedLanguage(for: preset)
     }
 
     @ViewBuilder
@@ -128,9 +141,14 @@ private struct FloatingIndicatorContent: View {
                         .foregroundStyle(.primary)
                         .contentTransition(.opacity)
                     if let presetName {
-                        Text("as \(presetName)")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 5) {
+                            Text("as \(presetName)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            if let code = pinnedLanguageCode {
+                                LanguageBadge(code: code)
+                            }
+                        }
                     }
                 }
                 .animation(.easeInOut(duration: 0.2), value: isListening)
@@ -156,6 +174,27 @@ private struct FloatingIndicatorContent: View {
                 pulseOpacity = 0.45
             }
         }
+    }
+}
+
+private struct LanguageBadge: View {
+    let code: String
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "globe")
+                .font(.system(size: 9, weight: .semibold))
+            Text(code.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 1)
+        .background {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(.primary.opacity(0.12))
+        }
+        .help(WhisperLanguage.displayName(for: code))
     }
 }
 

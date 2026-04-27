@@ -134,7 +134,9 @@ final class AppCoordinator {
             resolvedPresetID = appState.activePresetID
         }
         activeRecordingPresetID = resolvedPresetID
-        let presetName = appState.presets.first { $0.id == resolvedPresetID }?.name ?? "Polished"
+        let resolvedPreset = appState.presets.first { $0.id == resolvedPresetID } ?? .polished
+        let presetName = resolvedPreset.name
+        let languageOverride = appState.resolvedLanguage(for: resolvedPreset)
 
         do {
             audioLevelMeter.reset()
@@ -145,6 +147,7 @@ final class AppCoordinator {
             let deviceID = appState.selectedInputDeviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
             try await transcriptionEngine.startStreaming(
                 mode: appState.transcriptionMode,
+                languageOverride: languageOverride,
                 inputDeviceID: deviceID
             )
             streamingSessionActive = true
@@ -425,15 +428,17 @@ final class AppCoordinator {
             if prepared.isTemporary { tempURL = prepared.url }
             try Task.checkCancellation()
 
+            // File transcripts never run through the LLM — `fileTranscriptionPreset`
+            // is guaranteed to have no AI steps enabled (see AppState). Read it
+            // up-front so the per-preset language override can flow into Whisper.
+            let preset = appState.fileTranscriptionPreset
+            let languageOverride = appState.resolvedLanguage(for: preset)
             let result = try await transcriptionEngine.transcribeFile(
                 url: prepared.url,
-                mode: appState.transcriptionMode
+                mode: appState.transcriptionMode,
+                languageOverride: languageOverride
             )
             try Task.checkCancellation()
-
-            // File transcripts never run through the LLM — `fileTranscriptionPreset`
-            // is guaranteed to have no AI steps enabled (see AppState).
-            let preset = appState.fileTranscriptionPreset
             let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
             let processedText = try await postProcessor.process(
                 result.text,
