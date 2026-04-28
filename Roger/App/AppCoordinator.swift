@@ -246,7 +246,12 @@ final class AppCoordinator {
             var processedText = result.text
 
             // Determine language for AI prompt context
-            let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
+            let languageName: String = {
+                if let code = result.detectedLanguage {
+                    return WhisperLanguage.displayName(for: code)
+                }
+                return appState.transcriptionMode.languageHint ?? "the original language"
+            }()
 
             let llmStart = Date()
             if activePreset.requiresAI {
@@ -439,7 +444,12 @@ final class AppCoordinator {
                 languageOverride: languageOverride
             )
             try Task.checkCancellation()
-            let languageName = result.detectedLanguage ?? appState.transcriptionMode.languageHint ?? "the original language"
+            let languageName: String = {
+                if let code = result.detectedLanguage {
+                    return WhisperLanguage.displayName(for: code)
+                }
+                return appState.transcriptionMode.languageHint ?? "the original language"
+            }()
             let processedText = try await postProcessor.process(
                 result.text,
                 preset: preset,

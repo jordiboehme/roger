@@ -184,7 +184,7 @@ struct PresetsSettingsView: View {
             }
             .pickerStyle(.menu)
 
-            if pinnedCode != nil && isEnglishOnly {
+            if let code = pinnedCode, code != "en", isEnglishOnly {
                 warningRow(
                     "The active model is English-only — this language setting will be ignored. Switch to a multilingual model in General settings."
                 )
