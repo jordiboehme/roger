@@ -25,6 +25,7 @@ Package.resolved
 # Claude Code
 CLAUDE.md
 .claude/
+.serena/
 
 # Temporary files
 *.swp

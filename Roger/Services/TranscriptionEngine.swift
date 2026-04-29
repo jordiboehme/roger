@@ -85,25 +85,15 @@ final class TranscriptionEngine: @unchecked Sendable {
                 audioEncoderCompute: .cpuAndNeuralEngine,
                 textDecoderCompute: .cpuAndNeuralEngine
             ),
-            verbose: false
+            verbose: false,
+            prewarm: true,
+            load: true
         )
 
         let pipe = try await WhisperKit(config)
         whisperKit = pipe
         currentModelName = modelName
         progressHandler(1.0)
-
-        // Warmup: run a short silent transcription to trigger CoreML compilation
-        // and Neural Engine loading. Without this, the first real transcription
-        // takes 30-60s while the model compiles lazily.
-        logger.info("Warming up model…")
-        let silence = [Float](repeating: 0, count: Int(AudioCaptureService.targetSampleRate))
-        let warmupOptions = DecodingOptions(
-            language: "en",
-            skipSpecialTokens: true,
-            suppressBlank: true
-        )
-        _ = try? await pipe.transcribe(audioArray: silence, decodeOptions: warmupOptions)
         await persistCurrentEtag()
         logger.info("WhisperKit ready with model: \(modelName)")
     }

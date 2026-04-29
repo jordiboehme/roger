@@ -25,6 +25,7 @@ final class AppCoordinator {
     var isModelReady = false
     var isCheckingModelUpdate = false
     var modelUpdateAvailable: Bool? = nil
+    var lastModelError: String? = nil
     private(set) var activeRecordingPresetID: UUID?
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
@@ -351,6 +352,7 @@ final class AppCoordinator {
         }
 
         isSettingUpModel = true
+        lastModelError = nil
 
         do {
             try await transcriptionEngine.setup(mode: mode) { _ in }
@@ -360,6 +362,7 @@ final class AppCoordinator {
         } catch {
             logger.error("Model setup failed: \(error)")
             isSettingUpModel = false
+            lastModelError = error.localizedDescription
             appState.dictationState = .error("Model download failed — check your connection and retry")
         }
     }
@@ -385,10 +388,12 @@ final class AppCoordinator {
         await transcriptionEngine.uninstall()
         isModelReady = false
         modelUpdateAvailable = nil
+        lastModelError = nil
     }
 
     func reinstallModel() async {
         isModelReady = false
+        lastModelError = nil
         await transcriptionEngine.uninstall()
         await setupModel()
     }

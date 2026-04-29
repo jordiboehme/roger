@@ -639,6 +639,13 @@ struct ModelSettingsView: View {
                             }
                         }
 
+                        if let err = coordinator.lastModelError {
+                            Text(err)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
                         if !isSettingUp && !isChecking {
                             if isModelReady {
                                 HStack(spacing: 8) {
