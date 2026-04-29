@@ -90,7 +90,7 @@ struct PostProcessor: Sendable {
             }
         }
         // Collapse multiple spaces and trim
-        result = result.replacingOccurrences(of: "\\s{2,}", with: " ", options: .regularExpression)
+        result = result.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
