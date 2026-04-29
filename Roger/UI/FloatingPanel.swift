@@ -213,12 +213,13 @@ private struct PanelWaveform: View {
         TimelineView(.animation) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             let level = CGFloat(meter.level)
+            let speechDetected = meter.isSpeechDetected
             HStack(spacing: 3) {
                 ForEach(0..<5, id: \.self) { i in
                     let wave = 0.5 + 0.5 * sin(t * Self.omega + Self.phases[i])
                     let h = Self.baseline + (Self.idleAmp + level * Self.peakExtra) * CGFloat(wave)
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(.primary)
+                        .fill(speechDetected ? Color.accentColor : .primary.opacity(0.5))
                         .frame(width: 3, height: h)
                 }
             }

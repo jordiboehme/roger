@@ -26,6 +26,9 @@ final class AudioLevelMeter {
         level += (target - level) * k
     }
 
+    /// True when the smoothed level indicates active speech rather than silence or ambient noise.
+    var isSpeechDetected: Bool { level > 0.12 }
+
     func reset() {
         level = 0
     }
