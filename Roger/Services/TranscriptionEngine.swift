@@ -104,7 +104,42 @@ final class TranscriptionEngine: @unchecked Sendable {
             suppressBlank: true
         )
         _ = try? await pipe.transcribe(audioArray: silence, decodeOptions: warmupOptions)
+        await persistCurrentEtag()
         logger.info("WhisperKit ready with model: \(modelName)")
+    }
+
+    func uninstall() async {
+        let folder = whisperKit?.modelFolder
+        whisperKit = nil
+        currentModelName = nil
+        if let folder {
+            try? FileManager.default.removeItem(at: folder)
+        }
+    }
+
+    func checkForUpdate() async throws -> Bool {
+        guard let modelName = currentModelName else { return false }
+        guard let url = URL(string: "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/main/\(modelName)/config.json") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return false }
+        let remoteEtag = http.value(forHTTPHeaderField: "x-linked-etag") ?? http.value(forHTTPHeaderField: "etag")
+        let storedEtag = UserDefaults.standard.string(forKey: "whisperKitEtag_\(modelName)")
+        guard let remoteEtag else { return false }
+        return remoteEtag != storedEtag
+    }
+
+    private func persistCurrentEtag() async {
+        guard let modelName = currentModelName else { return }
+        guard let url = URL(string: "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/main/\(modelName)/config.json") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              let etag = http.value(forHTTPHeaderField: "x-linked-etag") ?? http.value(forHTTPHeaderField: "etag")
+        else { return }
+        UserDefaults.standard.set(etag, forKey: "whisperKitEtag_\(modelName)")
     }
 
     struct TranscriptionResult {

@@ -21,6 +21,9 @@ final class AppCoordinator {
 
     var hotkeyActive = false
     var isSettingUpModel = false
+    var isModelReady = false
+    var isCheckingModelUpdate = false
+    var modelUpdateAvailable: Bool? = nil
     private(set) var activeRecordingPresetID: UUID?
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
@@ -350,6 +353,7 @@ final class AppCoordinator {
         do {
             try await transcriptionEngine.setup(mode: mode) { _ in }
             isSettingUpModel = false
+            isModelReady = true
             logger.info("Model setup complete")
         } catch {
             logger.error("Model setup failed: \(error)")
@@ -371,6 +375,32 @@ final class AppCoordinator {
         defer { isWarmingUp = false }
         audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
         await audioCaptureService.warmUp()
+    }
+
+    // MARK: - Model Management
+
+    func uninstallModel() async {
+        await transcriptionEngine.uninstall()
+        isModelReady = false
+        modelUpdateAvailable = nil
+    }
+
+    func reinstallModel() async {
+        isModelReady = false
+        await transcriptionEngine.uninstall()
+        await setupModel()
+    }
+
+    func checkForModelUpdate() async {
+        guard !isCheckingModelUpdate else { return }
+        isCheckingModelUpdate = true
+        modelUpdateAvailable = nil
+        defer { isCheckingModelUpdate = false }
+        do {
+            modelUpdateAvailable = try await transcriptionEngine.checkForUpdate()
+        } catch {
+            logger.warning("Model update check failed: \(error)")
+        }
     }
 
     // MARK: - File Transcription (drag-and-drop)

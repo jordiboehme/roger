@@ -16,6 +16,11 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gear") }
                 .tag(SettingsTab.general)
 
+            ModelSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("Model", systemImage: "cpu") }
+                .tag(SettingsTab.model)
+
             PresetsSettingsView()
                 .environment(coordinator)
                 .tabItem { Label("Presets", systemImage: "antenna.radiowaves.left.and.right") }
@@ -35,14 +40,6 @@ struct SettingsView: View {
                 .environment(coordinator)
                 .tabItem { Label("AI Provider", systemImage: "sparkles") }
                 .tag(SettingsTab.aiProvider)
-
-            ModelSettingsView(
-                engine: coordinator.transcriptionEngine,
-                isSettingUp: coordinator.isSettingUpModel,
-                onSetup: { Task { await coordinator.setupModel() } }
-            )
-                .tabItem { Label("Model", systemImage: "cpu") }
-                .tag(SettingsTab.model)
 
             FileTranscriptionSettingsView(state: state)
                 .tabItem { Label("File Transcription", systemImage: "doc.text.magnifyingglass") }
@@ -73,27 +70,6 @@ struct GeneralSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Transcription
-                settingsCard(icon: "waveform", title: "Transcription") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        settingsRow("Mode") {
-                            Picker("", selection: $state.transcriptionMode) {
-                                ForEach(TranscriptionMode.allCases) { mode in
-                                    Text(mode.displayName).tag(mode)
-                                }
-                            }
-                            .labelsHidden()
-                            .fixedSize()
-                        }
-
-                        settingsRow("Model") {
-                            Text(state.transcriptionMode.modelDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
                 // Activation
                 settingsCard(icon: "keyboard", title: "Activation") {
                     VStack(alignment: .leading, spacing: 12) {
@@ -146,9 +122,6 @@ struct GeneralSettingsView: View {
             .padding()
         }
         .onAppear { state.syncLaunchAtLogin() }
-        .onChange(of: state.transcriptionMode) { _, _ in
-            Task { await coordinator.setupModel() }
-        }
         .onChange(of: state.activationMode) { _, newMode in
             coordinator.hotkeyManager.activationMode = newMode
         }
@@ -590,64 +563,157 @@ struct FileTranscriptionSettingsView: View {
 // MARK: - Model
 
 struct ModelSettingsView: View {
-    var engine: TranscriptionEngine
-    var isSettingUp: Bool
-    var onSetup: () -> Void
+    @Environment(AppCoordinator.self) private var coordinator
+    @State private var showUninstallConfirm = false
 
     var body: some View {
+        @Bindable var state = coordinator.appState
+        let engine = coordinator.transcriptionEngine
+        let isSettingUp = coordinator.isSettingUpModel
+        let isChecking = coordinator.isCheckingModelUpdate
+        let isModelReady = coordinator.isModelReady
+
         ScrollView {
             VStack(spacing: 16) {
-                // Status card
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "cpu")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 20)
-                        Text("Speech Model")
-                            .font(.headline)
-                        Spacer()
-
-                        if isSettingUp {
-                            HStack(spacing: 6) {
-                                ProgressView().controlSize(.small)
-                                Text("Loading…")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                // Transcription Mode
+                settingsCard(icon: "waveform", title: "Transcription") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        settingsRow("Mode") {
+                            Picker("", selection: $state.transcriptionMode) {
+                                ForEach(TranscriptionMode.allCases) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
                             }
-                        } else if engine.isReady {
-                            Text("Ready")
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                        settingsRow("Model") {
+                            Text(state.transcriptionMode.modelDescription)
                                 .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(.green.opacity(0.15))
-                                .foregroundStyle(.green)
-                                .clipShape(Capsule())
-                        } else {
-                            Text("Not loaded")
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(.red.opacity(0.15))
-                                .foregroundStyle(.red)
-                                .clipShape(Capsule())
+                                .foregroundStyle(.secondary)
                         }
                     }
+                }
 
-                    Text("Roger uses WhisperKit for on-device speech recognition. Models run entirely on your Mac using the Neural Engine — your voice data never leaves your machine.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                // Speech Model
+                settingsCard(icon: "cpu", title: "Speech Model") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Text("Roger uses WhisperKit for on-device speech recognition. Models run entirely on your Mac using the Neural Engine — your voice data never leaves your machine.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if isSettingUp || isChecking {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text(isChecking ? "Checking…" : "Loading…")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else if isModelReady {
+                                Text("Ready")
+                                    .font(.caption)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(.green.opacity(0.15))
+                                    .foregroundStyle(.green)
+                                    .clipShape(Capsule())
+                            } else {
+                                Text("Not loaded")
+                                    .font(.caption)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(.red.opacity(0.15))
+                                    .foregroundStyle(.red)
+                                    .clipShape(Capsule())
+                            }
+                        }
 
-                    if !engine.isReady && !isSettingUp {
-                        Button("Download Model") { onSetup() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
+                        if !isSettingUp && !isChecking {
+                            if isModelReady {
+                                HStack(spacing: 8) {
+                                    Button("Check for Updates") {
+                                        Task { await coordinator.checkForModelUpdate() }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
+                                    if coordinator.modelUpdateAvailable == true {
+                                        Button("Update") {
+                                            Task { await coordinator.reinstallModel() }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+                                    }
+
+                                    Spacer()
+
+                                    Button("Uninstall", role: .destructive) {
+                                        showUninstallConfirm = true
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+
+                                if let available = coordinator.modelUpdateAvailable {
+                                    Text(available ? "Update available" : "Up to date")
+                                        .font(.caption2)
+                                        .foregroundStyle(available ? .orange : .green)
+                                }
+                            } else {
+                                Button("Download Model") {
+                                    Task { await coordinator.setupModel() }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        }
                     }
                 }
-                .padding(14)
-                .background(.quaternary.opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .padding()
+        }
+        .onChange(of: state.transcriptionMode) { _, _ in
+            coordinator.modelUpdateAvailable = nil
+            Task { await coordinator.setupModel() }
+        }
+        .confirmationDialog(
+            "Uninstall Speech Model?",
+            isPresented: $showUninstallConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Uninstall", role: .destructive) {
+                Task { await coordinator.uninstallModel() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The model will be deleted from your Mac. You can re-download it at any time.")
+        }
+    }
+
+    private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                Text(title)
+                    .font(.headline)
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func settingsRow(_ label: String, @ViewBuilder trailing: () -> some View) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12))
+            Spacer()
+            trailing()
         }
     }
 }
