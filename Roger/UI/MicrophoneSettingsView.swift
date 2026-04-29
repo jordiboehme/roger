@@ -42,8 +42,12 @@ struct MicrophoneSettingsView: View {
                 Button(testing ? "Testing…" : "Test") { runTest() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(testing)
-                if let testResult {
+                    .disabled(testing || !coordinator.permissionManager.microphoneAuthorized)
+                if !coordinator.permissionManager.microphoneAuthorized {
+                    Text("Microphone access required")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if let testResult {
                     Text(testResult)
                         .font(.caption2)
                         .foregroundStyle(testResult.hasPrefix("OK") ? .green : .red)

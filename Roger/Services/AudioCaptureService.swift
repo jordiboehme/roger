@@ -37,6 +37,10 @@ final class AudioCaptureService: @unchecked Sendable {
     }
 
     func startCapture() throws {
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            throw AudioCaptureError.permissionDenied
+        }
+
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
@@ -188,11 +192,14 @@ final class AudioCaptureService: @unchecked Sendable {
 
 enum AudioCaptureError: LocalizedError {
     case noInputDevice
+    case permissionDenied
 
     var errorDescription: String? {
         switch self {
         case .noInputDevice:
             return "No audio input device found"
+        case .permissionDenied:
+            return "Microphone access denied — grant permission in System Settings › Privacy & Security"
         }
     }
 }
