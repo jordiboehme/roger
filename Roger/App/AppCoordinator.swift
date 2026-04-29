@@ -2,6 +2,7 @@ import AppKit
 import CoreAudio
 import Foundation
 import Observation
+import SpeakerKit
 import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "AppCoordinator")
@@ -33,6 +34,7 @@ final class AppCoordinator {
     /// floating indicator observes this to show the "Transcribing X" overlay.
     private(set) var activeFileTranscription: FileTranscriptionJob?
     private var fileTranscriptionTask: Task<Void, Never>?
+    private var speakerKit: SpeakerKit?
 
     init() {
         setupHotkeyCallbacks()
@@ -468,25 +470,72 @@ final class AppCoordinator {
             // up-front so the per-preset language override can flow into Whisper.
             let preset = appState.fileTranscriptionPreset
             let languageOverride = appState.resolvedLanguage(for: preset)
-            let result = try await transcriptionEngine.transcribeFile(
-                url: prepared.url,
-                mode: appState.transcriptionMode,
-                languageOverride: languageOverride
-            )
-            try Task.checkCancellation()
-            let languageName: String = {
-                if let code = result.detectedLanguage {
-                    return WhisperLanguage.displayName(for: code)
+
+            let result: TranscriptionEngine.TranscriptionResult
+            let processedText: String
+
+            if appState.fileTranscriptionDiarize {
+                let detailed = try await transcriptionEngine.transcribeFileDetailed(
+                    url: prepared.url,
+                    mode: appState.transcriptionMode,
+                    languageOverride: languageOverride
+                )
+                try Task.checkCancellation()
+
+                let languageName: String = {
+                    if let code = detailed.result.detectedLanguage {
+                        return WhisperLanguage.displayName(for: code)
+                    }
+                    return appState.transcriptionMode.languageHint ?? "the original language"
+                }()
+
+                // Diarization is best-effort: if model download or inference fails,
+                // fall back to the plain transcription rather than surfacing an error.
+                let textToParse: String
+                do {
+                    if speakerKit == nil {
+                        speakerKit = try await SpeakerKit()
+                    }
+                    let diarization = try await speakerKit!.diarize(audioArray: detailed.audioSamples)
+                    let labeled = diarization.addSpeakerInfo(to: detailed.rawSegments, strategy: .subsegment)
+                    let diarized = formatDiarized(labeled)
+                    textToParse = diarized.isEmpty ? detailed.result.text : diarized
+                } catch {
+                    logger.warning("Diarization failed, using plain transcript: \(error.localizedDescription, privacy: .public)")
+                    textToParse = detailed.result.text
                 }
-                return appState.transcriptionMode.languageHint ?? "the original language"
-            }()
-            let processedText = try await postProcessor.process(
-                result.text,
-                preset: preset,
-                language: languageName,
-                llmService: nil
-            )
+
+                result = detailed.result
+                processedText = try await postProcessor.process(
+                    textToParse,
+                    preset: preset,
+                    language: languageName,
+                    llmService: nil
+                )
+            } else {
+                let r = try await transcriptionEngine.transcribeFile(
+                    url: prepared.url,
+                    mode: appState.transcriptionMode,
+                    languageOverride: languageOverride
+                )
+                result = r
+                try Task.checkCancellation()
+                let languageName: String = {
+                    if let code = r.detectedLanguage {
+                        return WhisperLanguage.displayName(for: code)
+                    }
+                    return appState.transcriptionMode.languageHint ?? "the original language"
+                }()
+                processedText = try await postProcessor.process(
+                    r.text,
+                    preset: preset,
+                    language: languageName,
+                    llmService: nil
+                )
+            }
+
             try Task.checkCancellation()
+            _ = result  // silence unused-variable warning; result holds detected language
 
             guard !processedText.isEmpty else {
                 logger.warning("File transcription produced empty text: \(job.displayName, privacy: .public)")
@@ -510,6 +559,30 @@ final class AppCoordinator {
             logger.error("File transcription failed: \(error.localizedDescription, privacy: .public)")
             await finishFileTranscription(error: error.localizedDescription)
         }
+    }
+
+    private func formatDiarized(_ segments: [[SpeakerSegment]]) -> String {
+        var lines: [String] = []
+        var currentSpeaker: Int? = nil
+        var currentWords: [String] = []
+
+        for group in segments {
+            for segment in group {
+                guard let speakerId = segment.speaker.speakerId else { continue }
+                if speakerId != currentSpeaker {
+                    if let prev = currentSpeaker, !currentWords.isEmpty {
+                        lines.append("[Speaker \(prev)]\n\(currentWords.joined())")
+                    }
+                    currentSpeaker = speakerId
+                    currentWords = []
+                }
+                currentWords.append(contentsOf: segment.speakerWords.map { $0.wordTiming.word })
+            }
+        }
+        if let last = currentSpeaker, !currentWords.isEmpty {
+            lines.append("[Speaker \(last)]\n\(currentWords.joined())")
+        }
+        return lines.joined(separator: "\n\n")
     }
 
     private func finishFileTranscription(error: String?) async {

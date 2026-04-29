@@ -576,6 +576,46 @@ final class TranscriptionEngine: @unchecked Sendable {
         return TranscriptionResult(text: text, detectedLanguage: detectedLanguage)
     }
 
+    /// Loads audio into [Float] and transcribes with word timestamps enabled.
+    /// Returns the raw WhisperKit segments and audio samples so the caller can
+    /// run SpeakerKit diarization without loading the audio a second time.
+    func transcribeFileDetailed(url: URL, mode: TranscriptionMode, languageOverride: String?) async throws -> DetailedTranscriptionResult {
+        guard let whisperKit else { throw TranscriptionError.engineNotReady }
+
+        let audioSamples = try AudioProcessor.loadAudioAsFloatArray(fromPath: url.path)
+
+        let resolvedLanguage = languageOverride ?? mode.whisperLanguage
+        let options = DecodingOptions(
+            language: resolvedLanguage,
+            detectLanguage: resolvedLanguage == nil,
+            skipSpecialTokens: true,
+            wordTimestamps: true,
+            suppressBlank: true
+        )
+        let rawSegments = try await whisperKit.transcribe(audioArray: audioSamples, decodeOptions: options)
+
+        let text = rawSegments
+            .compactMap(\.text)
+            .joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
+        let detectedLanguage: String?
+        if let forced = resolvedLanguage {
+            detectedLanguage = forced
+        } else if text.isEmpty {
+            detectedLanguage = nil
+        } else {
+            detectedLanguage = Self.detectLanguage(in: text)
+        }
+
+        logger.notice("File transcription (detailed): \(url.lastPathComponent, privacy: .public) → \(text.count) chars, \(rawSegments.count) segments, language \(detectedLanguage ?? "unknown", privacy: .public)")
+        return DetailedTranscriptionResult(
+            result: TranscriptionResult(text: text, detectedLanguage: detectedLanguage),
+            rawSegments: rawSegments,
+            audioSamples: audioSamples
+        )
+    }
+
     // MARK: - Batch Transcription
 
     func transcribe(audioBuffer: [Float], mode: TranscriptionMode, languageOverride: String?) async throws -> TranscriptionResult {
@@ -618,6 +658,16 @@ enum TranscriptionError: LocalizedError {
             return "Speech recognition model not loaded. Check Settings to download it."
         }
     }
+}
+
+/// Returned by `TranscriptionEngine.transcribeFileDetailed` — holds the WhisperKit
+/// segments and audio samples so the caller can pass them directly to SpeakerKit
+/// without re-loading the audio.
+struct DetailedTranscriptionResult: Sendable {
+    let result: TranscriptionEngine.TranscriptionResult
+    // TranscriptionResult at file scope resolves to WhisperKit's type (no local shadowing here)
+    let rawSegments: [TranscriptionResult]
+    let audioSamples: [Float]
 }
 
 /// Wraps WhisperKit's `AudioProcessor` so every call that would otherwise

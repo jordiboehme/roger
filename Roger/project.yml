@@ -47,6 +47,8 @@ targets:
     dependencies:
       - package: WhisperKit
         product: WhisperKit
+      - package: WhisperKit
+        product: SpeakerKit
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
     entitlements:

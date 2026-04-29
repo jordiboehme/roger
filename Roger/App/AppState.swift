@@ -87,6 +87,9 @@ final class AppState {
     var fileTranscriptionPresetID: UUID {
         didSet { defaults.set(fileTranscriptionPresetID.uuidString, forKey: "fileTranscriptionPresetID") }
     }
+    var fileTranscriptionDiarize: Bool {
+        didSet { defaults.set(fileTranscriptionDiarize, forKey: "fileTranscriptionDiarize") }
+    }
 
     /// Resolves `fileTranscriptionPresetID` to a live preset, guaranteeing no
     /// AI steps are enabled. Falls back to Plain if the configured preset was
@@ -277,6 +280,7 @@ final class AppState {
         }
         self.fileTranscriptionPresetID = UUID(uuidString: defaults.string(forKey: "fileTranscriptionPresetID") ?? "")
             ?? DictationPreset.plain.id
+        self.fileTranscriptionDiarize = defaults.bool(forKey: "fileTranscriptionDiarize")
 
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence
         self.ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"

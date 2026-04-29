@@ -13,7 +13,7 @@
 		15D86F6997A1BFD1CCCF837F /* TextInsertionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */; };
 		20DB81390ADDD91D75C08353 /* AppleIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3743725D72D2E40A31B42614 /* AppleIntelligenceService.swift */; };
 		25391159CBA64CA491757CA1 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346522528C8F2F9999EF7C4F /* AppCoordinator.swift */; };
-		2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
+		2BAA71A5DCB02C521000BD04 /* SpeakerKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4C7239126096111E80B6D5D6 /* SpeakerKit */; };
 		37232077938661382D5F2A41 /* TranscriptOutputWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */; };
 		3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60172AF22E507A9E6C7B0C69 /* ClaudeService.swift */; };
 		413E2531054DF95877A29FB9 /* MicrophoneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F3DA0700AC3E3A517D32E0 /* MicrophoneSettingsView.swift */; };
@@ -29,6 +29,7 @@
 		9CCFE22AD4EA6C7BEF74F76D /* LLMProviderType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BD03DEF1FE8D1DF6DC6727 /* LLMProviderType.swift */; };
 		9E56B6E9D4A6E20FE1C99CEC /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */; };
 		A100FA52F7F1E7B9705D8BF6 /* AIProviderSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4533F0DE111CF2997F1DF34 /* AIProviderSettingsView.swift */; };
+		A627DC59B422E4F308AD8573 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
 		A70033CDF03B5F0F6D4386CE /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6DCE169264032BC365088F8 /* KeychainManager.swift */; };
 		AF748212A741CE6C3FD3811D /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 916885B62E04FEAE8D7C267D /* WhisperKit */; };
 		B6E2306EFA7E5281695B4565 /* AudioLevelMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F369869C241C4566988E63 /* AudioLevelMeter.swift */; };
@@ -89,7 +90,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				AF748212A741CE6C3FD3811D /* WhisperKit in Frameworks */,
-				2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */,
+				2BAA71A5DCB02C521000BD04 /* SpeakerKit in Frameworks */,
+				A627DC59B422E4F308AD8573 /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -212,6 +214,7 @@
 			name = Roger;
 			packageProductDependencies = (
 				916885B62E04FEAE8D7C267D /* WhisperKit */,
+				4C7239126096111E80B6D5D6 /* SpeakerKit */,
 				3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */,
 			);
 			productName = Roger;
@@ -506,7 +509,7 @@
 			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.2.0;
+				minimumVersion = 2.4.0;
 			};
 		};
 		2C6A3ACCB602BD6DBFFC04C7 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
@@ -514,7 +517,7 @@
 			repositoryURL = "https://github.com/argmaxinc/WhisperKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.12.0;
+				minimumVersion = 0.18.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -524,6 +527,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 2A7E9CCAC9E1A32D8C3B9C8E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
 			productName = KeyboardShortcuts;
+		};
+		4C7239126096111E80B6D5D6 /* SpeakerKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2C6A3ACCB602BD6DBFFC04C7 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = SpeakerKit;
 		};
 		916885B62E04FEAE8D7C267D /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -509,6 +509,16 @@ struct FileTranscriptionSettingsView: View {
                             .menuStyle(.borderlessButton)
                             .fixedSize()
                         }
+
+                        settingsRow("Speaker labels") {
+                            Toggle("", isOn: $state.fileTranscriptionDiarize)
+                                .labelsHidden()
+                        }
+                        if state.fileTranscriptionDiarize {
+                            Text("Adds [Speaker 0] / [Speaker 1] labels. Downloads ~150 MB of speaker models on first use.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
