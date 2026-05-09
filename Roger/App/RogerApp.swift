@@ -36,6 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var dropView: StatusBarDropView?
+    /// Drives the per-second refresh of the status-item title while a meeting
+    /// recording is live AND the floating overlay is hidden — that's the
+    /// only state where the menu-bar timestamp matters. Nil otherwise.
+    private var meetingTickTimer: DispatchSourceTimer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let coordinator = sharedCoordinator
@@ -138,10 +142,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refreshIcon(on button: NSStatusBarButton, coordinator: AppCoordinator) {
-        let name = coordinator.appState.menuBarIcon
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: "Roger")
+        // Meeting-recording mode wins over dictation in icon priority. While
+        // capture is live we use the universal "rec" glyph so the menu bar
+        // signals the higher-stakes state.
+        let isRecordingMeeting: Bool
+        let meetingStartedAt: Date?
+        switch coordinator.meetingRecorder.state {
+        case .recording(let at):
+            isRecordingMeeting = true
+            meetingStartedAt = at
+        default:
+            isRecordingMeeting = false
+            meetingStartedAt = nil
+        }
+
+        let symbol: String
+        if isRecordingMeeting {
+            symbol = "record.circle.fill"
+        } else {
+            symbol = coordinator.appState.menuBarIcon
+        }
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Roger")
         image?.isTemplate = true
         button.image = image
+
+        // The elapsed-time chip in the menu bar appears only when the user
+        // has hidden the floating overlay — otherwise the panel itself is
+        // their indicator. Clearing the title also reverts the icon position
+        // so non-meeting states render unchanged.
+        if isRecordingMeeting, coordinator.meetingOverlayHidden, let startedAt = meetingStartedAt {
+            button.imagePosition = .imageLeading
+            button.title = " " + formatMeetingElapsed(Date().timeIntervalSince(startedAt))
+        } else {
+            button.imagePosition = .imageOnly
+            button.title = ""
+        }
+
+        updateMeetingTickTimer(coordinator: coordinator)
+    }
+
+    /// Installs (or tears down) the 1 Hz timer that refreshes the menu-bar
+    /// timestamp. Only runs while recording is live AND the overlay is
+    /// hidden — at most one timer at a time.
+    private func updateMeetingTickTimer(coordinator: AppCoordinator) {
+        let needsTimer: Bool
+        switch coordinator.meetingRecorder.state {
+        case .recording: needsTimer = coordinator.meetingOverlayHidden
+        default: needsTimer = false
+        }
+
+        if needsTimer && meetingTickTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: .main)
+            timer.schedule(deadline: .now() + 1, repeating: 1)
+            timer.setEventHandler { [weak self] in
+                guard let self, let button = self.statusItem?.button else { return }
+                self.refreshIcon(on: button, coordinator: coordinator)
+            }
+            timer.resume()
+            meetingTickTimer = timer
+        } else if !needsTimer, let timer = meetingTickTimer {
+            timer.cancel()
+            meetingTickTimer = nil
+        }
+    }
+
+    private func formatMeetingElapsed(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%d:%02d", m, s)
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {

@@ -46,6 +46,12 @@ final class AppCoordinator {
     /// decide whether to finalise.
     private(set) var pendingMeetingSessions: [MeetingSession] = []
 
+    /// Session-scoped flag: true when the user has dismissed the floating
+    /// overlay during an active recording. The status-bar item compensates
+    /// by showing `record.circle.fill 0:42` so they still see capture is
+    /// live. Resets to false on every recording start, stop and recovery.
+    var meetingOverlayHidden: Bool = false
+
     init() {
         // The meeting recorder owns its own SpeakerKit cache — sharing the
         // file-transcription cache via `[weak self]` would force the closure
@@ -649,6 +655,7 @@ final class AppCoordinator {
             appState.dictationState = .idle
         }
 
+        meetingOverlayHidden = false
         do {
             try await meetingRecorder.start()
             floatingPanel.show(coordinator: self)
@@ -665,11 +672,27 @@ final class AppCoordinator {
     /// Recordings tab will show the result.
     func stopMeetingRecording() async {
         guard meetingRecorder.isActive else { return }
+        // Bring the overlay back so the standard "thinking / finalising"
+        // state is visible during the post-stop pipeline. The hide
+        // affordance is exclusive to the active capture phase.
+        if meetingOverlayHidden {
+            meetingOverlayHidden = false
+            floatingPanel.setMeetingOverlayHidden(false)
+        }
         await meetingRecorder.stop()
         floatingPanel.hide()
         // Refresh recovery list — a freshly finalised session won't be in
         // it, but a sleep-interrupted one might.
         pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+    }
+
+    /// Toggle visibility of the floating overlay during active capture. No-op
+    /// outside of the recording phase so it can't accidentally hide the
+    /// finalising / error overlay.
+    func setMeetingOverlayHidden(_ hidden: Bool) {
+        guard case .recording = meetingRecorder.state else { return }
+        meetingOverlayHidden = hidden
+        floatingPanel.setMeetingOverlayHidden(hidden)
     }
 
     /// Toggles the meeting recording state from a hotkey or menu action.
@@ -684,6 +707,7 @@ final class AppCoordinator {
     /// Re-runs concat + transcription on a session that was interrupted by a
     /// crash. Surfaced from MenuBarView's recovery banner.
     func resumeMeetingFinalisation(_ session: MeetingSession) async {
+        meetingOverlayHidden = false
         floatingPanel.show(coordinator: self)
         await meetingRecorder.finaliseRecovered(session)
         floatingPanel.hide()

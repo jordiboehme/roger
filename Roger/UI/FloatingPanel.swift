@@ -41,6 +41,19 @@ final class FloatingPanel {
         panel = p
     }
 
+    /// Order-out (or back-in) without releasing the NSPanel. Used by the
+    /// "Hide overlay" affordance during active recording — the panel stays
+    /// mounted so showing it again is instant and we don't lose its
+    /// SwiftUI-level state (animation phase, observers, etc.).
+    func setMeetingOverlayHidden(_ hidden: Bool) {
+        guard let panel else { return }
+        if hidden {
+            panel.orderOut(nil)
+        } else {
+            panel.orderFrontRegardless()
+        }
+    }
+
     func hide() {
         panel?.orderOut(nil)
         panel = nil
@@ -155,6 +168,17 @@ private struct FloatingIndicatorContent: View {
                         .foregroundStyle(.primary)
                     MeetingElapsedLabel(startedAt: startedAt)
                 }
+
+                Button {
+                    coordinator.setMeetingOverlayHidden(true)
+                } label: {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .help("Hide overlay (recording continues, time shows in menu bar)")
 
                 Button {
                     Task { await coordinator.stopMeetingRecording() }

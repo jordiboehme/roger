@@ -131,6 +131,19 @@ struct MenuBarView: View {
             Spacer()
             if let startedAt = currentMeetingStart {
                 Button {
+                    coordinator.setMeetingOverlayHidden(!coordinator.meetingOverlayHidden)
+                } label: {
+                    Image(systemName: coordinator.meetingOverlayHidden ? "eye" : "eye.slash")
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.secondary.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(coordinator.meetingOverlayHidden ? "Show overlay" : "Hide overlay (recording continues)")
+
+                Button {
                     Task { await coordinator.stopMeetingRecording() }
                 } label: {
                     HStack(spacing: 4) {
