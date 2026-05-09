@@ -125,6 +125,23 @@ final class AppState {
     var meetingDiarizeMic: Bool {
         didSet { defaults.set(meetingDiarizeMic, forKey: "meetingDiarizeMic") }
     }
+    /// Preset used to post-process meeting transcripts (filler removal,
+    /// dedup, custom dictionary, per-preset language pin). Constrained to
+    /// presets without AI steps — meeting transcripts must never silently
+    /// reach an LLM.
+    var meetingTranscriptionPresetID: UUID {
+        didSet { defaults.set(meetingTranscriptionPresetID.uuidString, forKey: "meetingTranscriptionPresetID") }
+    }
+
+    /// Resolves `meetingTranscriptionPresetID` to a live preset, guaranteed
+    /// to have no AI steps enabled. Falls back to Plain if the stored
+    /// preset was deleted or accidentally flipped to require AI.
+    var meetingTranscriptionPreset: DictationPreset {
+        if let preset = presets.first(where: { $0.id == meetingTranscriptionPresetID }), !preset.requiresAI {
+            return preset
+        }
+        return DictationPreset.plain
+    }
 
     /// Resolves `fileTranscriptionPresetID` to a live preset, guaranteeing no
     /// AI steps are enabled. Falls back to Plain if the configured preset was
@@ -328,6 +345,8 @@ final class AppState {
         self.meetingDiarizeSystem = storedDiarizeSystem ?? true
         let storedDiarizeMic = defaults.object(forKey: "meetingDiarizeMic") as? Bool
         self.meetingDiarizeMic = storedDiarizeMic ?? false
+        self.meetingTranscriptionPresetID = UUID(uuidString: defaults.string(forKey: "meetingTranscriptionPresetID") ?? "")
+            ?? DictationPreset.plain.id
 
         self.selectedLLMProvider = LLMProviderType(rawValue: defaults.string(forKey: "selectedLLMProvider") ?? "") ?? .appleIntelligence
         self.ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"

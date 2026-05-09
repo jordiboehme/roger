@@ -328,6 +328,15 @@ final class MeetingRecordingService {
 
         state = .finalising(progress: 0.45)
 
+        // Resolve the post-processing preset once so both transcription
+        // calls and the per-paragraph cleanup share the same language pin.
+        // `meetingTranscriptionPreset` is guaranteed to have no AI steps;
+        // `resolvedLanguage` enforces the model-vs-preset precedence (the
+        // English-only model always wins, matching the existing behaviour
+        // in PresetsSettingsView's mismatch warning).
+        let postProcessingPreset = appState.meetingTranscriptionPreset
+        let languageOverride = appState.resolvedLanguage(for: postProcessingPreset)
+
         // Mic transcription — and optional diarization when the user has
         // turned on shared-mic detection. Whichever path the result follows,
         // we end up with a `MeetingTranscriptMerger.MicInput`.
@@ -339,7 +348,7 @@ final class MeetingRecordingService {
                 let detailed = try await transcriptionEngine.transcribeFileDetailed(
                     url: micArchive,
                     mode: appState.transcriptionMode,
-                    languageOverride: appState.transcriptionMode.whisperLanguage
+                    languageOverride: languageOverride
                 )
                 micLanguage = detailed.result.detectedLanguage
 
@@ -377,7 +386,7 @@ final class MeetingRecordingService {
                 let detailed = try await transcriptionEngine.transcribeFileDetailed(
                     url: systemArchive,
                     mode: appState.transcriptionMode,
-                    languageOverride: appState.transcriptionMode.whisperLanguage
+                    languageOverride: languageOverride
                 )
                 systemLanguage = detailed.result.detectedLanguage
                 if appState.meetingDiarizeSystem {
@@ -405,11 +414,45 @@ final class MeetingRecordingService {
 
         state = .finalising(progress: 0.85)
 
-        // Merge + write transcript.
-        let paragraphs = MeetingTranscriptMerger.merge(
+        // Merge + post-process + write transcript. Cleanup runs per-paragraph
+        // so dedup and filler removal stay scoped to a single speaker. AI
+        // steps are off by construction (`meetingTranscriptionPreset` is
+        // guaranteed to have `requiresAI == false`), so passing
+        // `llmService: nil` is safe and stays fully on-device.
+        let mergedParagraphs = MeetingTranscriptMerger.merge(
             mic: micInput,
             systemSpeakerSegments: systemSpeakerSegments
         )
+
+        let resolvedLanguageCode = micLanguage ?? systemLanguage
+        let languageHint: String = resolvedLanguageCode.map { WhisperLanguage.displayName(for: $0) }
+            ?? appState.transcriptionMode.languageHint
+            ?? "the original language"
+
+        let postProcessor = PostProcessor()
+        var paragraphs: [MeetingTranscriptMerger.Paragraph] = []
+        for paragraph in mergedParagraphs {
+            let cleaned: String
+            do {
+                cleaned = try await postProcessor.process(
+                    paragraph.text,
+                    preset: postProcessingPreset,
+                    language: languageHint,
+                    llmService: nil
+                )
+            } catch {
+                logger.warning("Paragraph post-processing failed (\(postProcessingPreset.name, privacy: .public)): \(error.localizedDescription, privacy: .public) — keeping raw text")
+                paragraphs.append(paragraph)
+                continue
+            }
+            let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            paragraphs.append(MeetingTranscriptMerger.Paragraph(
+                speaker: paragraph.speaker,
+                startTime: paragraph.startTime,
+                text: trimmed
+            ))
+        }
 
         let durationSeconds = computeDurationSeconds(
             startedAt: session.startedAt,

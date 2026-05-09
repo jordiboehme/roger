@@ -98,6 +98,60 @@ struct RecordingsSettingsView: View {
                     }
                 }
 
+                // Transcription post-processing
+                settingsCard(icon: "slider.horizontal.3", title: "Transcription") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Cleanup runs locally on the merged transcript: filler-word removal, dedup and your custom dictionary. Presets with AI steps are disabled — meeting transcripts always stay on-device.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Text("Preset")
+                                .font(.system(size: 12))
+                            Spacer()
+                            Menu {
+                                ForEach(state.presets) { preset in
+                                    Button {
+                                        if !preset.requiresAI {
+                                            state.meetingTranscriptionPresetID = preset.id
+                                        }
+                                    } label: {
+                                        HStack {
+                                            if preset.id == state.meetingTranscriptionPresetID {
+                                                Image(systemName: "checkmark")
+                                            }
+                                            Text(preset.requiresAI ? "\(preset.name) (requires AI)" : preset.name)
+                                        }
+                                    }
+                                    .disabled(preset.requiresAI)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(state.meetingTranscriptionPreset.name)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.primary)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                        }
+
+                        if showsLanguageMismatchWarning(for: state.meetingTranscriptionPreset, mode: state.transcriptionMode) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.yellow)
+                                    .font(.caption)
+                                Text("The active model is English-only — this preset's language pin will be ignored. Switch to a multilingual model in Settings › Model.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
                 // Reliability
                 settingsCard(icon: "clock.arrow.circlepath", title: "Reliability") {
                     HStack {
@@ -231,6 +285,15 @@ struct RecordingsSettingsView: View {
             .controlSize(.small)
         }
         .padding(.vertical, 4)
+    }
+
+    /// True when the user has pinned a non-English language on the picked
+    /// meeting preset but the loaded Whisper model is English-only — the
+    /// pin will be silently dropped at decode time, matching the existing
+    /// behaviour in PresetsSettingsView.
+    private func showsLanguageMismatchWarning(for preset: DictationPreset, mode: TranscriptionMode) -> Bool {
+        guard let pinned = preset.language, pinned != "en" else { return false }
+        return mode == .englishOnly
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
