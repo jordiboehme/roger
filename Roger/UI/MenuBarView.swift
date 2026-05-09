@@ -36,16 +36,25 @@ struct MenuBarView: View {
                 .padding(.bottom, 8)
             }
 
-            if let text = coordinator.appState.lastTranscription, !text.isEmpty {
+            if let text = coordinator.appState.lastTranscription, !text.isEmpty, !isMeetingRecording {
                 LastDictationCard(text: text)
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
+            }
+
+            ForEach(coordinator.pendingMeetingSessions) { session in
+                pendingMeetingBanner(session: session)
             }
 
             Divider().padding(.horizontal, 10)
 
             shortcutsSection
                 .padding(.vertical, 8)
+
+            Divider().padding(.horizontal, 10)
+
+            meetingRecordingRow
+                .padding(.vertical, 4)
 
             Divider().padding(.horizontal, 10)
 
@@ -94,6 +103,139 @@ struct MenuBarView: View {
         .task {
             coordinator.permissionManager.checkPermissions()
         }
+    }
+
+    // MARK: - Meeting Recording
+
+    private var isMeetingRecording: Bool {
+        if case .recording = coordinator.meetingRecorder.state { return true }
+        return false
+    }
+
+    private var meetingRecordingRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: meetingIcon)
+                .frame(width: 16)
+                .foregroundStyle(meetingIconTint)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(meetingRowTitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
+                if let detail = meetingRowDetail {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            if let startedAt = currentMeetingStart {
+                Button {
+                    Task { await coordinator.stopMeetingRecording() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stop.fill").font(.caption2)
+                        MeetingMenuElapsed(startedAt: startedAt)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.red.opacity(0.15), in: Capsule())
+                    .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .contentShape(Rectangle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 5)
+        .onTapGesture {
+            guard !isMeetingRecording else { return }
+            Task { await coordinator.startMeetingRecording() }
+        }
+    }
+
+    private var currentMeetingStart: Date? {
+        if case .recording(let at) = coordinator.meetingRecorder.state { return at }
+        return nil
+    }
+
+    private var meetingIcon: String {
+        switch coordinator.meetingRecorder.state {
+        case .recording:
+            return "record.circle.fill"
+        case .finalising:
+            return "ellipsis.circle"
+        default:
+            return "record.circle"
+        }
+    }
+
+    private var meetingIconTint: Color {
+        switch coordinator.meetingRecorder.state {
+        case .recording: return .red
+        case .finalising: return .orange
+        default: return .secondary
+        }
+    }
+
+    private var meetingRowTitle: String {
+        switch coordinator.meetingRecorder.state {
+        case .recording: return "Recording meeting"
+        case .finalising: return "Finalising meeting…"
+        case .starting: return "Starting recording…"
+        default: return "Record meeting"
+        }
+    }
+
+    private var meetingRowDetail: String? {
+        switch coordinator.meetingRecorder.state {
+        case .finalising(let progress):
+            return "Encoding & transcribing — \(Int(progress * 100))%"
+        case .recording:
+            return nil
+        default:
+            return "Mic + system audio → diarised markdown"
+        }
+    }
+
+    private func pendingMeetingBanner(session: MeetingSession) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "tray.full.fill")
+                .foregroundStyle(.orange)
+                .font(.caption)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Unfinished recording")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(session.folder.lastPathComponent)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Button("Finalise") {
+                Task { await coordinator.resumeMeetingFinalisation(session) }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption2)
+            Button {
+                coordinator.dismissPendingMeeting(session)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.orange.opacity(0.35), lineWidth: 1)
+        )
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Status
@@ -237,6 +379,28 @@ struct MenuBarView: View {
                 window.makeKeyAndOrderFront(nil)
             }
         }
+    }
+}
+
+// MARK: - Meeting elapsed time
+
+private struct MeetingMenuElapsed: View {
+    let startedAt: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: startedAt, by: 1)) { context in
+            Text(format(context.date.timeIntervalSince(startedAt)))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        }
+    }
+
+    private func format(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%d:%02d", m, s)
     }
 }
 

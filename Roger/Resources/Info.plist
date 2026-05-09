@@ -14,5 +14,7 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Roger needs microphone access to transcribe your speech into text.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Roger captures system audio for meeting recording. Recordings stay on your Mac.</string>
 </dict>
 </plist>

@@ -1,0 +1,567 @@
+import AppKit
+import AVFoundation
+import Foundation
+import Observation
+import SpeakerKit
+import WhisperKit
+import os
+
+private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "MeetingRecording")
+
+/// Orchestrates a meeting-recording session: mic + system tap → CAF chunks
+/// per track → finalisation pipeline (encode each track to M4A, run Whisper
+/// per track, diarize the system track, merge → markdown). All UI-observable
+/// state is reachable via `@Observable`.
+@MainActor
+@Observable
+final class MeetingRecordingService {
+    enum State: Equatable, Sendable {
+        case idle
+        case starting
+        case recording(startedAt: Date)
+        case finalising(progress: Double)
+        case error(MeetingRecordingError)
+
+        static func == (lhs: State, rhs: State) -> Bool {
+            switch (lhs, rhs) {
+            case (.idle, .idle), (.starting, .starting):
+                return true
+            case (.recording(let a), .recording(let b)):
+                return a == b
+            case (.finalising(let a), .finalising(let b)):
+                return abs(a - b) < 0.001
+            case (.error(let a), .error(let b)):
+                return a.localizedDescription == b.localizedDescription
+            default:
+                return false
+            }
+        }
+    }
+
+    private(set) var state: State = .idle
+    private(set) var lastSession: MeetingSession?
+
+    private let appState: AppState
+    private let transcriptionEngine: TranscriptionEngine
+    private let speakerKitFactory: () async throws -> SpeakerKit
+    private var sharedSpeakerKit: SpeakerKit?
+
+    private var session: MeetingSession?
+    private var micTap: MicrophoneTap?
+    private var systemTap: SystemAudioTap?
+    private var micWriter: SegmentedAudioFileWriter?
+    private var systemWriter: SegmentedAudioFileWriter?
+    private var micConsumerTask: Task<Void, Never>?
+    private var systemConsumerTask: Task<Void, Never>?
+    private var sleepObserver: NSObjectProtocol?
+    private var stopRequested = false
+
+    init(
+        appState: AppState,
+        transcriptionEngine: TranscriptionEngine,
+        speakerKit: @escaping () async throws -> SpeakerKit
+    ) {
+        self.appState = appState
+        self.transcriptionEngine = transcriptionEngine
+        self.speakerKitFactory = speakerKit
+    }
+
+    var isActive: Bool {
+        switch state {
+        case .idle, .error: return false
+        default: return true
+        }
+    }
+
+    /// Starts a new session: creates the folder, opens both writers, hooks up
+    /// taps. Throws if anything trips before audio actually flows; on a thrown
+    /// error the partial session folder is removed.
+    func start() async throws {
+        guard !isActive else {
+            throw MeetingRecordingError.alreadyRecording
+        }
+
+        state = .starting
+
+        let parent = resolvedRecordingsFolder()
+        let session: MeetingSession
+        do {
+            session = try MeetingSession.create(in: parent)
+        } catch {
+            state = .error(.audioWriterFailed(error.localizedDescription))
+            throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)
+        }
+        self.session = session
+
+        let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: SystemAudioTap.targetSampleRate,
+            channels: 1,
+            interleaved: false
+        )!
+        let segmentDuration = TimeInterval(max(60, appState.meetingMaxSegmentMinutes * 60))
+
+        let micWriter = SegmentedAudioFileWriter(
+            folder: session.folder,
+            baseName: "mic",
+            format: format,
+            segmentDuration: segmentDuration
+        )
+        let systemWriter = SegmentedAudioFileWriter(
+            folder: session.folder,
+            baseName: "system",
+            format: format,
+            segmentDuration: segmentDuration
+        )
+
+        do {
+            try micWriter.start()
+            try systemWriter.start()
+        } catch {
+            state = .error(.audioWriterFailed(error.localizedDescription))
+            try? FileManager.default.removeItem(at: session.folder)
+            throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)
+        }
+
+        let micTap = MicrophoneTap()
+        micTap.preferredInputUID = appState.selectedInputDeviceUID
+        let systemTap = SystemAudioTap()
+
+        let micStream: AsyncStream<SendableAudioBuffer>
+        let systemStream: AsyncStream<SendableAudioBuffer>
+        do {
+            micStream = try micTap.startStreaming()
+        } catch let error as MicrophoneTapError where error == .permissionDenied {
+            await teardown(session: session, deleteFolder: true)
+            state = .error(.microphonePermissionDenied)
+            throw MeetingRecordingError.microphonePermissionDenied
+        } catch {
+            await teardown(session: session, deleteFolder: true)
+            state = .error(.tapStartFailed(error.localizedDescription))
+            throw MeetingRecordingError.tapStartFailed(error.localizedDescription)
+        }
+        do {
+            systemStream = try systemTap.startStreaming()
+        } catch {
+            micTap.stop()
+            await teardown(session: session, deleteFolder: true)
+            state = .error(.tapStartFailed(error.localizedDescription))
+            throw MeetingRecordingError.tapStartFailed(error.localizedDescription)
+        }
+
+        self.micTap = micTap
+        self.systemTap = systemTap
+        self.micWriter = micWriter
+        self.systemWriter = systemWriter
+        self.stopRequested = false
+
+        micConsumerTask = Task.detached { [weak self] in
+            await self?.consume(stream: micStream, into: micWriter)
+        }
+        systemConsumerTask = Task.detached { [weak self] in
+            await self?.consume(stream: systemStream, into: systemWriter)
+        }
+
+        installSleepObserver()
+
+        state = .recording(startedAt: session.startedAt)
+        logger.notice("Meeting recording started in \(session.folder.path, privacy: .public)")
+    }
+
+    /// Stops the session and runs the finalisation pipeline. Idempotent.
+    func stop() async {
+        guard case .recording = state else { return }
+        await finalise(reason: .userStopped)
+    }
+
+    /// Tears down the session without finalisation. Used when permission
+    /// errors occur during start() or when the session must be abandoned.
+    func cancel() async {
+        guard let session else {
+            state = .idle
+            return
+        }
+        await teardown(session: session, deleteFolder: false)
+        state = .idle
+    }
+
+    /// Recovery scan: finds session folders that contain CAF chunks but no
+    /// transcript.md, indicating a prior crash mid-recording. Returns the
+    /// list. Caller can prompt the user, then call `finaliseRecovered(_:)`.
+    func unfinalisedSessions() -> [MeetingSession] {
+        let parent = resolvedRecordingsFolder()
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: parent.path) else { return [] }
+        let contents = (try? fm.contentsOfDirectory(at: parent, includingPropertiesForKeys: [.creationDateKey])) ?? []
+        var result: [MeetingSession] = []
+        for url in contents where (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+            let cafs = (try? fm.contentsOfDirectory(atPath: url.path).filter { $0.hasSuffix(".caf") }) ?? []
+            let transcriptExists = fm.fileExists(atPath: url.appendingPathComponent("transcript.md").path)
+            guard !cafs.isEmpty, !transcriptExists else { continue }
+            let started = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date()
+            result.append(MeetingSession(id: UUID(), folder: url, startedAt: started))
+        }
+        return result
+    }
+
+    /// Re-runs concatenation + transcription against an existing session
+    /// folder that already contains CAF chunks.
+    func finaliseRecovered(_ session: MeetingSession) async {
+        guard !isActive else {
+            logger.warning("Recovery requested while a session is active — ignored")
+            return
+        }
+        self.session = session
+        await runFinalisationPipeline()
+    }
+
+    // MARK: - Internals
+
+    private func resolvedRecordingsFolder() -> URL {
+        if let url = appState.meetingRecordingsFolder {
+            return url
+        }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents")
+        return documents.appendingPathComponent("Roger Recordings", isDirectory: true)
+    }
+
+    private func consume(
+        stream: AsyncStream<SendableAudioBuffer>,
+        into writer: SegmentedAudioFileWriter
+    ) async {
+        for await wrapper in stream {
+            writer.append(wrapper.buffer)
+        }
+    }
+
+    private enum FinaliseReason {
+        case userStopped
+        case sleepInterrupted
+        case writerFailed(Error)
+    }
+
+    private func finalise(reason: FinaliseReason) async {
+        stopRequested = true
+        // Stop taps first — this drains writer streams.
+        micTap?.stop()
+        systemTap?.stop()
+        // Wait briefly for writer queues to absorb the last buffers.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        micConsumerTask?.cancel()
+        systemConsumerTask?.cancel()
+        _ = await micConsumerTask?.value
+        _ = await systemConsumerTask?.value
+        micConsumerTask = nil
+        systemConsumerTask = nil
+        removeSleepObserver()
+
+        await runFinalisationPipeline(sleepInterrupted: {
+            if case .sleepInterrupted = reason { return true }
+            return false
+        }())
+    }
+
+    private func runFinalisationPipeline(sleepInterrupted: Bool = false) async {
+        guard let session else {
+            state = .idle
+            return
+        }
+        state = .finalising(progress: 0.05)
+
+        // Close writers and collect chunk URLs.
+        let micSegments = await micWriter?.close() ?? gatherChunks(in: session.folder, prefix: "mic")
+        let systemSegments = await systemWriter?.close() ?? gatherChunks(in: session.folder, prefix: "system")
+        micWriter = nil
+        systemWriter = nil
+
+        // Encode each track.
+        state = .finalising(progress: 0.15)
+        let micArchive = session.micArchiveURL
+        let systemArchive = session.systemArchiveURL
+
+        var micPresent = !micSegments.isEmpty
+        var systemPresent = !systemSegments.isEmpty
+
+        if micPresent {
+            do {
+                let wrote = try await AudioSegmentConcatenator.concatenate(segments: micSegments, destinationURL: micArchive)
+                micPresent = wrote
+            } catch {
+                logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
+                state = .error(.finalisationFailed("Mic encode failed: \(error.localizedDescription)"))
+                return
+            }
+        }
+        state = .finalising(progress: 0.30)
+        if systemPresent {
+            do {
+                let wrote = try await AudioSegmentConcatenator.concatenate(segments: systemSegments, destinationURL: systemArchive)
+                systemPresent = wrote
+            } catch {
+                // System-side encode failures should NOT block the rest of
+                // the pipeline — the mic transcript is still useful. Log
+                // loudly, mark the track absent, and continue.
+                logger.error("System encode failed (continuing without system audio): \(error.localizedDescription, privacy: .public)")
+                systemPresent = false
+            }
+        }
+
+        // Delete CAF chunks once their target encode either landed or was
+        // confirmed empty. We don't keep dead chunks around — re-running the
+        // recovery pipeline against an empty CAF folder produces the same
+        // result anyway.
+        if FileManager.default.fileExists(atPath: micArchive.path) || !micPresent {
+            for url in micSegments { try? FileManager.default.removeItem(at: url) }
+        }
+        if FileManager.default.fileExists(atPath: systemArchive.path) || !systemPresent {
+            for url in systemSegments { try? FileManager.default.removeItem(at: url) }
+        }
+
+        guard transcriptionEngine.isReady else {
+            // Audio is on disk; transcription can be retried later. Surface
+            // an error so the user knows the .md isn't there yet.
+            state = .error(.finalisationFailed("Speech model isn't loaded — audio saved, transcript will be empty."))
+            lastSession = session
+            return
+        }
+
+        state = .finalising(progress: 0.45)
+
+        // Mic transcription — and optional diarization when the user has
+        // turned on shared-mic detection. Whichever path the result follows,
+        // we end up with a `MeetingTranscriptMerger.MicInput`.
+        var micInput: MeetingTranscriptMerger.MicInput = .none
+        var micLanguage: String?
+        var diarizationFailed = false
+        if micPresent {
+            do {
+                let detailed = try await transcriptionEngine.transcribeFileDetailed(
+                    url: micArchive,
+                    mode: appState.transcriptionMode,
+                    languageOverride: appState.transcriptionMode.whisperLanguage
+                )
+                micLanguage = detailed.result.detectedLanguage
+
+                if appState.meetingDiarizeMic {
+                    do {
+                        if sharedSpeakerKit == nil {
+                            sharedSpeakerKit = try await speakerKitFactory()
+                        }
+                        let diarization = try await sharedSpeakerKit!.diarize(audioArray: detailed.audioSamples)
+                        let micSpeakerSegments = diarization.addSpeakerInfo(
+                            to: detailed.rawSegments,
+                            strategy: .subsegment
+                        )
+                        micInput = .diarized(micSpeakerSegments)
+                    } catch {
+                        diarizationFailed = true
+                        logger.warning("Mic diarization failed: \(error.localizedDescription, privacy: .public) — falling back to flat Me labels")
+                        micInput = .flat(detailed.rawSegments.flatMap { $0.segments })
+                    }
+                } else {
+                    micInput = .flat(detailed.rawSegments.flatMap { $0.segments })
+                }
+            } catch {
+                logger.warning("Mic transcription failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        state = .finalising(progress: 0.65)
+
+        // System transcription + diarization.
+        var systemSpeakerSegments: [[SpeakerSegment]] = []
+        var systemLanguage: String?
+        if systemPresent {
+            do {
+                let detailed = try await transcriptionEngine.transcribeFileDetailed(
+                    url: systemArchive,
+                    mode: appState.transcriptionMode,
+                    languageOverride: appState.transcriptionMode.whisperLanguage
+                )
+                systemLanguage = detailed.result.detectedLanguage
+                if appState.meetingDiarizeSystem {
+                    do {
+                        if sharedSpeakerKit == nil {
+                            sharedSpeakerKit = try await speakerKitFactory()
+                        }
+                        let diarization = try await sharedSpeakerKit!.diarize(audioArray: detailed.audioSamples)
+                        systemSpeakerSegments = diarization.addSpeakerInfo(
+                            to: detailed.rawSegments,
+                            strategy: .subsegment
+                        )
+                    } catch {
+                        diarizationFailed = true
+                        logger.warning("System diarization failed: \(error.localizedDescription, privacy: .public)")
+                        systemSpeakerSegments = fallbackOtherSegments(from: detailed.rawSegments)
+                    }
+                } else {
+                    systemSpeakerSegments = fallbackOtherSegments(from: detailed.rawSegments)
+                }
+            } catch {
+                logger.warning("System transcription failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        state = .finalising(progress: 0.85)
+
+        // Merge + write transcript.
+        let paragraphs = MeetingTranscriptMerger.merge(
+            mic: micInput,
+            systemSpeakerSegments: systemSpeakerSegments
+        )
+
+        let durationSeconds = computeDurationSeconds(
+            startedAt: session.startedAt,
+            micArchive: micPresent ? micArchive : nil,
+            systemArchive: systemPresent ? systemArchive : nil
+        )
+
+        let speakerCount = countSpeakers(paragraphs: paragraphs)
+        let metadata = MeetingTranscriptWriter.Metadata(
+            session: session,
+            durationSeconds: durationSeconds,
+            speakerCount: speakerCount,
+            language: micLanguage ?? systemLanguage,
+            micPresent: micPresent,
+            systemPresent: systemPresent,
+            diarizationFailed: diarizationFailed,
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
+            modelDescription: appState.transcriptionMode.modelDescription
+        )
+
+        do {
+            _ = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata)
+        } catch {
+            state = .error(.finalisationFailed(error.localizedDescription))
+            lastSession = session
+            return
+        }
+
+        if sleepInterrupted {
+            state = .error(.sleepInterrupted)
+        } else {
+            state = .idle
+        }
+        lastSession = session
+        self.session = nil
+        logger.notice("Meeting recording finalised at \(session.folder.path, privacy: .public)")
+    }
+
+    private func fallbackOtherSegments(from rawSegments: [TranscriptionResult]) -> [[SpeakerSegment]] {
+        // Build a single-speaker group so the merger labels everything "Other 1".
+        let segments = rawSegments.flatMap { $0.segments }
+        let labelled = segments.map { seg in
+            SpeakerSegment(
+                speaker: .speakerId(0),
+                startTime: seg.start,
+                endTime: seg.end,
+                frameRate: 100,
+                transcription: seg,
+                speakerWords: []
+            )
+        }
+        // Manually attach text via a private helper: the speakerWords-driven
+        // `text` accessor returns "" when speakerWords is empty, so we'd lose
+        // the transcription. Build SpeakerWordTimings from segment text.
+        let withText = segments.enumerated().map { idx, seg -> SpeakerSegment in
+            let words = seg.text
+                .split(separator: " ", omittingEmptySubsequences: true)
+                .map { word in
+                    SpeakerWordTiming(
+                        wordTiming: WordTiming(
+                            word: String(word) + " ",
+                            tokens: [],
+                            start: seg.start,
+                            end: seg.end,
+                            probability: 1
+                        ),
+                        speaker: .speakerId(0)
+                    )
+                }
+            _ = labelled[idx]
+            return SpeakerSegment(
+                speaker: .speakerId(0),
+                startTime: seg.start,
+                endTime: seg.end,
+                frameRate: 100,
+                transcription: seg,
+                speakerWords: words
+            )
+        }
+        return withText.isEmpty ? [] : [withText]
+    }
+
+    private func computeDurationSeconds(startedAt: Date, micArchive: URL?, systemArchive: URL?) -> Int {
+        let candidates: [URL] = [micArchive, systemArchive].compactMap { $0 }
+        var maxDuration: Double = 0
+        for url in candidates {
+            let asset = AVURLAsset(url: url)
+            let duration = CMTimeGetSeconds(asset.duration)
+            if duration.isFinite && duration > maxDuration {
+                maxDuration = duration
+            }
+        }
+        if maxDuration > 0 { return Int(maxDuration.rounded()) }
+        return Int(Date().timeIntervalSince(startedAt).rounded())
+    }
+
+    private func countSpeakers(paragraphs: [MeetingTranscriptMerger.Paragraph]) -> Int {
+        var labels = Set<String>()
+        for p in paragraphs { labels.insert(p.speaker) }
+        return labels.count
+    }
+
+    private func gatherChunks(in folder: URL, prefix: String) -> [URL] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return [] }
+        return names
+            .filter { $0.hasPrefix(prefix + "-") && $0.hasSuffix(".caf") }
+            .sorted()
+            .map { folder.appendingPathComponent($0) }
+    }
+
+    private func teardown(session: MeetingSession?, deleteFolder: Bool) async {
+        micTap?.stop()
+        systemTap?.stop()
+        micTap = nil
+        systemTap = nil
+        _ = await micWriter?.close()
+        _ = await systemWriter?.close()
+        micWriter = nil
+        systemWriter = nil
+        micConsumerTask?.cancel()
+        systemConsumerTask?.cancel()
+        micConsumerTask = nil
+        systemConsumerTask = nil
+        removeSleepObserver()
+        if deleteFolder, let session {
+            try? FileManager.default.removeItem(at: session.folder)
+        }
+        self.session = nil
+    }
+
+    private func installSleepObserver() {
+        removeSleepObserver()
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main,
+            using: { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if case .recording = self.state {
+                        logger.warning("System sleep detected — finalising meeting recording")
+                        await self.finalise(reason: .sleepInterrupted)
+                    }
+                }
+            }
+        )
+    }
+
+    private func removeSleepObserver() {
+        if let observer = sleepObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            sleepObserver = nil
+        }
+    }
+}

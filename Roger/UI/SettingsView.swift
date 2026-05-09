@@ -2,7 +2,7 @@ import ApplicationServices
 import SwiftUI
 
 enum SettingsTab: String, Hashable {
-    case general, permissions, microphone, aiProvider, presets, model, fileTranscription, about
+    case general, permissions, microphone, aiProvider, presets, model, fileTranscription, recordings, about
 }
 
 struct SettingsView: View {
@@ -44,6 +44,11 @@ struct SettingsView: View {
             FileTranscriptionSettingsView(state: state)
                 .tabItem { Label("File Transcription", systemImage: "doc.text.magnifyingglass") }
                 .tag(SettingsTab.fileTranscription)
+
+            RecordingsSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("Recordings", systemImage: "record.circle") }
+                .tag(SettingsTab.recordings)
 
             AboutView()
                 .tabItem { Label("About", systemImage: "info.circle") }
@@ -162,6 +167,8 @@ struct PermissionsSettingsView: View {
     @State private var accessibilityTestResult: String?
     @State private var hotkeyTestResult: String?
     @State private var hotkeyTestActive = false
+    @State private var systemAudioTestResult: String?
+    @State private var systemAudioTestRunning = false
 
     var body: some View {
         let pm = coordinator.permissionManager
@@ -198,6 +205,9 @@ struct PermissionsSettingsView: View {
                     testResult: accessibilityTestResult,
                     extraContent: !pm.accessibilityAuthorized ? AnyView(accessibilityHelp) : nil
                 )
+
+                // System Audio (Core Audio Tap)
+                systemAudioCard
 
                 // Hotkey
                 hotkeyCard
@@ -282,6 +292,136 @@ struct PermissionsSettingsView: View {
             Button("Reset & Re-prompt") { resetAccessibility() }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
+        }
+    }
+
+    private var systemAudioCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("System Audio Recording").font(.headline)
+                        Spacer()
+                    }
+                    Text("Required to capture what the other side says during meetings. Roger never captures its own playback.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("macOS surfaces this prompt the first time Roger starts a meeting recording. There's no way to ask in advance — use Test to confirm capture works.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: 8) {
+                Button("Open Settings") { openAudioCapturePane() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                Button(systemAudioTestRunning ? "Testing…" : "Test") {
+                    Task { await testSystemAudio() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(systemAudioTestRunning)
+
+                if systemAudioTestRunning {
+                    ProgressView().controlSize(.small)
+                }
+
+                if let result = systemAudioTestResult {
+                    Text(result)
+                        .font(.caption2)
+                        .foregroundStyle(result.contains("OK") ? .green : .red)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// Deep-links to System Settings › Privacy & Security › Audio. Falls back
+    /// to the Privacy & Security root if the specific anchor is unknown to
+    /// the current macOS build.
+    private func openAudioCapturePane() {
+        let anchors = [
+            "com.apple.preference.security?Privacy_AudioCapture",
+            "com.apple.preference.security?Privacy_Audio",
+            "com.apple.preference.security"
+        ]
+        for anchor in anchors {
+            if let url = URL(string: "x-apple.systempreferences:\(anchor)"),
+               NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+    }
+
+    @MainActor
+    private func testSystemAudio() async {
+        systemAudioTestResult = nil
+        systemAudioTestRunning = true
+        defer { systemAudioTestRunning = false }
+
+        let tap = SystemAudioTap()
+        do {
+            let stream = try tap.startStreaming()
+
+            // Give the IOProc a beat to actually start delivering buffers,
+            // then play a short system sound from a child process. The tap
+            // excludes Roger's own PID so an in-process AVAudioPlayer would
+            // be invisible by design — afplay's separate PID routes through
+            // the global mix normally and IS captured.
+            try? await Task.sleep(nanoseconds: 150_000_000)
+
+            let player = Process()
+            player.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
+            player.arguments = ["-v", "0.6", "/System/Library/Sounds/Funk.aiff"]
+            try? player.run()
+
+            // Wall-clock timeout. If the user denied audio-capture permission,
+            // the tap returns successfully but yields no buffers — the only
+            // way we learn that is by waiting and seeing nothing arrive.
+            let timeout = Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                tap.stop()
+            }
+
+            var sawAudio = false
+            for await wrapper in stream {
+                if let channel = wrapper.buffer.floatChannelData?[0] {
+                    let frames = Int(wrapper.buffer.frameLength)
+                    var peak: Float = 0
+                    for i in 0 ..< frames {
+                        let v = abs(channel[i])
+                        if v > peak { peak = v }
+                    }
+                    // Threshold is well above mic-bleed but below any audible
+                    // playback. Funk.aiff peaks at 0.5+ at volume 0.6.
+                    if peak > 0.01 {
+                        sawAudio = true
+                        break
+                    }
+                }
+            }
+            timeout.cancel()
+            tap.stop()
+            if player.isRunning { player.terminate() }
+
+            systemAudioTestResult = sawAudio
+                ? "OK — captured system playback"
+                : "No audio captured. Grant permission in System Settings › Privacy & Security › Audio."
+        } catch {
+            tap.stop()
+            systemAudioTestResult = "Failed — \(error.localizedDescription)"
         }
     }
 

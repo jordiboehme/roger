@@ -37,12 +37,34 @@ final class AppCoordinator {
     private var fileTranscriptionTask: Task<Void, Never>?
     private var speakerKit: SpeakerKit?
 
+    /// Meeting recording orchestrator. Builds on Core Audio Process Taps
+    /// (macOS 14.4+, the project deployment floor).
+    let meetingRecorder: MeetingRecordingService
+
+    /// Recovered sessions from a prior crash (CAF chunks but no transcript).
+    /// Populated on launch and surfaced in MenuBarView so the user can
+    /// decide whether to finalise.
+    private(set) var pendingMeetingSessions: [MeetingSession] = []
+
     init() {
+        // The meeting recorder owns its own SpeakerKit cache — sharing the
+        // file-transcription cache via `[weak self]` would force the closure
+        // to capture self before all stored `let`s are initialised, which
+        // Swift's definite-initialisation analysis rejects. Two ~150 MB
+        // model loads only occur if you finalise a meeting and transcribe a
+        // file in the same launch; the extra RAM is acceptable for the
+        // simpler init path.
+        self.meetingRecorder = MeetingRecordingService(
+            appState: appState,
+            transcriptionEngine: transcriptionEngine,
+            speakerKit: { try await SpeakerKit() }
+        )
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
         transcriptionEngine.onLevelUpdate = { [weak self] raw in
             Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
         }
+        self.pendingMeetingSessions = self.meetingRecorder.unfinalisedSessions()
     }
 
     private func setupPermissionCallbacks() {
@@ -599,9 +621,98 @@ final class AppCoordinator {
         }
     }
 
+    // MARK: - Meeting Recording
+
+    /// Starts a meeting recording. Surfaces a structured error in
+    /// `appState.dictationState` (the existing alert banner) when
+    /// preconditions fail. UI calls this from the menu bar Start row and
+    /// from the global hotkey.
+    func startMeetingRecording() async {
+        guard meetingRecorder.state == .idle else {
+            appState.dictationState = .error(MeetingRecordingError.alreadyRecording.errorDescription ?? "")
+            return
+        }
+        guard appState.dictationState == .idle || (appState.dictationState.isErrorState) else {
+            appState.dictationState = .error(MeetingRecordingError.dictationActive.errorDescription ?? "")
+            return
+        }
+        guard activeFileTranscription == nil else {
+            appState.dictationState = .error(MeetingRecordingError.fileTranscriptionActive.errorDescription ?? "")
+            return
+        }
+        guard permissionManager.microphoneAuthorized else {
+            appState.dictationState = .error(MeetingRecordingError.microphonePermissionDenied.errorDescription ?? "")
+            return
+        }
+
+        if case .error = appState.dictationState {
+            appState.dictationState = .idle
+        }
+
+        do {
+            try await meetingRecorder.start()
+            floatingPanel.show(coordinator: self)
+            logger.notice("Meeting recording started")
+        } catch let error as MeetingRecordingError {
+            appState.dictationState = .error(error.errorDescription ?? "Couldn't start meeting recording")
+        } catch {
+            appState.dictationState = .error(error.localizedDescription)
+        }
+    }
+
+    /// Stops a meeting recording and runs finalisation off the main actor.
+    /// The floating panel is dismissed on entering finalisation; the
+    /// Recordings tab will show the result.
+    func stopMeetingRecording() async {
+        guard meetingRecorder.isActive else { return }
+        await meetingRecorder.stop()
+        floatingPanel.hide()
+        // Refresh recovery list — a freshly finalised session won't be in
+        // it, but a sleep-interrupted one might.
+        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+    }
+
+    /// Toggles the meeting recording state from a hotkey or menu action.
+    func toggleMeetingRecording() async {
+        if meetingRecorder.isActive {
+            await stopMeetingRecording()
+        } else {
+            await startMeetingRecording()
+        }
+    }
+
+    /// Re-runs concat + transcription on a session that was interrupted by a
+    /// crash. Surfaced from MenuBarView's recovery banner.
+    func resumeMeetingFinalisation(_ session: MeetingSession) async {
+        floatingPanel.show(coordinator: self)
+        await meetingRecorder.finaliseRecovered(session)
+        floatingPanel.hide()
+        // Surface any error from the pipeline (e.g. encode failed, model
+        // unavailable) so the user sees why the banner didn't clear. If
+        // finalisation succeeded the state is .idle and we don't touch the
+        // dictation state.
+        if case .error(let recordingError) = meetingRecorder.state {
+            appState.dictationState = .error(recordingError.errorDescription ?? "Couldn't finalise meeting")
+        }
+        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+    }
+
+    /// Drops a recovered session from the pending list without finalising
+    /// (the user opted to discard or handle it manually).
+    func dismissPendingMeeting(_ session: MeetingSession) {
+        pendingMeetingSessions.removeAll { $0.id == session.id }
+    }
+
     // MARK: - Error Management
 
     func dismissError() {
         appState.dictationState = .idle
+    }
+}
+
+private extension AppState.DictationState {
+    var isErrorState: Bool {
+        if case .error = self { return true }
+        return false
     }
 }

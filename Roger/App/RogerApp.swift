@@ -1,8 +1,16 @@
 import AppKit
+import KeyboardShortcuts
 import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 import os
+
+extension KeyboardShortcuts.Name {
+    /// Global hotkey to start/stop a meeting recording. User-configurable
+    /// from the Recordings settings tab. Unset by default — Roger only takes
+    /// the hotkey if the user explicitly assigns one.
+    static let meetingRecordingToggle = Self("meetingRecordingToggle")
+}
 
 @MainActor
 let sharedCoordinator = AppCoordinator()
@@ -52,6 +60,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start hotkey listener
         coordinator.startHotkey()
+
+        // Wire the meeting-recording global hotkey. Only fires when the
+        // user has assigned a key combo from the Recordings settings tab.
+        KeyboardShortcuts.onKeyDown(for: .meetingRecordingToggle) {
+            Task { @MainActor in
+                await sharedCoordinator.toggleMeetingRecording()
+            }
+        }
 
         // Show onboarding on first launch
         if !coordinator.appState.hasCompletedOnboarding {

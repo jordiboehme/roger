@@ -14,7 +14,7 @@ final class FloatingPanel {
                 .environment(coordinator.audioLevelMeter)
                 .padding(20)
         )
-        hostingView.frame = NSRect(x: 0, y: 0, width: 260, height: 110)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 290, height: 110)
 
         let p = NSPanel(
             contentRect: hostingView.frame,
@@ -51,21 +51,35 @@ private struct FloatingIndicatorContent: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var pulseOpacity: Double = 1.0
 
-    // Neon accent: hot pink while listening, electric cyan while thinking / file-transcribing.
+    // Neon accent: hot pink while listening, electric cyan while thinking / file-transcribing,
+    // amber while a meeting is being recorded.
     // Drives the stroke, drop shadow and countdown warning tint.
     private static let listeningAccent = Color(red: 1.0, green: 0.2, blue: 0.48)
     private static let thinkingAccent = Color(red: 0.2, green: 0.87, blue: 1.0)
+    private static let meetingAccent = Color(red: 1.0, green: 0.55, blue: 0.0)
 
     private var fileJob: AppCoordinator.FileTranscriptionJob? {
         coordinator.activeFileTranscription
     }
 
+    private var meetingState: MeetingRecordingService.State {
+        coordinator.meetingRecorder.state
+    }
+
+    private var meetingStartedAt: Date? {
+        if case .recording(let at) = meetingState { return at }
+        return nil
+    }
+
+    private var isMeetingRecording: Bool { meetingStartedAt != nil }
+
     private var isListening: Bool {
-        fileJob == nil && coordinator.appState.dictationState == .listening
+        fileJob == nil && !isMeetingRecording && coordinator.appState.dictationState == .listening
     }
 
     private var accent: Color {
-        isListening ? Self.listeningAccent : Self.thinkingAccent
+        if isMeetingRecording { return Self.meetingAccent }
+        return isListening ? Self.listeningAccent : Self.thinkingAccent
     }
 
     private var activePreset: DictationPreset? {
@@ -134,6 +148,24 @@ private struct FloatingIndicatorContent: View {
                 }
                 .buttonStyle(.plain)
                 .help("Cancel transcription")
+            } else if let startedAt = meetingStartedAt {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Recording meeting")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    MeetingElapsedLabel(startedAt: startedAt)
+                }
+
+                Button {
+                    Task { await coordinator.stopMeetingRecording() }
+                } label: {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(.red)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .help("Stop meeting recording")
             } else {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(isListening ? "Listening" : "Thinking")
@@ -174,6 +206,29 @@ private struct FloatingIndicatorContent: View {
                 pulseOpacity = 0.45
             }
         }
+    }
+}
+
+private struct MeetingElapsedLabel: View {
+    let startedAt: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: startedAt, by: 1)) { context in
+            Text(format(context.date.timeIntervalSince(startedAt)))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func format(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%d:%02d", m, s)
     }
 }
 
