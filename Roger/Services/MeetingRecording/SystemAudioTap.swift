@@ -17,18 +17,15 @@ final class SystemAudioTap: @unchecked Sendable {
     private let tap = ProcessTap()
     private let writerQueue = DispatchQueue(label: "com.jordiboehme.roger.systemtap.writer", qos: .userInteractive)
 
-    /// Pre-allocated mono float32 target buffers — rotated to avoid heap churn
-    /// in the hot path. Sized for ~250 ms at 16 kHz, plenty of slack for a
-    /// 4096-frame source packet.
-    private static let ringSize = 8
-    private static let bufferCapacity: AVAudioFrameCount = 4_096
-    private var ring: [AVAudioPCMBuffer] = []
-    private var ringIndex = 0
-
     private var inputFormat: AVAudioFormat?
+    private var targetFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
     private var continuation: AsyncStream<SendableAudioBuffer>.Continuation?
     private(set) var droppedBuffers = 0
+    private var totalInputFrames: UInt64 = 0
+    private var totalOutputFrames: UInt64 = 0
+    private var callbackCount: UInt64 = 0
+    private var streamingStartedAt: Date?
 
     /// Starts capture and returns an async sequence of converted buffers.
     /// Call `stop()` to tear down.
@@ -51,11 +48,12 @@ final class SystemAudioTap: @unchecked Sendable {
             throw ProcessTapError.formatReadFailed
         }
         self.inputFormat = inputFormat
+        self.targetFormat = targetFormat
         self.converter = converter
-
-        ring = (0 ..< Self.ringSize).compactMap {
-            _ in AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: Self.bufferCapacity)
-        }
+        self.totalInputFrames = 0
+        self.totalOutputFrames = 0
+        self.callbackCount = 0
+        self.streamingStartedAt = Date()
 
         let stream = AsyncStream<SendableAudioBuffer>(bufferingPolicy: .bufferingNewest(64)) { continuation in
             self.continuation = continuation
@@ -68,7 +66,9 @@ final class SystemAudioTap: @unchecked Sendable {
             self?.ingest(bufferList: bufferList, inputFormat: inputFormat)
         }
 
-        Self.logger.notice("SystemAudioTap streaming (\(inputFormat.sampleRate, privacy: .public) Hz × \(inputFormat.channelCount, privacy: .public)ch → \(Self.targetSampleRate, privacy: .public) Hz mono)")
+        let inASBD = inputFormat.streamDescription.pointee
+        let ratio = Self.targetSampleRate / inputFormat.sampleRate
+        Self.logger.notice("SystemAudioTap streaming: input=\(inASBD.mSampleRate, privacy: .public) Hz × \(inASBD.mChannelsPerFrame, privacy: .public)ch (mBytesPerFrame=\(inASBD.mBytesPerFrame, privacy: .public), interleaved=\(inputFormat.isInterleaved, privacy: .public)) → \(Self.targetSampleRate, privacy: .public) Hz mono, expected ratio=\(ratio, privacy: .public)")
         return stream
     }
 
@@ -80,7 +80,7 @@ final class SystemAudioTap: @unchecked Sendable {
             self?.continuation?.finish()
             self?.continuation = nil
             self?.converter = nil
-            self?.ring = []
+            self?.streamingStartedAt = nil
         }
     }
 
@@ -90,14 +90,26 @@ final class SystemAudioTap: @unchecked Sendable {
     /// valid for the duration of this call), then hops to the writer queue
     /// for conversion + delivery.
     private func ingest(bufferList: UnsafePointer<AudioBufferList>, inputFormat: AVAudioFormat) {
-        let abl = bufferList.pointee
-        let frames = AVAudioFrameCount(Int(abl.mBuffers.mDataByteSize) / Int(inputFormat.streamDescription.pointee.mBytesPerFrame))
+        let sourceABL = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: bufferList))
+        guard sourceABL.count > 0 else { return }
+        let bytesPerFrame = Int(inputFormat.streamDescription.pointee.mBytesPerFrame)
+        guard bytesPerFrame > 0 else { return }
+        let frames = AVAudioFrameCount(Int(sourceABL[0].mDataByteSize) / bytesPerFrame)
         guard frames > 0 else { return }
-        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frames),
-              let dst = inputBuffer.audioBufferList.pointee.mBuffers.mData,
-              let src = abl.mBuffers.mData else { return }
-        let bytes = Int(abl.mBuffers.mDataByteSize)
-        memcpy(dst, src, bytes)
+        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frames) else { return }
+
+        // Copy every plane of the source list — for non-interleaved stereo
+        // (the default process-tap layout) `sourceABL.count == 2`; for
+        // interleaved formats it's a single buffer with both channels packed.
+        let destinationABL = UnsafeMutableAudioBufferListPointer(inputBuffer.mutableAudioBufferList)
+        let planeCount = min(destinationABL.count, sourceABL.count)
+        for plane in 0 ..< planeCount {
+            let dst = destinationABL[plane]
+            let src = sourceABL[plane]
+            guard let dstData = dst.mData, let srcData = src.mData else { continue }
+            let bytes = min(Int(dst.mDataByteSize), Int(src.mDataByteSize))
+            memcpy(dstData, srcData, bytes)
+        }
         inputBuffer.frameLength = frames
 
         // Hop to the writer queue. Allocations above happen on the IOProc
@@ -112,17 +124,25 @@ final class SystemAudioTap: @unchecked Sendable {
     }
 
     private func convertAndDeliver(_ input: AVAudioPCMBuffer) {
-        guard let converter, let target = nextRingSlot(), let continuation else {
+        guard let converter, let inputFormat, let targetFormat, let continuation else {
             droppedBuffers += 1
             if droppedBuffers % 100 == 0 {
                 Self.logger.warning("System audio dropped \(self.droppedBuffers, privacy: .public) buffers cumulative")
             }
             return
         }
+        // Size the destination buffer to match the converter's ratio, like
+        // MicrophoneTap does. Over-sizing the destination (the previous
+        // fixed-capacity ring) makes the SRC produce a different number of
+        // frames per packet than the input's real-time duration, which
+        // shows up as a pitch shift on playback.
+        let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+        let outCapacity = max(1, AVAudioFrameCount(Double(input.frameLength) * ratio))
+        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCapacity) else { return }
 
         var error: NSError?
         var consumed = false
-        let status = converter.convert(to: target, error: &error) { _, outStatus in
+        let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
             if consumed {
                 outStatus.pointee = .noDataNow
                 return nil
@@ -139,10 +159,22 @@ final class SystemAudioTap: @unchecked Sendable {
             Self.logger.error("System audio conversion returned error status")
             return
         }
-        if target.frameLength > 0 {
+
+        totalInputFrames += UInt64(input.frameLength)
+        totalOutputFrames += UInt64(convertedBuffer.frameLength)
+        callbackCount += 1
+        if callbackCount == 1 {
+            let elapsed = streamingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+            Self.logger.notice("First system audio packet: input=\(input.frameLength, privacy: .public) frames, output=\(convertedBuffer.frameLength, privacy: .public) frames, \(elapsed, privacy: .public)s since stream start")
+        } else if callbackCount.isMultiple(of: 100) {
+            let measured = Double(totalOutputFrames) / Double(max(1, totalInputFrames))
+            Self.logger.debug("System audio cumulative ratio: measured=\(measured, privacy: .public) expected=\(ratio, privacy: .public) (in=\(self.totalInputFrames, privacy: .public) out=\(self.totalOutputFrames, privacy: .public))")
+        }
+
+        if convertedBuffer.frameLength > 0 {
             // Continuation buffers internally; the dropOldest policy means a
             // slow consumer just shows up as a `droppedBuffers` count.
-            let sent = continuation.yield(SendableAudioBuffer(buffer: target))
+            let sent = continuation.yield(SendableAudioBuffer(buffer: convertedBuffer))
             switch sent {
             case .terminated:
                 Self.logger.info("System audio stream consumer ended early")
@@ -154,13 +186,5 @@ final class SystemAudioTap: @unchecked Sendable {
                 break
             }
         }
-    }
-
-    private func nextRingSlot() -> AVAudioPCMBuffer? {
-        guard !ring.isEmpty else { return nil }
-        let buf = ring[ringIndex]
-        ringIndex = (ringIndex + 1) % ring.count
-        buf.frameLength = 0
-        return buf
     }
 }
