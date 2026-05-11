@@ -215,7 +215,7 @@ final class TranscriptionEngine: @unchecked Sendable {
             tokenizer: tokenizer,
             audioProcessor: streamAudioProcessor!,
             decodingOptions: options,
-            useVAD: false,
+            useVAD: true,
             stateChangeCallback: { [weak self] _, newState in
                 self?.storeStreamState(newState)
             }
@@ -473,7 +473,8 @@ final class TranscriptionEngine: @unchecked Sendable {
             language: resolvedLanguage,
             detectLanguage: resolvedLanguage == nil,
             skipSpecialTokens: true,
-            suppressBlank: true
+            suppressBlank: true,
+            chunkingStrategy: .vad
         )
 
         do {
@@ -544,7 +545,8 @@ final class TranscriptionEngine: @unchecked Sendable {
             language: resolvedLanguage,
             detectLanguage: resolvedLanguage == nil,
             skipSpecialTokens: true,
-            suppressBlank: true
+            suppressBlank: true,
+            chunkingStrategy: .vad
         )
 
         let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
@@ -580,7 +582,8 @@ final class TranscriptionEngine: @unchecked Sendable {
             detectLanguage: resolvedLanguage == nil,
             skipSpecialTokens: true,
             wordTimestamps: true,
-            suppressBlank: true
+            suppressBlank: true,
+            chunkingStrategy: .vad
         )
         let rawSegments = try await whisperKit.transcribe(audioArray: audioSamples, decodeOptions: options)
 
@@ -618,7 +621,8 @@ final class TranscriptionEngine: @unchecked Sendable {
             language: resolvedLanguage,
             detectLanguage: resolvedLanguage == nil, // auto-detect for multilingual
             skipSpecialTokens: true,
-            suppressBlank: true
+            suppressBlank: true,
+            chunkingStrategy: .vad
         )
 
         let results = try await whisperKit.transcribe(

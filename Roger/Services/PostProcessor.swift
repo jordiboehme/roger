@@ -18,6 +18,18 @@ struct PostProcessor: Sendable {
             logger.debug("After dedup: \(result)")
         }
 
+        // Catch the classic Whisper silence hallucinations ("Thank you.",
+        // "Thanks for watching.", the Amara.org subtitles tagline). VAD
+        // chunking + Whisper's own noSpeechThreshold suppress most of these
+        // upstream — this is the belt-and-suspenders pass for the rare leaf
+        // (e.g. a cough that VAD treats as speech and Whisper labels with
+        // the silence-prior text). Paragraph-level only: a real "thank you"
+        // inside a longer sentence is preserved.
+        if isAllKnownHallucinations(result) {
+            logger.info("Dropped Whisper hallucination paragraph: \(result, privacy: .public)")
+            return ""
+        }
+
         let languageContext = "The text is in \(language). Do not translate it — keep it in \(language)."
 
         // When both AI steps are enabled, combine them into a single call to
@@ -112,6 +124,34 @@ struct PostProcessor: Sendable {
             )
         }
         return result
+    }
+
+    // MARK: - Known Whisper Hallucinations
+
+    /// Curated list of phrases Whisper emits when handed silence or
+    /// near-silence (training-data bias from YouTube outros, Amara.org
+    /// volunteer subtitle tags, etc.). Matched case-insensitively against
+    /// trimmed sentence pieces — see `isAllKnownHallucinations`. Kept small
+    /// on purpose: anything ambiguous (`thanks`, `bye`, `you`) stays out
+    /// because a real meeting can legitimately contain those words alone.
+    private static let knownHallucinations: Set<String> = [
+        "thank you",
+        "thank you very much",
+        "thanks for watching",
+        "thank you for watching",
+        "subtitles by the amara.org community",
+        "subtitles by the amara org community",
+    ]
+
+    private func isAllKnownHallucinations(_ text: String) -> Bool {
+        let stripped = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stripped.isEmpty else { return false }
+        let pieces = stripped
+            .components(separatedBy: CharacterSet(charactersIn: ".!?"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        guard !pieces.isEmpty else { return false }
+        return pieces.allSatisfy { Self.knownHallucinations.contains($0) }
     }
 
     // MARK: - Dictionary Replacement
