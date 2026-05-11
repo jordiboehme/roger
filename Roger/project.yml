@@ -7,9 +7,9 @@ options:
   generateEmptyDirectories: true
 
 packages:
-  WhisperKit:
-    url: https://github.com/argmaxinc/WhisperKit.git
-    from: "0.18.0"
+  ArgmaxOSS:
+    url: https://github.com/argmaxinc/argmax-oss-swift.git
+    from: "1.0.0"
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts.git
     from: "2.4.0"
@@ -45,9 +45,9 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         PRODUCT_NAME: Roger
     dependencies:
-      - package: WhisperKit
+      - package: ArgmaxOSS
         product: WhisperKit
-      - package: WhisperKit
+      - package: ArgmaxOSS
         product: SpeakerKit
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
