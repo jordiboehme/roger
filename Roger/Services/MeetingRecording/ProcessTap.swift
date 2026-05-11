@@ -19,6 +19,17 @@ final class ProcessTap: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.jordiboehme.roger.processtap", qos: .userInteractive)
 
     private(set) var streamDescription: AudioStreamBasicDescription?
+
+    /// Nominal sample rate of the aggregate device's clock — i.e. the rate at
+    /// which the IOProc actually delivers data. `kAudioTapPropertyFormat`
+    /// reports the tap's *preferred* rate, which on some output devices is
+    /// not the rate the aggregate's clock samples against (observed 3× the
+    /// real rate on a Bluetooth output device). Build the AVAudioConverter's
+    /// input format off this, not off `streamDescription.mSampleRate`.
+    var aggregateNominalSampleRate: Float64? {
+        guard aggregateDeviceID != .unknown else { return nil }
+        return aggregateDeviceID.readProperty(kAudioDevicePropertyNominalSampleRate)
+    }
     private var tapID: AudioObjectID = .unknown
     private var aggregateDeviceID: AudioObjectID = .unknown
     private var ioProcID: AudioDeviceIOProcID?

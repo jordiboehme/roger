@@ -31,11 +31,20 @@ final class SystemAudioTap: @unchecked Sendable {
     /// Call `stop()` to tear down.
     func startStreaming() throws -> AsyncStream<SendableAudioBuffer> {
         try tap.activate()
-        guard let asbd = tap.streamDescription else {
+        guard let tapASBD = tap.streamDescription else {
             throw ProcessTapError.formatReadFailed
         }
-        var fmt = asbd
-        guard let inputFormat = AVAudioFormat(streamDescription: &fmt) else {
+
+        // The IOProc samples against the aggregate device's clock, not the
+        // tap's preferred rate. On at least one tested setup these differ
+        // by 3× (tap says 144 kHz, aggregate says 48 kHz) — building the
+        // converter off the tap's rate then produces output at 1/3 real
+        // time. Prefer the aggregate's nominal rate; fall back to the tap's
+        // ASBD if the aggregate query fails (older / unusual hardware).
+        let aggregateRate = tap.aggregateNominalSampleRate ?? tapASBD.mSampleRate
+        var effectiveASBD = tapASBD
+        effectiveASBD.mSampleRate = aggregateRate
+        guard let inputFormat = AVAudioFormat(streamDescription: &effectiveASBD) else {
             throw ProcessTapError.formatReadFailed
         }
         let targetFormat = AVAudioFormat(
@@ -68,7 +77,7 @@ final class SystemAudioTap: @unchecked Sendable {
 
         let inASBD = inputFormat.streamDescription.pointee
         let ratio = Self.targetSampleRate / inputFormat.sampleRate
-        Self.logger.notice("SystemAudioTap streaming: input=\(inASBD.mSampleRate, privacy: .public) Hz × \(inASBD.mChannelsPerFrame, privacy: .public)ch (mBytesPerFrame=\(inASBD.mBytesPerFrame, privacy: .public), interleaved=\(inputFormat.isInterleaved, privacy: .public)) → \(Self.targetSampleRate, privacy: .public) Hz mono, expected ratio=\(ratio, privacy: .public)")
+        Self.logger.notice("SystemAudioTap streaming: tap-reported=\(tapASBD.mSampleRate, privacy: .public) Hz, aggregate=\(aggregateRate, privacy: .public) Hz, using=\(inASBD.mSampleRate, privacy: .public) Hz × \(inASBD.mChannelsPerFrame, privacy: .public)ch (mBytesPerFrame=\(inASBD.mBytesPerFrame, privacy: .public), interleaved=\(inputFormat.isInterleaved, privacy: .public)) → \(Self.targetSampleRate, privacy: .public) Hz mono, expected ratio=\(ratio, privacy: .public)")
         return stream
     }
 
@@ -97,6 +106,11 @@ final class SystemAudioTap: @unchecked Sendable {
         let frames = AVAudioFrameCount(Int(sourceABL[0].mDataByteSize) / bytesPerFrame)
         guard frames > 0 else { return }
         guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frames) else { return }
+        // Set frameLength BEFORE the copy: `AVAudioPCMBuffer.audioBufferList`
+        // reports each plane's `mDataByteSize` as `frameLength * mBytesPerFrame`,
+        // which is 0 until we set it. Read it before setting and the copy
+        // bound becomes `min(0, srcBytes) = 0` — silent input, silent output.
+        inputBuffer.frameLength = frames
 
         // Copy every plane of the source list — for non-interleaved stereo
         // (the default process-tap layout) `sourceABL.count == 2`; for
@@ -110,7 +124,6 @@ final class SystemAudioTap: @unchecked Sendable {
             let bytes = min(Int(dst.mDataByteSize), Int(src.mDataByteSize))
             memcpy(dstData, srcData, bytes)
         }
-        inputBuffer.frameLength = frames
 
         // Hop to the writer queue. Allocations above happen on the IOProc
         // thread but `AVAudioPCMBuffer.init(frameCapacity:)` is cheap
@@ -131,11 +144,7 @@ final class SystemAudioTap: @unchecked Sendable {
             }
             return
         }
-        // Size the destination buffer to match the converter's ratio, like
-        // MicrophoneTap does. Over-sizing the destination (the previous
-        // fixed-capacity ring) makes the SRC produce a different number of
-        // frames per packet than the input's real-time duration, which
-        // shows up as a pitch shift on playback.
+        // Size the destination buffer per callback, matching MicrophoneTap.
         let ratio = targetFormat.sampleRate / inputFormat.sampleRate
         let outCapacity = max(1, AVAudioFrameCount(Double(input.frameLength) * ratio))
         guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCapacity) else { return }
@@ -163,12 +172,22 @@ final class SystemAudioTap: @unchecked Sendable {
         totalInputFrames += UInt64(input.frameLength)
         totalOutputFrames += UInt64(convertedBuffer.frameLength)
         callbackCount += 1
+        let elapsed = streamingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
         if callbackCount == 1 {
-            let elapsed = streamingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
-            Self.logger.notice("First system audio packet: input=\(input.frameLength, privacy: .public) frames, output=\(convertedBuffer.frameLength, privacy: .public) frames, \(elapsed, privacy: .public)s since stream start")
-        } else if callbackCount.isMultiple(of: 100) {
-            let measured = Double(totalOutputFrames) / Double(max(1, totalInputFrames))
-            Self.logger.debug("System audio cumulative ratio: measured=\(measured, privacy: .public) expected=\(ratio, privacy: .public) (in=\(self.totalInputFrames, privacy: .public) out=\(self.totalOutputFrames, privacy: .public))")
+            // Sanity-check the input plumbing on first packet. Non-zero
+            // frame count + non-zero output prove ingest's memcpy and the
+            // converter are both moving real samples (the v0.16.1 silence
+            // regression would show input frames > 0 but output silence —
+            // we now also peek at the first sample value as a heartbeat).
+            let firstSample: Float = input.floatChannelData?.pointee[0] ?? 0
+            Self.logger.notice("First system packet: input=\(input.frameLength, privacy: .public) frames → output=\(convertedBuffer.frameLength, privacy: .public) frames at \(elapsed, privacy: .public)s, first input sample=\(firstSample, privacy: .public)")
+        } else if callbackCount.isMultiple(of: 50) && elapsed > 0 {
+            // Empirical output rate vs file's declared 16 kHz — the
+            // canonical test that the file will play at real speed. Any
+            // drift > a percent means the input rate is still wrong.
+            let measuredOutputHz = Double(totalOutputFrames) / elapsed
+            let measuredRatio = Double(totalOutputFrames) / Double(max(1, totalInputFrames))
+            Self.logger.notice("System audio @ \(elapsed, privacy: .public)s: measured output=\(measuredOutputHz, privacy: .public) Hz (want \(Self.targetSampleRate, privacy: .public)), ratio=\(measuredRatio, privacy: .public) (expect \(ratio, privacy: .public))")
         }
 
         if convertedBuffer.frameLength > 0 {
