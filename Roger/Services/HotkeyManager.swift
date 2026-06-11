@@ -152,9 +152,17 @@ final class HotkeyManager: @unchecked Sendable {
 
             // Ignore OS-injected key-repeat keyDowns. They would flip toggle
             // mode on every repeat tick while Caps Lock is held and double-fire
-            // the arrow-rotation branch. Pass-through so non-trigger repeats
-            // still reach the focused app.
+            // the arrow-rotation branch.
             if type == .keyDown && event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+                // Swallow the trigger key's own repeats. F18 (the remapped Caps
+                // Lock) is unbound system-wide, so letting each repeat through
+                // makes macOS play the unhandled-key "funk" alert on every tick
+                // while the key is held. Other keys' repeats still pass through
+                // so normal typing autorepeat keeps working.
+                let repeatKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+                if repeatKeyCode == manager.triggerKeyCode {
+                    return nil
+                }
                 return Unmanaged.passRetained(event)
             }
 
