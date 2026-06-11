@@ -4,6 +4,13 @@ import Foundation
 /// folder. Format is designed for ingestion by note-keeping systems like
 /// basic-memory: YAML frontmatter with stable keys, body of timestamped
 /// speaker paragraphs.
+///
+/// Each paragraph header is `**Speaker** [offset · localDateTime]`, where
+/// `offset` is HH:MM:SS from recording start and `localDateTime` is the
+/// absolute wall-clock time in the machine's local timezone. The absolute
+/// time lets an ingesting agent correlate the transcript with externally
+/// captured artifacts — e.g. screenshots whose filenames embed a local
+/// timestamp — by matching the artifact's time against paragraph start times.
 enum MeetingTranscriptWriter {
     struct Metadata {
         let session: MeetingSession
@@ -57,7 +64,9 @@ enum MeetingTranscriptWriter {
         out += "# Meeting \(displayDate(metadata.session))\n\n"
 
         for paragraph in paragraphs {
-            out += "**\(paragraph.speaker)** [\(formatTimestamp(paragraph.startTime))]\n"
+            let rel = formatTimestamp(paragraph.startTime)
+            let abs = absoluteTimestamp(start: metadata.session.startedAt, offset: paragraph.startTime)
+            out += "**\(paragraph.speaker)** [\(rel) · \(abs)]\n"
             out += paragraph.text
             out += "\n\n"
         }
@@ -74,7 +83,23 @@ enum MeetingTranscriptWriter {
     private static func isoDate(_ date: Date) -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
+        f.timeZone = .current
         return f.string(from: date)
+    }
+
+    /// Absolute wall-clock time in the local timezone, so transcript times line
+    /// up with screenshot filenames (which macOS writes in local time).
+    private static let absoluteFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"   // timeZone defaults to .current (local)
+        return f
+    }()
+
+    private static func absoluteTimestamp(start: Date, offset: Float) -> String {
+        // Round to whole seconds so the absolute time stays in lockstep with the
+        // relative HH:MM:SS produced by formatTimestamp.
+        absoluteFormatter.string(from: start.addingTimeInterval(TimeInterval(offset.rounded())))
     }
 
     private static func formatTimestamp(_ seconds: Float) -> String {
