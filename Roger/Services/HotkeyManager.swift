@@ -8,6 +8,15 @@ final class HotkeyManager: @unchecked Sendable {
     var onRecordingStarted: (@Sendable (CapsModifier?) -> Void)?
     var onRecordingStopped: (@Sendable () -> Void)?
     var onRotatePreset: (@Sendable (PresetRotationDirection) -> Void)?
+    /// Fired (once per key-down) when the trigger key is pressed while a
+    /// meeting recording is active — toggles the system mic mute.
+    var onMicMuteToggle: (@Sendable () -> Void)?
+
+    /// When true, the trigger key toggles the system mic mute instead of
+    /// driving dictation. Set by the coordinator while a meeting recording is
+    /// in progress. Read/written on the main thread (the event tap runs on the
+    /// main run loop).
+    var meetingRecordingActive = false
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -180,6 +189,17 @@ final class HotkeyManager: @unchecked Sendable {
             }
 
             let modifier = CapsModifier.from(event.flags)
+
+            // While a meeting recording is active, the trigger key toggles the
+            // system-level mic mute instead of dictation. Fire once per press
+            // (key-down), ignore the release, and consume both so the key never
+            // starts dictation or reaches the focused app.
+            if manager.meetingRecordingActive {
+                if isKeyDown {
+                    manager.onMicMuteToggle?()
+                }
+                return nil
+            }
 
             switch manager.activationMode {
             case .pushToTalk:

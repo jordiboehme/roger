@@ -30,6 +30,7 @@
 		78AD589F34F12F3C0D0CB2B7 /* PostProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 363FE7FFAB640D4E02028622 /* PostProcessor.swift */; };
 		7A64A7D19FA3AABED6442E14 /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76126D47E61F9F1ABC8F3D3F /* OpenAIService.swift */; };
 		82B0FAB7E064AC13E8CCF11A /* FloatingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29286BD5717F06096DDBD91 /* FloatingPanel.swift */; };
+		83363C1A2A5F0007F876158C /* SystemMicMute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */; };
 		912F2B5B04CAD03911C064C7 /* ProcessTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CCFC08D661DE5DE5A5DF74F /* ProcessTap.swift */; };
 		9275A12AC6ADED24A9E9B2ED /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1DD315528221EF6AD7053DA /* Assets.xcassets */; };
 		9C99F36067A5343BF7A5FBCE /* MeetingTranscriptWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A343AAF365104DA380498CD6 /* MeetingTranscriptWriter.swift */; };
@@ -60,6 +61,7 @@
 
 /* Begin PBXFileReference section */
 		0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingError.swift; sourceTree = "<group>"; };
+		0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMicMute.swift; sourceTree = "<group>"; };
 		16AE6CE531818E64A242E33D /* SegmentedAudioFileWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedAudioFileWriter.swift; sourceTree = "<group>"; };
 		1CAA84EF72C5EA4EE9B47743 /* MeetingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSession.swift; sourceTree = "<group>"; };
 		1CCFC08D661DE5DE5A5DF74F /* ProcessTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTap.swift; sourceTree = "<group>"; };
@@ -235,6 +237,7 @@
 				26B68B6A4253D5A3D581849D /* MediaAudioExtractor.swift */,
 				E6972514B1B5E8BA603EE725 /* PermissionManager.swift */,
 				363FE7FFAB640D4E02028622 /* PostProcessor.swift */,
+				0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */,
 				48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */,
 				6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */,
 				47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */,
@@ -363,6 +366,7 @@
 				A3C07D1C478DB5D6260F64D8 /* SendableAudioBuffer.swift in Sources */,
 				08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */,
 				211CB069998867F995E8873B /* SystemAudioTap.swift in Sources */,
+				83363C1A2A5F0007F876158C /* SystemMicMute.swift in Sources */,
 				15D86F6997A1BFD1CCCF837F /* TextInsertionService.swift in Sources */,
 				37232077938661382D5F2A41 /* TranscriptOutputWriter.swift in Sources */,
 				9E56B6E9D4A6E20FE1C99CEC /* TranscriptionEngine.swift in Sources */,

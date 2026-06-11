@@ -20,6 +20,11 @@ final class AppCoordinator {
     let floatingPanel = FloatingPanel()
     let audioLevelMeter = AudioLevelMeter()
 
+    /// System-wide mic mute (Core Audio HAL). Toggled by the standard hotkey
+    /// while a meeting recording is active, so muting silences the meeting app
+    /// and Roger's own mic.m4a together.
+    let systemMicMute: SystemMicMute
+
     var hotkeyActive = false
     var isSettingUpModel = false
     var isModelReady = false
@@ -65,12 +70,43 @@ final class AppCoordinator {
             transcriptionEngine: transcriptionEngine,
             speakerKit: { try await SpeakerKit() }
         )
+        self.systemMicMute = SystemMicMute(appState: appState)
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
         transcriptionEngine.onLevelUpdate = { [weak self] raw in
             Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
         }
         self.pendingMeetingSessions = self.meetingRecorder.unfinalisedSessions()
+        observeRecorderState()
+        // HAL mute persists after our process exits, so always restore on quit.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemMicMute.restoreIfNeeded() }
+        }
+    }
+
+    /// Keeps the hotkey's mute-toggle mode and the system mute in sync with the
+    /// recorder's real state. Covers stops we don't drive directly (e.g. a
+    /// sleep-interrupted auto-finalise): when the recorder leaves `.recording`,
+    /// disengage the hotkey repurpose and restore the mic.
+    private func observeRecorderState() {
+        withObservationTracking {
+            _ = meetingRecorder.state
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                if case .recording = self.meetingRecorder.state {
+                    // still capturing — leave the mute toggle engaged
+                } else if self.hotkeyManager.meetingRecordingActive {
+                    self.hotkeyManager.meetingRecordingActive = false
+                    self.systemMicMute.restoreIfNeeded()
+                }
+                self.observeRecorderState()
+            }
+        }
     }
 
     private func setupPermissionCallbacks() {
@@ -100,6 +136,11 @@ final class AppCoordinator {
         hotkeyManager.onRotatePreset = { [weak self] direction in
             Task { @MainActor in
                 self?.rotatePreset(direction: direction)
+            }
+        }
+        hotkeyManager.onMicMuteToggle = { [weak self] in
+            Task { @MainActor in
+                self?.toggleMeetingMicMute()
             }
         }
     }
@@ -659,6 +700,9 @@ final class AppCoordinator {
         do {
             try await meetingRecorder.start()
             floatingPanel.show(coordinator: self)
+            // Repurpose the standard hotkey as the mic-mute toggle for the
+            // duration of the recording.
+            hotkeyManager.meetingRecordingActive = true
             logger.notice("Meeting recording started")
         } catch let error as MeetingRecordingError {
             appState.dictationState = .error(error.errorDescription ?? "Couldn't start meeting recording")
@@ -679,6 +723,10 @@ final class AppCoordinator {
             meetingOverlayHidden = false
             floatingPanel.setMeetingOverlayHidden(false)
         }
+        // Disengage the hotkey mute-toggle and restore the mic before tearing
+        // down — the toggle control goes away with the recording.
+        hotkeyManager.meetingRecordingActive = false
+        systemMicMute.restoreIfNeeded()
         await meetingRecorder.stop()
         floatingPanel.hide()
         // Refresh recovery list — a freshly finalised session won't be in
@@ -693,6 +741,14 @@ final class AppCoordinator {
         guard case .recording = meetingRecorder.state else { return }
         meetingOverlayHidden = hidden
         floatingPanel.setMeetingOverlayHidden(hidden)
+    }
+
+    /// Toggles the system-level mic mute. Bound to the standard hotkey while a
+    /// meeting recording is active (see `HotkeyManager.meetingRecordingActive`),
+    /// so muting silences the meeting app and Roger's mic.m4a together.
+    func toggleMeetingMicMute() {
+        guard meetingRecorder.isActive else { return }
+        systemMicMute.toggle()
     }
 
     /// Toggles the meeting recording state from a hotkey or menu action.

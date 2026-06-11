@@ -131,6 +131,19 @@ struct MenuBarView: View {
             Spacer()
             if let startedAt = currentMeetingStart {
                 Button {
+                    coordinator.toggleMeetingMicMute()
+                } label: {
+                    Image(systemName: coordinator.systemMicMute.isMuted ? "mic.slash.fill" : "mic.fill")
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background((coordinator.systemMicMute.isMuted ? Color.orange : Color.secondary).opacity(0.15), in: Capsule())
+                        .foregroundStyle(coordinator.systemMicMute.isMuted ? Color.orange : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide — click to unmute" : "Mute mic system-wide (also mutes the meeting app)")
+
+                Button {
                     coordinator.setMeetingOverlayHidden(!coordinator.meetingOverlayHidden)
                 } label: {
                     Image(systemName: coordinator.meetingOverlayHidden ? "eye" : "eye.slash")

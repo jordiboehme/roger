@@ -170,6 +170,17 @@ private struct FloatingIndicatorContent: View {
                 }
 
                 Button {
+                    coordinator.toggleMeetingMicMute()
+                } label: {
+                    Image(systemName: coordinator.systemMicMute.isMuted ? "mic.slash.fill" : "mic.fill")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(coordinator.systemMicMute.isMuted ? Color.orange : Color.secondary)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide — click to unmute" : "Mute mic system-wide (also mutes the meeting app)")
+
+                Button {
                     coordinator.setMeetingOverlayHidden(true)
                 } label: {
                     Image(systemName: "eye.slash")
