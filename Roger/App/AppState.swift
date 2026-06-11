@@ -23,9 +23,6 @@ final class AppState {
 
     // MARK: - General Settings
 
-    var transcriptionMode: TranscriptionMode {
-        didSet { defaults.set(transcriptionMode.rawValue, forKey: "transcriptionMode") }
-    }
     var activationMode: ActivationMode {
         didSet { defaults.set(activationMode.rawValue, forKey: "activationMode") }
     }
@@ -231,14 +228,10 @@ final class AppState {
 
     // MARK: - Computed
 
-    /// Effective WhisperKit `language` for a transcription session. English-only
-    /// models cannot decode anything else, so the preset override is silently
-    /// dropped in that case (the UI separately warns the user).
+    /// Effective transcription language: the preset's pin, or nil to let
+    /// Parakeet v3 auto-detect.
     func resolvedLanguage(for preset: DictationPreset) -> String? {
-        if let forced = transcriptionMode.whisperLanguage {
-            return forced
-        }
-        return preset.language
+        preset.language
     }
 
     var isListening: Bool {
@@ -314,7 +307,6 @@ final class AppState {
     private let defaults = UserDefaults.standard
 
     init() {
-        self.transcriptionMode = TranscriptionMode(rawValue: defaults.string(forKey: "transcriptionMode") ?? "") ?? .multilingual
         self.activationMode = ActivationMode(rawValue: defaults.string(forKey: "activationMode") ?? "") ?? .pushToTalk
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
@@ -435,37 +427,6 @@ final class AppState {
               let presets = try? JSONDecoder().decode([DictationPreset].self, from: data)
         else { return nil }
         return presets
-    }
-}
-
-enum TranscriptionMode: String, CaseIterable, Identifiable, Codable {
-    case englishOnly
-    case multilingual
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .englishOnly: return "English only"
-        case .multilingual: return "Multilingual"
-        }
-    }
-
-    /// Language code passed to Parakeet as a script hint. Nil = auto-detect.
-    /// With Parakeet v3 this only pins the language; it never changes the model.
-    var whisperLanguage: String? {
-        switch self {
-        case .englishOnly: return "en"
-        case .multilingual: return nil // auto-detect
-        }
-    }
-
-    /// Human-readable language name for AI prompts
-    var languageHint: String? {
-        switch self {
-        case .englishOnly: return "English"
-        case .multilingual: return nil // detected at runtime
-        }
     }
 }
 

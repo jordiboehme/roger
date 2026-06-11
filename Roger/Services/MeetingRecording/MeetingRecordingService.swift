@@ -414,7 +414,6 @@ final class MeetingRecordingService {
 
         let resolvedLanguageCode = micLanguage ?? systemLanguage
         let languageHint: String = resolvedLanguageCode.map { WhisperLanguage.displayName(for: $0) }
-            ?? appState.transcriptionMode.languageHint
             ?? "the original language"
 
         let postProcessor = PostProcessor()

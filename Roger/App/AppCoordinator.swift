@@ -316,7 +316,7 @@ final class AppCoordinator {
                 if let code = result.detectedLanguage {
                     return WhisperLanguage.displayName(for: code)
                 }
-                return appState.transcriptionMode.languageHint ?? "the original language"
+                return "the original language"
             }()
 
             let llmStart = Date()
@@ -536,7 +536,7 @@ final class AppCoordinator {
                     if let code = detailed.result.detectedLanguage {
                         return WhisperLanguage.displayName(for: code)
                     }
-                    return appState.transcriptionMode.languageHint ?? "the original language"
+                    return "the original language"
                 }()
 
                 // Diarization is best-effort: if model download or inference fails,
@@ -572,7 +572,7 @@ final class AppCoordinator {
                     if let code = r.detectedLanguage {
                         return WhisperLanguage.displayName(for: code)
                     }
-                    return appState.transcriptionMode.languageHint ?? "the original language"
+                    return "the original language"
                 }()
                 processedText = try await postProcessor.process(
                     r.text,

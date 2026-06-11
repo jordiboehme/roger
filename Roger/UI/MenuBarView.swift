@@ -289,8 +289,7 @@ struct MenuBarView: View {
     }
 
     private var statusSubtitle: String {
-        let mode = coordinator.appState.transcriptionMode.displayName
-        return coordinator.transcriptionEngine.isReady ? "\(mode) · Model loaded" : mode
+        coordinator.transcriptionEngine.isReady ? "Parakeet TDT v3 · Model loaded" : "Model not loaded"
     }
 
     // MARK: - Shortcuts cheat sheet

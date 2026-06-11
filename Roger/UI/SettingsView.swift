@@ -717,30 +717,16 @@ struct ModelSettingsView: View {
     @State private var showUninstallConfirm = false
 
     var body: some View {
-        @Bindable var state = coordinator.appState
-        let engine = coordinator.transcriptionEngine
         let isSettingUp = coordinator.isSettingUpModel
         let isModelReady = coordinator.isModelReady
 
         ScrollView {
             VStack(spacing: 16) {
-                // Transcription Mode
                 settingsCard(icon: "waveform", title: "Transcription") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        settingsRow("Mode") {
-                            Picker("", selection: $state.transcriptionMode) {
-                                ForEach(TranscriptionMode.allCases) { mode in
-                                    Text(mode.displayName).tag(mode)
-                                }
-                            }
-                            .labelsHidden()
-                            .fixedSize()
-                        }
-                        settingsRow("Model") {
-                            Text("Parakeet TDT v3")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    settingsRow("Model") {
+                        Text("Parakeet TDT v3")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 

@@ -168,7 +168,6 @@ struct PresetsSettingsView: View {
     @ViewBuilder
     private func languageSection(preset: Binding<DictationPreset>) -> some View {
         let pinnedCode = preset.wrappedValue.language
-        let isEnglishOnly = coordinator.appState.transcriptionMode == .englishOnly
         let aiUnsupported = pinnedCode.map { code in
             preset.wrappedValue.requiresAI
                 && coordinator.appState.selectedLLMProvider == .appleIntelligence
@@ -184,12 +183,6 @@ struct PresetsSettingsView: View {
             }
             .pickerStyle(.menu)
 
-            if let code = pinnedCode, code != "en", isEnglishOnly {
-                warningRow(
-                    "The active model is English-only — this language setting will be ignored. Switch to a multilingual model in General settings."
-                )
-            }
-
             if aiUnsupported, let code = pinnedCode {
                 warningRow(
                     "Apple Intelligence doesn't support \(WhisperLanguage.displayName(for: code)) — the AI step in this preset will fail. Switch AI provider in Settings › AI Provider, or pick a different language."
@@ -198,7 +191,7 @@ struct PresetsSettingsView: View {
         } header: {
             Text("Language")
         } footer: {
-            Text("Pin a language to skip Whisper's auto-detection and avoid short utterances being misheard as the wrong language.")
+            Text("Pin a language to skip Parakeet's auto-detection and avoid short utterances being misheard as the wrong language.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
