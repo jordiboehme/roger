@@ -18,6 +18,11 @@ final class AudioCaptureService: @unchecked Sendable {
     /// UID of the input device to use, or nil for system default.
     var preferredInputUID: String?
 
+    /// Fires on every captured buffer with its RMS level (~0…1), so the
+    /// floating indicator's waveform stays live during batch dictation. Invoked
+    /// off the main actor — hop before touching main-actor state.
+    var onLevelUpdate: (@Sendable (Float) -> Void)?
+
     /// Runs a short silent capture to wake the audio HAL so the next real
     /// capture gets samples immediately. Never throws; logs and returns.
     func warmUp() async {
@@ -187,6 +192,13 @@ final class AudioCaptureService: @unchecked Sendable {
         lock.lock()
         capturedSamples.append(contentsOf: samples)
         lock.unlock()
+
+        if let onLevelUpdate, !samples.isEmpty {
+            var sumSquares: Float = 0
+            for s in samples { sumSquares += s * s }
+            let rms = (sumSquares / Float(samples.count)).squareRoot()
+            onLevelUpdate(rms)
+        }
     }
 }
 

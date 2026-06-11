@@ -14,13 +14,13 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 ## Features
 
-- **Near-instant results** — a full minute of dictation lands in about two seconds after you release the key. On-device streaming transcription runs on Apple Silicon's Neural Engine while you speak
+- **Near-instant results** — release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
 - **Drop files to transcribe** — drag an audio or video file onto the menu bar icon and Roger writes a `.txt` transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
-- **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, runs Whisper on each and SpeakerKit on the remote track, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
+- **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Mute yourself everywhere** — while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once — no per-app setup, no plugin
-- **Completely private** — Powered by [WhisperKit](https://github.com/argmaxinc/WhisperKit) on Apple Silicon. Your audio never leaves your Mac
-- **Speaks your language** — English and German with automatic detection. More languages via Whisper's multilingual models
+- **Completely private** — Powered by [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) via [FluidAudio](https://github.com/FluidInference/FluidAudio) on Apple Silicon. Your audio never leaves your Mac
+- **Speaks your language** — English and German with automatic detection, plus 23 more European languages via Parakeet's multilingual model
 - **Cheat-sheet menu bar** — one glance at the popup tells you which Caps Lock combo maps to which preset
 - **Quick copy** — click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
 - **Modifier-bound presets** — bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
@@ -67,7 +67,7 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## How It Works
 
-Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (a CoreML port of [OpenAI Whisper](https://github.com/openai/whisper)), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription streams while you're still speaking, so the text lands almost the instant you release the key. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
+Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
 
 ### Transcribing files
 
@@ -75,7 +75,7 @@ Drop any audio or video file on Roger's menu bar icon and it writes the transcri
 
 ### Recording meetings
 
-Roger records your mic and everything you hear from the system on two separate tracks, encodes both as M4A on stop, then runs Whisper on each and SpeakerKit on the remote track to label participants. The result lands in a per-meeting folder under `~/Documents/Roger Recordings/` (configurable) with `mic.m4a`, `system.m4a` and `transcript.md`. The markdown carries YAML frontmatter and stamps every speaker turn with both an elapsed offset and the absolute local time, so a knowledge base can ingest it directly — and screenshots or notes you capture mid-call line up with what was said. Audio is chunked to disk every 30 minutes, so a crash mid-call doesn't lose work — Roger offers to resume finalizing on next launch. Start from the menu bar item or assign a global hotkey under Settings › Recordings. While a recording is live, your dictation hotkey toggles a system-level mic mute — one press silences you in the meeting app and on the recording alike, with no per-app setup. Turn on mic-side speaker detection there too if more than one person speaks into the same mic.
+Roger records your mic and everything you hear from the system on two separate tracks, encodes both as M4A on stop, then transcribes each track and diarizes the remote one to label participants. The result lands in a per-meeting folder under `~/Documents/Roger Recordings/` (configurable) with `mic.m4a`, `system.m4a` and `transcript.md`. The markdown carries YAML frontmatter and stamps every speaker turn with both an elapsed offset and the absolute local time, so a knowledge base can ingest it directly — and screenshots or notes you capture mid-call line up with what was said. Audio is chunked to disk every 30 minutes, so a crash mid-call doesn't lose work — Roger offers to resume finalizing on next launch. Start from the menu bar item or assign a global hotkey under Settings › Recordings. While a recording is live, your dictation hotkey toggles a system-level mic mute — one press silences you in the meeting app and on the recording alike, with no per-app setup. Turn on mic-side speaker detection there too if more than one person speaks into the same mic.
 
 ### Presets
 

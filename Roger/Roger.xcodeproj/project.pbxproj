@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03CA8086269DC0AA5D5E24E7 /* DiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31817525D64A7EC3D0642B02 /* DiarizationService.swift */; };
 		052616721F819EF9794D879F /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F3487B8EF5F5008F213858 /* LLMService.swift */; };
 		08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BEFEB2CF66FA6DC5DAC61B /* SettingsView.swift */; };
 		0E414CB4083527AA29288B99 /* MeetingRecordingError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */; };
@@ -16,7 +17,7 @@
 		20DB81390ADDD91D75C08353 /* AppleIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3743725D72D2E40A31B42614 /* AppleIntelligenceService.swift */; };
 		211CB069998867F995E8873B /* SystemAudioTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D33F4EEC653AD13A176CAB /* SystemAudioTap.swift */; };
 		25391159CBA64CA491757CA1 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346522528C8F2F9999EF7C4F /* AppCoordinator.swift */; };
-		2BAA71A5DCB02C521000BD04 /* SpeakerKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4C7239126096111E80B6D5D6 /* SpeakerKit */; };
+		2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
 		37232077938661382D5F2A41 /* TranscriptOutputWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */; };
 		3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60172AF22E507A9E6C7B0C69 /* ClaudeService.swift */; };
 		413E2531054DF95877A29FB9 /* MicrophoneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F3DA0700AC3E3A517D32E0 /* MicrophoneSettingsView.swift */; };
@@ -37,19 +38,20 @@
 		9CCFE22AD4EA6C7BEF74F76D /* LLMProviderType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BD03DEF1FE8D1DF6DC6727 /* LLMProviderType.swift */; };
 		9E56B6E9D4A6E20FE1C99CEC /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */; };
 		A100FA52F7F1E7B9705D8BF6 /* AIProviderSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4533F0DE111CF2997F1DF34 /* AIProviderSettingsView.swift */; };
+		A1F067AF806268EAB3E2D57B /* SpeakerAligner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EEB6FE6094DB78537941E78 /* SpeakerAligner.swift */; };
 		A3C07D1C478DB5D6260F64D8 /* SendableAudioBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C71D4FE122B3EB0B17E2F0 /* SendableAudioBuffer.swift */; };
-		A627DC59B422E4F308AD8573 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
 		A70033CDF03B5F0F6D4386CE /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6DCE169264032BC365088F8 /* KeychainManager.swift */; };
 		AAC034F2B0C7972E1A2542A5 /* CoreAudioUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C213257A5EE5B8CD0D84CB2 /* CoreAudioUtils.swift */; };
 		AD22F30D2B1B630232A3DB98 /* MicrophoneTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E135A3C5D28F1F5584ED81C /* MicrophoneTap.swift */; };
 		AD459AB6A581E8E3F1E9C09A /* RecordingsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492FB21522C9926A1E7649A7 /* RecordingsSettingsView.swift */; };
 		AE71298EFE4B605EB4AB8775 /* SegmentedAudioFileWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AE6CE531818E64A242E33D /* SegmentedAudioFileWriter.swift */; };
-		AF748212A741CE6C3FD3811D /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 916885B62E04FEAE8D7C267D /* WhisperKit */; };
+		AF748212A741CE6C3FD3811D /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 869EE79A9E11A77723C795E0 /* FluidAudio */; };
 		B69266E8EA8C10DC8C859130 /* MeetingRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A926583088788AE7FF75290B /* MeetingRecordingService.swift */; };
 		B6E2306EFA7E5281695B4565 /* AudioLevelMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F369869C241C4566988E63 /* AudioLevelMeter.swift */; };
 		BD0C0395EAE39F3679BC84E3 /* AudioDeviceLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D9E7817E6899F5FE497ED9 /* AudioDeviceLookup.swift */; };
 		BDC20E25A6EFFF5FD920726F /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11FAC7CEE909988CCB11304 /* MenuBarView.swift */; };
 		BDC5E4A104A1D4B719B8B897 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E66D0A924C57BD54A258ED /* HotkeyManager.swift */; };
+		BFD316C28B9F22EFF725A440 /* SpeakerSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AA4CCFBDFBF4E9354263F5C /* SpeakerSegment.swift */; };
 		CF758B7AC9D461C123600C0E /* DictationPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC697D5097263C850B4C7CFE /* DictationPreset.swift */; };
 		D13A328850B8D7C25C30690C /* RogerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3781C2D3C0D65D52F9F304DD /* RogerApp.swift */; };
 		D3166B29587CA700D443E718 /* KeyComboBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */; };
@@ -66,6 +68,7 @@
 		1CAA84EF72C5EA4EE9B47743 /* MeetingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSession.swift; sourceTree = "<group>"; };
 		1CCFC08D661DE5DE5A5DF74F /* ProcessTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTap.swift; sourceTree = "<group>"; };
 		26B68B6A4253D5A3D581849D /* MediaAudioExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAudioExtractor.swift; sourceTree = "<group>"; };
+		31817525D64A7EC3D0642B02 /* DiarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationService.swift; sourceTree = "<group>"; };
 		31F3487B8EF5F5008F213858 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
 		346522528C8F2F9999EF7C4F /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
 		363FE7FFAB640D4E02028622 /* PostProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostProcessor.swift; sourceTree = "<group>"; };
@@ -82,8 +85,10 @@
 		6C213257A5EE5B8CD0D84CB2 /* CoreAudioUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAudioUtils.swift; sourceTree = "<group>"; };
 		6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionEngine.swift; sourceTree = "<group>"; };
 		6E135A3C5D28F1F5584ED81C /* MicrophoneTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneTap.swift; sourceTree = "<group>"; };
+		6EEB6FE6094DB78537941E78 /* SpeakerAligner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAligner.swift; sourceTree = "<group>"; };
 		72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyComboBadge.swift; sourceTree = "<group>"; };
 		76126D47E61F9F1ABC8F3D3F /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
+		7AA4CCFBDFBF4E9354263F5C /* SpeakerSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerSegment.swift; sourceTree = "<group>"; };
 		83E66D0A924C57BD54A258ED /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		93F3DA0700AC3E3A517D32E0 /* MicrophoneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneSettingsView.swift; sourceTree = "<group>"; };
 		944D8CE8CCBD95F3346AB9C2 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -117,9 +122,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AF748212A741CE6C3FD3811D /* WhisperKit in Frameworks */,
-				2BAA71A5DCB02C521000BD04 /* SpeakerKit in Frameworks */,
-				A627DC59B422E4F308AD8573 /* KeyboardShortcuts in Frameworks */,
+				AF748212A741CE6C3FD3811D /* FluidAudio in Frameworks */,
+				2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -145,6 +149,7 @@
 				0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */,
 				1CAA84EF72C5EA4EE9B47743 /* MeetingSession.swift */,
 				AD0401FF3C26D3570A4B9327 /* PostProcessingError.swift */,
+				7AA4CCFBDFBF4E9354263F5C /* SpeakerSegment.swift */,
 				FD264FA686F59259F35AA09C /* WhisperLanguage.swift */,
 			);
 			path = Models;
@@ -181,6 +186,15 @@
 				C3635B55A7D535D8EEDFDD43 /* UI */,
 				614DDFA0F1566C6E5BDD3FBB /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		9374240120BD38D9DA882B6E /* Diarization */ = {
+			isa = PBXGroup;
+			children = (
+				31817525D64A7EC3D0642B02 /* DiarizationService.swift */,
+				6EEB6FE6094DB78537941E78 /* SpeakerAligner.swift */,
+			);
+			path = Diarization;
 			sourceTree = "<group>";
 		};
 		9AA4A0B7DA1E2BF85528D523 /* MeetingRecording */ = {
@@ -241,6 +255,7 @@
 				48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */,
 				6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */,
 				47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */,
+				9374240120BD38D9DA882B6E /* Diarization */,
 				9AA4A0B7DA1E2BF85528D523 /* MeetingRecording */,
 			);
 			path = Services;
@@ -263,8 +278,7 @@
 			);
 			name = Roger;
 			packageProductDependencies = (
-				916885B62E04FEAE8D7C267D /* WhisperKit */,
-				4C7239126096111E80B6D5D6 /* SpeakerKit */,
+				869EE79A9E11A77723C795E0 /* FluidAudio */,
 				3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */,
 			);
 			productName = Roger;
@@ -296,7 +310,7 @@
 			mainGroup = 8AC33A1AEDD79BB3EA0FC72B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				1BCF5491EC4A2C673E49BC78 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+				D8F448D71284D655627E634A /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				2A7E9CCAC9E1A32D8C3B9C8E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -336,6 +350,7 @@
 				1038DD2220D3268A9CCA4830 /* CapsModifier.swift in Sources */,
 				3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */,
 				AAC034F2B0C7972E1A2542A5 /* CoreAudioUtils.swift in Sources */,
+				03CA8086269DC0AA5D5E24E7 /* DiarizationService.swift in Sources */,
 				CF758B7AC9D461C123600C0E /* DictationPreset.swift in Sources */,
 				82B0FAB7E064AC13E8CCF11A /* FloatingPanel.swift in Sources */,
 				BDC5E4A104A1D4B719B8B897 /* HotkeyManager.swift in Sources */,
@@ -365,6 +380,8 @@
 				AE71298EFE4B605EB4AB8775 /* SegmentedAudioFileWriter.swift in Sources */,
 				A3C07D1C478DB5D6260F64D8 /* SendableAudioBuffer.swift in Sources */,
 				08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */,
+				A1F067AF806268EAB3E2D57B /* SpeakerAligner.swift in Sources */,
+				BFD316C28B9F22EFF725A440 /* SpeakerSegment.swift in Sources */,
 				211CB069998867F995E8873B /* SystemAudioTap.swift in Sources */,
 				83363C1A2A5F0007F876158C /* SystemMicMute.swift in Sources */,
 				15D86F6997A1BFD1CCCF837F /* TextInsertionService.swift in Sources */,
@@ -456,7 +473,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.10.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jordiboehme.roger;
 				PRODUCT_NAME = Roger;
 				SDKROOT = macosx;
@@ -536,7 +553,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.4;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.10.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jordiboehme.roger;
 				PRODUCT_NAME = Roger;
 				SDKROOT = macosx;
@@ -568,20 +585,20 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		1BCF5491EC4A2C673E49BC78 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
 		2A7E9CCAC9E1A32D8C3B9C8E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts.git";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.4.0;
+			};
+		};
+		D8F448D71284D655627E634A /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.15.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -592,15 +609,10 @@
 			package = 2A7E9CCAC9E1A32D8C3B9C8E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
 			productName = KeyboardShortcuts;
 		};
-		4C7239126096111E80B6D5D6 /* SpeakerKit */ = {
+		869EE79A9E11A77723C795E0 /* FluidAudio */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 1BCF5491EC4A2C673E49BC78 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
-			productName = SpeakerKit;
-		};
-		916885B62E04FEAE8D7C267D /* WhisperKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1BCF5491EC4A2C673E49BC78 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
-			productName = WhisperKit;
+			package = D8F448D71284D655627E634A /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -2,7 +2,6 @@ import AppKit
 import CoreAudio
 import Foundation
 import Observation
-import SpeakerKit
 import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "AppCoordinator")
@@ -28,19 +27,20 @@ final class AppCoordinator {
     var hotkeyActive = false
     var isSettingUpModel = false
     var isModelReady = false
-    var isCheckingModelUpdate = false
-    var modelUpdateAvailable: Bool? = nil
     var lastModelError: String? = nil
     private(set) var activeRecordingPresetID: UUID?
+    /// Language pin resolved at recording start, applied when the buffer is
+    /// transcribed on release.
+    private var activeRecordingLanguageOverride: String?
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
     private var maxDurationTask: Task<Void, Never>?
-    private var streamingSessionActive = false
     /// Currently-transcribing file, or nil when nothing is in flight. The
     /// floating indicator observes this to show the "Transcribing X" overlay.
     private(set) var activeFileTranscription: FileTranscriptionJob?
     private var fileTranscriptionTask: Task<Void, Never>?
-    private var speakerKit: SpeakerKit?
+    /// Shared anonymous speaker diarization (file transcription + meetings).
+    let diarizationService = DiarizationService()
 
     /// Meeting recording orchestrator. Builds on Core Audio Process Taps
     /// (macOS 14.4+, the project deployment floor).
@@ -58,22 +58,17 @@ final class AppCoordinator {
     var meetingOverlayHidden: Bool = false
 
     init() {
-        // The meeting recorder owns its own SpeakerKit cache — sharing the
-        // file-transcription cache via `[weak self]` would force the closure
-        // to capture self before all stored `let`s are initialised, which
-        // Swift's definite-initialisation analysis rejects. Two ~150 MB
-        // model loads only occur if you finalise a meeting and transcribe a
-        // file in the same launch; the extra RAM is acceptable for the
-        // simpler init path.
+        // Share one diarization service across file transcription and meetings
+        // so its CoreML models load once per launch.
         self.meetingRecorder = MeetingRecordingService(
             appState: appState,
             transcriptionEngine: transcriptionEngine,
-            speakerKit: { try await SpeakerKit() }
+            diarization: diarizationService
         )
         self.systemMicMute = SystemMicMute(appState: appState)
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
-        transcriptionEngine.onLevelUpdate = { [weak self] raw in
+        audioCaptureService.onLevelUpdate = { [weak self] raw in
             Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
         }
         self.pendingMeetingSessions = self.meetingRecorder.unfinalisedSessions()
@@ -217,15 +212,11 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             appState.dictationState = .listening
             recordingStartTime = Date()
+            activeRecordingLanguageOverride = languageOverride
             floatingPanel.show(coordinator: self)
 
-            let deviceID = appState.selectedInputDeviceUID.flatMap { AudioDeviceLookup.deviceID(forUID: $0) }
-            try await transcriptionEngine.startStreaming(
-                mode: appState.transcriptionMode,
-                languageOverride: languageOverride,
-                inputDeviceID: deviceID
-            )
-            streamingSessionActive = true
+            audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
+            try audioCaptureService.startCapture()
 
             scheduleMaxDurationStop()
             logger.info("Dictation started (preset: \(presetName))")
@@ -233,9 +224,9 @@ final class AppCoordinator {
             floatingPanel.hide()
             audioLevelMeter.reset()
             activeRecordingPresetID = nil
-            streamingSessionActive = false
-            await transcriptionEngine.cancelStreaming()
-            logger.error("Failed to start streaming transcription: \(error)")
+            activeRecordingLanguageOverride = nil
+            _ = audioCaptureService.stopCapture()
+            logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
         }
     }
@@ -262,14 +253,16 @@ final class AppCoordinator {
         guard appState.dictationState == .listening else { return }
 
         cancelMaxDurationTask()
-        streamingSessionActive = false
 
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
 
+        let samples = audioCaptureService.stopCapture()
+        let languageOverride = activeRecordingLanguageOverride
+        activeRecordingLanguageOverride = nil
+
         guard duration >= appState.minimumRecordingDuration else {
             logger.info("Recording too short (\(String(format: "%.1f", duration), privacy: .public)s), discarding")
-            Task { await self.transcriptionEngine.cancelStreaming() }
             floatingPanel.hide()
             audioLevelMeter.reset()
             appState.dictationState = .idle
@@ -280,7 +273,13 @@ final class AppCoordinator {
         logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
         Task {
             await self.runPipeline(audioSeconds: duration) {
-                try await self.transcriptionEngine.finishStreaming()
+                guard let samples, !samples.isEmpty else {
+                    return TranscriptionEngine.TranscriptionResult(text: "", detectedLanguage: nil)
+                }
+                return try await self.transcriptionEngine.transcribe(
+                    audioBuffer: samples,
+                    languageOverride: languageOverride
+                )
             }
         }
     }
@@ -299,18 +298,10 @@ final class AppCoordinator {
             let result = try await transcribe()
             let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
 
-            if let failure = transcriptionEngine.consumeStreamFailure() {
-                logger.error("Stream failed to open: \(failure.reason, privacy: .public) on device \(failure.deviceID)")
-                floatingPanel.hide()
-                audioLevelMeter.reset()
-                appState.dictationState = .error("Microphone stream never opened — check Console logs and mic permission")
-                return
-            }
-
             guard !result.text.isEmpty else {
                 let uid = appState.selectedInputDeviceUID ?? "automatic"
                 let deviceResolved = appState.selectedInputDeviceUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
-                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)), peak energy \(String(format: "%.3f", self.transcriptionEngine.lastStreamPeakEnergy), privacy: .public). If peak is ~0 the HAL delivered no samples — check Privacy & Security > Microphone for Roger.")
+                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 audioLevelMeter.reset()
                 appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
@@ -414,9 +405,8 @@ final class AppCoordinator {
             logger.info("Model setup already in progress, skipping")
             return
         }
-        let mode = appState.transcriptionMode
-        guard !transcriptionEngine.isReady(for: mode) else {
-            logger.info("Model already ready for \(mode.displayName), skipping setup")
+        guard !transcriptionEngine.isReady else {
+            logger.info("Model already ready, skipping setup")
             return
         }
 
@@ -424,7 +414,7 @@ final class AppCoordinator {
         lastModelError = nil
 
         do {
-            try await transcriptionEngine.setup(mode: mode) { _ in }
+            try await transcriptionEngine.setup { _ in }
             isSettingUpModel = false
             isModelReady = true
             logger.info("Model setup complete")
@@ -456,7 +446,6 @@ final class AppCoordinator {
     func uninstallModel() async {
         await transcriptionEngine.uninstall()
         isModelReady = false
-        modelUpdateAvailable = nil
         lastModelError = nil
     }
 
@@ -465,18 +454,6 @@ final class AppCoordinator {
         lastModelError = nil
         await transcriptionEngine.uninstall()
         await setupModel()
-    }
-
-    func checkForModelUpdate() async {
-        guard !isCheckingModelUpdate else { return }
-        isCheckingModelUpdate = true
-        modelUpdateAvailable = nil
-        defer { isCheckingModelUpdate = false }
-        do {
-            modelUpdateAvailable = try await transcriptionEngine.checkForUpdate()
-        } catch {
-            logger.warning("Model update check failed: \(error)")
-        }
     }
 
     // MARK: - File Transcription (drag-and-drop)
@@ -551,7 +528,6 @@ final class AppCoordinator {
             if appState.fileTranscriptionDiarize {
                 let detailed = try await transcriptionEngine.transcribeFileDetailed(
                     url: prepared.url,
-                    mode: appState.transcriptionMode,
                     languageOverride: languageOverride
                 )
                 try Task.checkCancellation()
@@ -567,12 +543,11 @@ final class AppCoordinator {
                 // fall back to the plain transcription rather than surfacing an error.
                 let textToParse: String
                 do {
-                    if speakerKit == nil {
-                        speakerKit = try await SpeakerKit()
-                    }
-                    let diarization = try await speakerKit!.diarize(audioArray: detailed.audioSamples)
-                    let labeled = diarization.addSpeakerInfo(to: detailed.rawSegments, strategy: .subsegment)
-                    let diarized = formatDiarized(labeled)
+                    let aligned = try await diarizationService.speakerSegments(
+                        samples: detailed.audioSamples,
+                        tokens: detailed.tokenTimings
+                    )
+                    let diarized = formatDiarized(aligned)
                     textToParse = diarized.isEmpty ? detailed.result.text : diarized
                 } catch {
                     logger.warning("Diarization failed, using plain transcript: \(error.localizedDescription, privacy: .public)")
@@ -589,7 +564,6 @@ final class AppCoordinator {
             } else {
                 let r = try await transcriptionEngine.transcribeFile(
                     url: prepared.url,
-                    mode: appState.transcriptionMode,
                     languageOverride: languageOverride
                 )
                 result = r
@@ -635,27 +609,26 @@ final class AppCoordinator {
         }
     }
 
-    private func formatDiarized(_ segments: [[SpeakerSegment]]) -> String {
+    private func formatDiarized(_ segments: [SpeakerSegment]) -> String {
         var lines: [String] = []
-        var currentSpeaker: Int? = nil
-        var currentWords: [String] = []
+        var currentSpeaker: String? = nil
+        var buffer: [String] = []
 
-        for group in segments {
-            for segment in group {
-                guard let speakerId = segment.speaker.speakerId else { continue }
-                if speakerId != currentSpeaker {
-                    if let prev = currentSpeaker, !currentWords.isEmpty {
-                        lines.append("[Speaker \(prev)]\n\(currentWords.joined())")
-                    }
-                    currentSpeaker = speakerId
-                    currentWords = []
-                }
-                currentWords.append(contentsOf: segment.speakerWords.map { $0.wordTiming.word })
+        func flush() {
+            guard let speaker = currentSpeaker, !buffer.isEmpty else { buffer = []; return }
+            let label = speaker.hasPrefix("S") ? "Speaker \(speaker.dropFirst())" : speaker
+            lines.append("[\(label)]\n\(buffer.joined(separator: " "))")
+            buffer = []
+        }
+
+        for segment in segments {
+            if segment.speakerId != currentSpeaker {
+                flush()
+                currentSpeaker = segment.speakerId
             }
+            buffer.append(segment.text)
         }
-        if let last = currentSpeaker, !currentWords.isEmpty {
-            lines.append("[Speaker \(last)]\n\(currentWords.joined())")
-        }
+        flush()
         return lines.joined(separator: "\n\n")
     }
 

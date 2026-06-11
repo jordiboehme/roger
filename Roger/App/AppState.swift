@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import ServiceManagement
-import WhisperKit
 import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "LaunchAtLogin")
@@ -110,17 +109,17 @@ final class AppState {
     var meetingMaxSegmentMinutes: Int {
         didSet { defaults.set(meetingMaxSegmentMinutes, forKey: "meetingMaxSegmentMinutes") }
     }
-    /// When true, the system track is run through SpeakerKit so remote
+    /// When true, the system track is run through the diarizer so remote
     /// participants land as Other 1, Other 2 … in the transcript. When false,
     /// every system-side paragraph collapses to a single Other label.
     var meetingDiarizeSystem: Bool {
         didSet { defaults.set(meetingDiarizeSystem, forKey: "meetingDiarizeSystem") }
     }
-    /// When true, the mic track is also run through SpeakerKit so additional
+    /// When true, the mic track is also run through the diarizer so additional
     /// in-room speakers can be detected. The cluster with the most speech is
     /// labelled `Me`; the rest pool into the unified `Other N` namespace
     /// shared with the system track. Off by default — diarising the mic adds
-    /// one extra ~150 MB model run on finalisation, only useful for
+    /// one extra diarization pass on finalisation, only useful for
     /// shared-mic setups (laptop on a meeting-room table, etc.).
     var meetingDiarizeMic: Bool {
         didSet { defaults.set(meetingDiarizeMic, forKey: "meetingDiarizeMic") }
@@ -447,36 +446,13 @@ enum TranscriptionMode: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .englishOnly: return "English Only (faster)"
+        case .englishOnly: return "English only"
         case .multilingual: return "Multilingual"
         }
     }
 
-    var modelName: String {
-        let models = WhisperKit.recommendedModels()
-        switch self {
-        case .englishOnly:
-            // Prefer distil models (fast, English-only), then .en models
-            let distil = models.supported.filter { $0.contains("distil") }
-            if let best = distil.last { return best }
-            let en = models.supported.filter { $0.contains(".en") }
-            if let best = en.last { return best }
-            return models.default
-        case .multilingual:
-            return models.default
-        }
-    }
-
-    /// Short model name for display in UI
-    var modelDescription: String {
-        let name = modelName
-        // Strip common prefixes for readability
-        return name
-            .replacingOccurrences(of: "openai_whisper-", with: "")
-            .replacingOccurrences(of: "distil-whisper_distil-", with: "distil-")
-    }
-
-    /// Language code passed to WhisperKit. Nil = auto-detect.
+    /// Language code passed to Parakeet as a script hint. Nil = auto-detect.
+    /// With Parakeet v3 this only pins the language; it never changes the model.
     var whisperLanguage: String? {
         switch self {
         case .englishOnly: return "en"

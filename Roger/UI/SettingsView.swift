@@ -720,7 +720,6 @@ struct ModelSettingsView: View {
         @Bindable var state = coordinator.appState
         let engine = coordinator.transcriptionEngine
         let isSettingUp = coordinator.isSettingUpModel
-        let isChecking = coordinator.isCheckingModelUpdate
         let isModelReady = coordinator.isModelReady
 
         ScrollView {
@@ -738,7 +737,7 @@ struct ModelSettingsView: View {
                             .fixedSize()
                         }
                         settingsRow("Model") {
-                            Text(state.transcriptionMode.modelDescription)
+                            Text("Parakeet TDT v3")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -749,14 +748,14 @@ struct ModelSettingsView: View {
                 settingsCard(icon: "cpu", title: "Speech Model") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
-                            Text("Roger uses WhisperKit for on-device speech recognition. Models run entirely on your Mac using the Neural Engine — your voice data never leaves your machine.")
+                            Text("Roger uses Parakeet (via FluidAudio) for on-device speech recognition. Models run entirely on your Mac using the Neural Engine — your voice data never leaves your machine.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            if isSettingUp || isChecking {
+                            if isSettingUp {
                                 HStack(spacing: 6) {
                                     ProgressView().controlSize(.small)
-                                    Text(isChecking ? "Checking…" : "Loading…")
+                                    Text("Loading…")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -786,23 +785,9 @@ struct ModelSettingsView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
-                        if !isSettingUp && !isChecking {
+                        if !isSettingUp {
                             if isModelReady {
                                 HStack(spacing: 8) {
-                                    Button("Check for Updates") {
-                                        Task { await coordinator.checkForModelUpdate() }
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                    if coordinator.modelUpdateAvailable == true {
-                                        Button("Update") {
-                                            Task { await coordinator.reinstallModel() }
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .controlSize(.small)
-                                    }
-
                                     Spacer()
 
                                     Button("Uninstall", role: .destructive) {
@@ -810,12 +795,6 @@ struct ModelSettingsView: View {
                                     }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
-                                }
-
-                                if let available = coordinator.modelUpdateAvailable {
-                                    Text(available ? "Update available" : "Up to date")
-                                        .font(.caption2)
-                                        .foregroundStyle(available ? .orange : .green)
                                 }
                             } else {
                                 Button("Download Model") {
@@ -829,10 +808,6 @@ struct ModelSettingsView: View {
                 }
             }
             .padding()
-        }
-        .onChange(of: state.transcriptionMode) { _, _ in
-            coordinator.modelUpdateAvailable = nil
-            Task { await coordinator.setupModel() }
         }
         .confirmationDialog(
             "Uninstall Speech Model?",
@@ -924,12 +899,12 @@ struct AboutView: View {
                     Text("Powered by")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    Link("WhisperKit", destination: URL(string: "https://github.com/argmaxinc/WhisperKit")!)
+                    Link("FluidAudio", destination: URL(string: "https://github.com/FluidInference/FluidAudio")!)
                         .font(.caption2)
                     Text("&")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    Link("OpenAI Whisper", destination: URL(string: "https://github.com/openai/whisper")!)
+                    Link("NVIDIA Parakeet", destination: URL(string: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3")!)
                         .font(.caption2)
                 }
 

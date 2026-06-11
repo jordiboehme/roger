@@ -1,9 +1,8 @@
 import AppKit
 import AVFoundation
+import FluidAudio
 import Foundation
 import Observation
-import SpeakerKit
-import WhisperKit
 import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "MeetingRecording")
@@ -43,8 +42,7 @@ final class MeetingRecordingService {
 
     private let appState: AppState
     private let transcriptionEngine: TranscriptionEngine
-    private let speakerKitFactory: () async throws -> SpeakerKit
-    private var sharedSpeakerKit: SpeakerKit?
+    private let diarization: DiarizationService
 
     private var session: MeetingSession?
     private var micTap: MicrophoneTap?
@@ -59,11 +57,11 @@ final class MeetingRecordingService {
     init(
         appState: AppState,
         transcriptionEngine: TranscriptionEngine,
-        speakerKit: @escaping () async throws -> SpeakerKit
+        diarization: DiarizationService
     ) {
         self.appState = appState
         self.transcriptionEngine = transcriptionEngine
-        self.speakerKitFactory = speakerKit
+        self.diarization = diarization
     }
 
     var isActive: Bool {
@@ -347,29 +345,24 @@ final class MeetingRecordingService {
             do {
                 let detailed = try await transcriptionEngine.transcribeFileDetailed(
                     url: micArchive,
-                    mode: appState.transcriptionMode,
                     languageOverride: languageOverride
                 )
                 micLanguage = detailed.result.detectedLanguage
 
                 if appState.meetingDiarizeMic {
                     do {
-                        if sharedSpeakerKit == nil {
-                            sharedSpeakerKit = try await speakerKitFactory()
-                        }
-                        let diarization = try await sharedSpeakerKit!.diarize(audioArray: detailed.audioSamples)
-                        let micSpeakerSegments = diarization.addSpeakerInfo(
-                            to: detailed.rawSegments,
-                            strategy: .subsegment
+                        let segments = try await diarization.speakerSegments(
+                            samples: detailed.audioSamples,
+                            tokens: detailed.tokenTimings
                         )
-                        micInput = .diarized(micSpeakerSegments)
+                        micInput = .diarized(segments)
                     } catch {
                         diarizationFailed = true
                         logger.warning("Mic diarization failed: \(error.localizedDescription, privacy: .public) — falling back to flat Me labels")
-                        micInput = .flat(detailed.rawSegments.flatMap { $0.segments })
+                        micInput = .flat(SpeakerAligner.segment(tokens: detailed.tokenTimings))
                     }
                 } else {
-                    micInput = .flat(detailed.rawSegments.flatMap { $0.segments })
+                    micInput = .flat(SpeakerAligner.segment(tokens: detailed.tokenTimings))
                 }
             } catch {
                 logger.warning("Mic transcription failed: \(error.localizedDescription, privacy: .public)")
@@ -379,33 +372,28 @@ final class MeetingRecordingService {
         state = .finalising(progress: 0.65)
 
         // System transcription + diarization.
-        var systemSpeakerSegments: [[SpeakerSegment]] = []
+        var systemSpeakerSegments: [SpeakerSegment] = []
         var systemLanguage: String?
         if systemPresent {
             do {
                 let detailed = try await transcriptionEngine.transcribeFileDetailed(
                     url: systemArchive,
-                    mode: appState.transcriptionMode,
                     languageOverride: languageOverride
                 )
                 systemLanguage = detailed.result.detectedLanguage
                 if appState.meetingDiarizeSystem {
                     do {
-                        if sharedSpeakerKit == nil {
-                            sharedSpeakerKit = try await speakerKitFactory()
-                        }
-                        let diarization = try await sharedSpeakerKit!.diarize(audioArray: detailed.audioSamples)
-                        systemSpeakerSegments = diarization.addSpeakerInfo(
-                            to: detailed.rawSegments,
-                            strategy: .subsegment
+                        systemSpeakerSegments = try await diarization.speakerSegments(
+                            samples: detailed.audioSamples,
+                            tokens: detailed.tokenTimings
                         )
                     } catch {
                         diarizationFailed = true
                         logger.warning("System diarization failed: \(error.localizedDescription, privacy: .public)")
-                        systemSpeakerSegments = fallbackOtherSegments(from: detailed.rawSegments)
+                        systemSpeakerSegments = fallbackOtherSegments(tokens: detailed.tokenTimings)
                     }
                 } else {
-                    systemSpeakerSegments = fallbackOtherSegments(from: detailed.rawSegments)
+                    systemSpeakerSegments = fallbackOtherSegments(tokens: detailed.tokenTimings)
                 }
             } catch {
                 logger.warning("System transcription failed: \(error.localizedDescription, privacy: .public)")
@@ -470,7 +458,7 @@ final class MeetingRecordingService {
             systemPresent: systemPresent,
             diarizationFailed: diarizationFailed,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
-            modelDescription: appState.transcriptionMode.modelDescription
+            modelDescription: "Parakeet TDT v3"
         )
 
         do {
@@ -491,48 +479,13 @@ final class MeetingRecordingService {
         logger.notice("Meeting recording finalised at \(session.folder.path, privacy: .public)")
     }
 
-    private func fallbackOtherSegments(from rawSegments: [TranscriptionResult]) -> [[SpeakerSegment]] {
-        // Build a single-speaker group so the merger labels everything "Other 1".
-        let segments = rawSegments.flatMap { $0.segments }
-        let labelled = segments.map { seg in
-            SpeakerSegment(
-                speaker: .speakerId(0),
-                startTime: seg.start,
-                endTime: seg.end,
-                frameRate: 100,
-                transcription: seg,
-                speakerWords: []
-            )
+    /// Builds a single-speaker ("S0") segment list from the ASR token timings so
+    /// the merger labels the whole system track "Other 1" when diarization is
+    /// off or failed.
+    private func fallbackOtherSegments(tokens: [TokenTiming]) -> [SpeakerSegment] {
+        SpeakerAligner.segment(tokens: tokens).map { seg in
+            SpeakerSegment(speakerId: "S0", startTime: seg.startTime, endTime: seg.endTime, text: seg.text)
         }
-        // Manually attach text via a private helper: the speakerWords-driven
-        // `text` accessor returns "" when speakerWords is empty, so we'd lose
-        // the transcription. Build SpeakerWordTimings from segment text.
-        let withText = segments.enumerated().map { idx, seg -> SpeakerSegment in
-            let words = seg.text
-                .split(separator: " ", omittingEmptySubsequences: true)
-                .map { word in
-                    SpeakerWordTiming(
-                        wordTiming: WordTiming(
-                            word: String(word) + " ",
-                            tokens: [],
-                            start: seg.start,
-                            end: seg.end,
-                            probability: 1
-                        ),
-                        speaker: .speakerId(0)
-                    )
-                }
-            _ = labelled[idx]
-            return SpeakerSegment(
-                speaker: .speakerId(0),
-                startTime: seg.start,
-                endTime: seg.end,
-                frameRate: 100,
-                transcription: seg,
-                speakerWords: words
-            )
-        }
-        return withText.isEmpty ? [] : [withText]
     }
 
     private func computeDurationSeconds(startedAt: Date, micArchive: URL?, systemArchive: URL?) -> Int {

@@ -80,7 +80,7 @@ struct RecordingsSettingsView: View {
                                 .labelsHidden()
                         }
                         Text(state.meetingDiarizeSystem
-                             ? "Runs SpeakerKit on the system track to label remote participants as Other 1, Other 2…"
+                             ? "Diarizes the system track to label remote participants as Other 1, Other 2…"
                              : "Every paragraph from the system track will be labelled simply as Other.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)

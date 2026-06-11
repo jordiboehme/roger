@@ -1,6 +1,4 @@
 import Foundation
-import SpeakerKit
-import WhisperKit
 
 /// Pure functions that turn the mic transcript and the diarized system
 /// transcript into a single ordered paragraph stream. Mic-side dominant
@@ -17,25 +15,25 @@ enum MeetingTranscriptMerger {
     /// Mic-side input. Exactly one of the two cases is used per call.
     enum MicInput {
         /// Mic diarization off (or its fallback): every segment is "Me".
-        case flat([TranscriptionSegment])
+        case flat([TranscriptTextSegment])
         /// Mic diarization on: dominant cluster becomes "Me", others pool
         /// into the unified Other N namespace shared with the system track.
-        case diarized([[SpeakerSegment]])
+        case diarized([SpeakerSegment])
         /// No mic capture at all (mic silenced or absent from session).
         case none
     }
 
-    /// `systemSpeakerSegments` is SpeakerKit's `[[SpeakerSegment]]` from the
-    /// system m4a, already grouped by `addSpeakerInfo(strategy: .subsegment)`.
+    /// `systemSpeakerSegments` is the diarizer's speaker-attributed segments
+    /// from the system m4a, aligned to the ASR token timings.
     static func merge(
         mic: MicInput,
-        systemSpeakerSegments: [[SpeakerSegment]]
+        systemSpeakerSegments: [SpeakerSegment]
     ) -> [Paragraph] {
         // 1. Resolve mic-side: produce labelled (speaker, start, end, text)
         // entries, plus the set of mic cluster IDs that should NOT be in
         // the unified Other N pool because they are "Me".
         var entries: [Entry] = []
-        var dominantMicClusterID: Int? = nil
+        var dominantMicClusterID: String? = nil
 
         switch mic {
         case .none:
@@ -46,9 +44,9 @@ enum MeetingTranscriptMerger {
                 let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
                 entries.append(Entry(
-                    sourceKey: SourceKey(track: .mic, clusterID: -1),
-                    start: seg.start,
-                    end: seg.end,
+                    sourceKey: SourceKey(track: .mic, clusterID: ""),
+                    start: Float(seg.startTime),
+                    end: Float(seg.endTime),
                     text: text,
                     forcedLabel: "Me"
                 ))
@@ -56,48 +54,39 @@ enum MeetingTranscriptMerger {
 
         case .diarized(let speakerSegments):
             // Total speech-time per cluster — pick the dominant one as "Me".
-            var totalDurationByCluster: [Int: Float] = [:]
-            for group in speakerSegments {
-                for seg in group {
-                    guard let id = seg.speaker.speakerId else { continue }
-                    totalDurationByCluster[id, default: 0] += max(0, seg.endTime - seg.startTime)
-                }
+            var totalDurationByCluster: [String: Float] = [:]
+            for seg in speakerSegments {
+                totalDurationByCluster[seg.speakerId, default: 0] += max(0, Float(seg.endTime - seg.startTime))
             }
             dominantMicClusterID = totalDurationByCluster
                 .max(by: { $0.value < $1.value })?
                 .key
 
-            for group in speakerSegments {
-                for seg in group {
-                    guard let id = seg.speaker.speakerId else { continue }
-                    let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { continue }
-                    let forced = (id == dominantMicClusterID) ? "Me" : nil
-                    entries.append(Entry(
-                        sourceKey: SourceKey(track: .mic, clusterID: id),
-                        start: seg.startTime,
-                        end: seg.endTime,
-                        text: text,
-                        forcedLabel: forced
-                    ))
-                }
+            for seg in speakerSegments {
+                let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                let forced = (seg.speakerId == dominantMicClusterID) ? "Me" : nil
+                entries.append(Entry(
+                    sourceKey: SourceKey(track: .mic, clusterID: seg.speakerId),
+                    start: Float(seg.startTime),
+                    end: Float(seg.endTime),
+                    text: text,
+                    forcedLabel: forced
+                ))
             }
         }
 
         // 2. Add system-side entries with track-namespaced source keys.
-        for group in systemSpeakerSegments {
-            for seg in group {
-                guard let id = seg.speaker.speakerId else { continue }
-                let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { continue }
-                entries.append(Entry(
-                    sourceKey: SourceKey(track: .system, clusterID: id),
-                    start: seg.startTime,
-                    end: seg.endTime,
-                    text: text,
-                    forcedLabel: nil
-                ))
-            }
+        for seg in systemSpeakerSegments {
+            let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            entries.append(Entry(
+                sourceKey: SourceKey(track: .system, clusterID: seg.speakerId),
+                start: Float(seg.startTime),
+                end: Float(seg.endTime),
+                text: text,
+                forcedLabel: nil
+            ))
         }
 
         // 3. Build "Other N" labels for every non-"Me" source key, numbered
@@ -141,7 +130,7 @@ enum MeetingTranscriptMerger {
 
     private struct SourceKey: Hashable {
         let track: Track
-        let clusterID: Int
+        let clusterID: String
     }
 
     private struct Entry {
