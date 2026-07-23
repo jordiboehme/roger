@@ -67,6 +67,12 @@ struct RecordingsSettingsView: View {
                                 .font(.system(size: 12))
                             Spacer()
                             KeyboardShortcuts.Recorder(for: .meetingRecordingToggle)
+                                .shortcutValidation { shortcut in
+                                    if shortcut.key == .f18 {
+                                        return .disallow(reason: "F18 is Roger's dictation hotkey (Caps Lock).")
+                                    }
+                                    return .allow
+                                }
                         }
                         Text("Optional. Set a global shortcut to start and stop a recording without opening the menu bar.")
                             .font(.caption2)
