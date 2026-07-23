@@ -260,6 +260,14 @@ final class MeetingRecordingService {
         }())
     }
 
+    /// Raises finalisation progress, never lowers it — late async progress
+    /// callbacks must not rewind the bar past a milestone already set.
+    private func bumpFinalisingProgress(to value: Double) {
+        if case .finalising(let current) = state, value > current {
+            state = .finalising(progress: value)
+        }
+    }
+
     private func runFinalisationPipeline(sleepInterrupted: Bool = false) async {
         guard let session else {
             state = .idle
@@ -348,12 +356,18 @@ final class MeetingRecordingService {
                     languageOverride: languageOverride
                 )
                 micLanguage = detailed.result.detectedLanguage
+                state = .finalising(progress: 0.55)
 
                 if appState.meetingDiarizeMic {
                     do {
                         let segments = try await diarization.speakerSegments(
                             samples: detailed.audioSamples,
-                            tokens: detailed.tokenTimings
+                            tokens: detailed.tokenTimings,
+                            progress: { [weak self] fraction in
+                                Task { @MainActor in
+                                    self?.bumpFinalisingProgress(to: 0.55 + fraction * 0.10)
+                                }
+                            }
                         )
                         micInput = .diarized(segments)
                     } catch {
@@ -381,11 +395,17 @@ final class MeetingRecordingService {
                     languageOverride: languageOverride
                 )
                 systemLanguage = detailed.result.detectedLanguage
+                state = .finalising(progress: 0.75)
                 if appState.meetingDiarizeSystem {
                     do {
                         systemSpeakerSegments = try await diarization.speakerSegments(
                             samples: detailed.audioSamples,
-                            tokens: detailed.tokenTimings
+                            tokens: detailed.tokenTimings,
+                            progress: { [weak self] fraction in
+                                Task { @MainActor in
+                                    self?.bumpFinalisingProgress(to: 0.75 + fraction * 0.10)
+                                }
+                            }
                         )
                     } catch {
                         diarizationFailed = true
