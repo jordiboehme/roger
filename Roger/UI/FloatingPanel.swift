@@ -30,6 +30,24 @@ final class FloatingPanel {
         p.isMovableByWindowBackground = false
         p.contentView = hostingView
 
+        // Transparent drag destination over the whole panel — screenshots
+        // dropped here during a meeting recording become checkpoints. Wired
+        // once; the panel persists across hide/show.
+        let drop = MeetingCheckpointDropView(frame: hostingView.bounds)
+        drop.autoresizingMask = [.width, .height]
+        drop.isActive = { [weak coordinator] in
+            guard let coordinator else { return false }
+            if case .recording = coordinator.meetingRecorder.state { return true }
+            return false
+        }
+        drop.onHoverChange = { [weak coordinator] hovering in
+            coordinator?.meetingDropTargetActive = hovering
+        }
+        drop.onDrop = { [weak coordinator] image, droppedAt in
+            coordinator?.handleMeetingCheckpointDrop(image, droppedAt: droppedAt)
+        }
+        hostingView.addSubview(drop)
+
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let x = screenFrame.midX - hostingView.frame.width / 2
@@ -63,6 +81,8 @@ final class FloatingPanel {
 private struct FloatingIndicatorContent: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var pulseOpacity: Double = 1.0
+    /// Brief "Checkpoint N saved" confirmation after a screenshot drop.
+    @State private var showCheckpointSaved = false
 
     // Neon accent: hot pink while listening, electric cyan while thinking / file-transcribing,
     // amber while a meeting is being recorded.
@@ -174,7 +194,25 @@ private struct FloatingIndicatorContent: View {
                     Text("Recording meeting")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
-                    MeetingElapsedLabel(startedAt: startedAt)
+                    if coordinator.meetingDropTargetActive {
+                        Text("Drop screenshot to add checkpoint")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Self.meetingAccent)
+                    } else if showCheckpointSaved {
+                        Text("Checkpoint \(coordinator.meetingRecorder.checkpointCount) saved")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Self.meetingAccent)
+                    } else if coordinator.meetingRecorder.pendingCheckpointTranscriptions > 0 {
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Transcribing checkpoint")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        MeetingElapsedLabel(startedAt: startedAt)
+                    }
                 }
 
                 Button {
@@ -238,8 +276,13 @@ private struct FloatingIndicatorContent: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
+            let dropHover = coordinator.meetingDropTargetActive
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(accent.opacity(pulseOpacity), lineWidth: 1.5)
+                .strokeBorder(
+                    accent.opacity(dropHover ? 1.0 : pulseOpacity),
+                    lineWidth: dropHover ? 2.5 : 1.5
+                )
+                .animation(.easeInOut(duration: 0.15), value: dropHover)
         }
         .shadow(color: accent.opacity(0.55), radius: 16, y: 0)
         .shadow(color: accent.opacity(0.25), radius: 4, y: 0)
@@ -247,6 +290,18 @@ private struct FloatingIndicatorContent: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                 pulseOpacity = 0.45
+            }
+        }
+        .onChange(of: coordinator.meetingRecorder.lastCheckpointAt) { _, newValue in
+            guard newValue != nil else { return }
+            showCheckpointSaved = true
+            let generation = coordinator.meetingRecorder.checkpointCount
+            Task {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                // A later drop owns the label now — let its own timer clear it.
+                if coordinator.meetingRecorder.checkpointCount == generation {
+                    showCheckpointSaved = false
+                }
             }
         }
     }

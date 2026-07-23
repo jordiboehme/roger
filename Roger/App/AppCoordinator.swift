@@ -69,6 +69,10 @@ final class AppCoordinator {
     /// live. Resets to false on every recording start, stop and recovery.
     var meetingOverlayHidden: Bool = false
 
+    /// True while an acceptable image drag hovers the meeting overlay —
+    /// drives the drop-target highlight in the floating panel.
+    var meetingDropTargetActive: Bool = false
+
     init() {
         // Share one diarization service across file transcription and meetings
         // so its CoreML models load once per launch.
@@ -746,6 +750,12 @@ final class AppCoordinator {
         guard case .recording = meetingRecorder.state else { return }
         meetingOverlayHidden = hidden
         floatingPanel.setMeetingOverlayHidden(hidden)
+    }
+
+    /// A screenshot was dropped on the floating overlay during a meeting
+    /// recording — record it as a checkpoint.
+    func handleMeetingCheckpointDrop(_ image: MeetingCheckpointImage, droppedAt: Date) {
+        meetingRecorder.addCheckpoint(image: image, droppedAt: droppedAt)
     }
 
     /// Toggles the system-level mic mute. Bound to the standard hotkey while a

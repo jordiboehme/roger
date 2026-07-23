@@ -54,6 +54,14 @@ final class MeetingRecordingService {
     private var sleepObserver: NSObjectProtocol?
     private var stopRequested = false
 
+    // Screenshot checkpoints — see addCheckpoint(image:droppedAt:).
+    private(set) var checkpointCount = 0
+    private(set) var pendingCheckpointTranscriptions = 0
+    private(set) var lastCheckpointAt: Date?
+    private var checkpointStore: MeetingCheckpointStore?
+    private var checkpointChain: Task<Void, Never>?
+    private var checkpointTasks: [Task<Void, Never>] = []
+
     init(
         appState: AppState,
         transcriptionEngine: TranscriptionEngine,
@@ -90,6 +98,10 @@ final class MeetingRecordingService {
             throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)
         }
         self.session = session
+        checkpointStore = MeetingCheckpointStore(folder: session.folder, sessionStartedAt: session.startedAt)
+        checkpointCount = 0
+        pendingCheckpointTranscriptions = 0
+        lastCheckpointAt = nil
 
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -196,7 +208,11 @@ final class MeetingRecordingService {
             let cafs = (try? fm.contentsOfDirectory(atPath: url.path).filter { $0.hasSuffix(".caf") }) ?? []
             let transcriptExists = fm.fileExists(atPath: url.appendingPathComponent("transcript.md").path)
             guard !cafs.isEmpty, !transcriptExists else { continue }
-            let started = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date()
+            // markers.json (written on every screenshot drop) carries the
+            // exact session start; the folder creation date is the fallback.
+            let started = MeetingCheckpointStore.load(from: url)?.sessionStartedAt
+                ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+                ?? Date()
             result.append(MeetingSession(id: UUID(), folder: url, startedAt: started))
         }
         return result
@@ -211,6 +227,170 @@ final class MeetingRecordingService {
         }
         self.session = session
         await runFinalisationPipeline()
+    }
+
+    // MARK: - Screenshot Checkpoints
+
+    /// Saves a dropped screenshot into the session folder and records a
+    /// durable marker immediately; the cumulative transcription that produces
+    /// the provisional segment md is queued behind any in-flight checkpoint
+    /// job. No-op unless recording. Synchronous on purpose: no suspension
+    /// between the state guard and the marker write, so rapid drops stay
+    /// strictly ordered by main-actor execution.
+    func addCheckpoint(image: MeetingCheckpointImage, droppedAt: Date) {
+        guard case .recording = state, let session, let store = checkpointStore else {
+            logger.info("Screenshot drop ignored — no active meeting recording")
+            cleanupDroppedImage(image)
+            return
+        }
+
+        let fileExtension: String
+        switch image {
+        case .file(let url, _):
+            let ext = url.pathExtension.lowercased()
+            fileExtension = ext.isEmpty ? "png" : ext
+        case .pngData:
+            fileExtension = "png"
+        }
+
+        let marker = store.makeMarker(capturedAt: droppedAt, fileExtension: fileExtension)
+        let destination = session.folder.appendingPathComponent(marker.imageFile)
+
+        do {
+            switch image {
+            case .file(let url, let deleteAfterCopy):
+                try FileManager.default.copyItem(at: url, to: destination)
+                if deleteAfterCopy {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            case .pngData(let data):
+                try data.write(to: destination, options: .atomic)
+            }
+        } catch {
+            logger.error("Failed to save screenshot: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        do {
+            try store.append(marker)
+        } catch {
+            logger.error("Failed to persist checkpoint marker: \(error.localizedDescription, privacy: .public)")
+            try? FileManager.default.removeItem(at: destination)
+            return
+        }
+
+        checkpointCount += 1
+        lastCheckpointAt = Date()
+        pendingCheckpointTranscriptions += 1
+
+        let context = store.chunkContext(for: marker)
+        let config = currentPipelineConfig()
+        let previousChain = checkpointChain
+        let job = Task { [weak self] in
+            await previousChain?.value
+            guard let self else { return }
+            await self.performCheckpointTranscription(
+                marker: marker,
+                chunkStart: context.chunkStart,
+                previousOffset: context.previousOffset,
+                config: config
+            )
+        }
+        checkpointChain = job
+        checkpointTasks.append(job)
+        logger.notice("Checkpoint \(self.checkpointCount) recorded: \(marker.imageFile, privacy: .public)")
+    }
+
+    /// One serialized checkpoint job: force-roll both writers so all audio up
+    /// to now sits in closed CAF chunks, read them back, run the cumulative
+    /// pipeline from the session start (diarization over the full prefix
+    /// keeps Other N numbering stable across segments) and write only the
+    /// paragraphs in this marker's range as a provisional segment md. Errors
+    /// never disturb the recording — the marker and screenshot stand, and
+    /// finalisation rewrites every segment authoritatively anyway.
+    private func performCheckpointTranscription(
+        marker: MeetingCheckpointMarker,
+        chunkStart: Date,
+        previousOffset: Double,
+        config: MeetingTranscriptionPipeline.Config
+    ) async {
+        defer { pendingCheckpointTranscriptions -= 1 }
+        guard !Task.isCancelled else { return }
+        guard case .recording = state, let session else { return }
+        guard transcriptionEngine.isReady else {
+            logger.warning("Checkpoint transcription skipped — speech model not loaded")
+            return
+        }
+
+        // Rolling inside the job (not at drop time) is safe: it happens at or
+        // after the marker moment, so the chunks contain all audio up to the
+        // marker plus possibly a bit beyond — the range filter below discards
+        // the excess.
+        let micChunks = await micWriter?.rollSegment() ?? []
+        let systemChunks = await systemWriter?.rollSegment() ?? []
+
+        let micRead = Task.detached(priority: .utility) {
+            AudioChunkSampleReader.samples(from: micChunks)
+        }
+        let systemRead = Task.detached(priority: .utility) {
+            AudioChunkSampleReader.samples(from: systemChunks)
+        }
+        let micSamples = await micRead.value
+        let systemSamples = await systemRead.value
+
+        // Under a second of audio isn't worth a pipeline run.
+        let minSamples = Int(SystemAudioTap.targetSampleRate)
+        let mic: MeetingTranscriptionPipeline.TrackSource =
+            micSamples.count >= minSamples ? .samples(micSamples) : .absent
+        let system: MeetingTranscriptionPipeline.TrackSource =
+            systemSamples.count >= minSamples ? .samples(systemSamples) : .absent
+        if case .absent = mic, case .absent = system { return }
+
+        let output: MeetingTranscriptionPipeline.Output
+        do {
+            output = try await transcriptionPipeline().run(mic: mic, system: system, config: config)
+        } catch {
+            // Only CancellationError reaches here — stop was requested and
+            // finalisation takes over.
+            return
+        }
+
+        let segmentParagraphs = output.paragraphs.filter {
+            Double($0.startTime) >= previousOffset && Double($0.startTime) < marker.offsetSeconds
+        }
+        do {
+            try MeetingSegmentWriter.write(
+                paragraphs: segmentParagraphs,
+                sessionStartedAt: session.startedAt,
+                chunkStart: chunkStart,
+                folder: session.folder,
+                provisional: true
+            )
+        } catch {
+            logger.warning("Provisional segment write failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Cancels every queued and in-flight checkpoint job, then waits for them
+    /// to settle. Must run before finalisation or teardown: a straggler would
+    /// race the CAF chunk deletion and could overwrite authoritative segment
+    /// files. Worst case this waits for the current pipeline stage to notice
+    /// the cancellation — Parakeet on the ANE is much faster than real time.
+    private func drainCheckpointJobs() async {
+        guard !checkpointTasks.isEmpty else { return }
+        for task in checkpointTasks { task.cancel() }
+        for task in checkpointTasks { _ = await task.value }
+        checkpointTasks = []
+        checkpointChain = nil
+        pendingCheckpointTranscriptions = 0
+    }
+
+    /// Deletes a promised temp file when a drop is ignored so temp folders
+    /// don't accumulate.
+    private func cleanupDroppedImage(_ image: MeetingCheckpointImage) {
+        if case .file(let url, true) = image {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     // MARK: - Internals
@@ -241,6 +421,9 @@ final class MeetingRecordingService {
 
     private func finalise(reason: FinaliseReason) async {
         stopRequested = true
+        // Settle checkpoint jobs before anything else — they read CAF chunks
+        // and write segment files, both of which finalisation owns from here.
+        await drainCheckpointJobs()
         // Stop taps first — this drains writer streams.
         micTap?.stop()
         systemTap?.stop()
@@ -334,132 +517,30 @@ final class MeetingRecordingService {
 
         state = .finalising(progress: 0.45)
 
-        // Resolve the post-processing preset once so both transcription
-        // calls and the per-paragraph cleanup share the same language pin.
-        // `meetingTranscriptionPreset` is guaranteed to have no AI steps;
-        // `resolvedLanguage` enforces the model-vs-preset precedence (the
-        // English-only model always wins, matching the existing behaviour
-        // in PresetsSettingsView's mismatch warning).
-        let postProcessingPreset = appState.meetingTranscriptionPreset
-        let languageOverride = appState.resolvedLanguage(for: postProcessingPreset)
-
-        // Mic transcription — and optional diarization when the user has
-        // turned on shared-mic detection. Whichever path the result follows,
-        // we end up with a `MeetingTranscriptMerger.MicInput`.
-        var micInput: MeetingTranscriptMerger.MicInput = .none
-        var micLanguage: String?
-        var diarizationFailed = false
-        if micPresent {
-            do {
-                let detailed = try await transcriptionEngine.transcribeFileDetailed(
-                    url: micArchive,
-                    languageOverride: languageOverride
-                )
-                micLanguage = detailed.result.detectedLanguage
-                state = .finalising(progress: 0.55)
-
-                if appState.meetingDiarizeMic {
-                    do {
-                        let segments = try await diarization.speakerSegments(
-                            samples: detailed.audioSamples,
-                            tokens: detailed.tokenTimings,
-                            progress: { [weak self] fraction in
-                                Task { @MainActor in
-                                    self?.bumpFinalisingProgress(to: 0.55 + min(1, max(0, fraction)) * 0.10)
-                                }
-                            }
-                        )
-                        micInput = .diarized(segments)
-                    } catch {
-                        diarizationFailed = true
-                        logger.warning("Mic diarization failed: \(error.localizedDescription, privacy: .public) — falling back to flat Me labels")
-                        micInput = .flat(SpeakerAligner.segment(tokens: detailed.tokenTimings))
+        // The shared pipeline handles ASR, diarization, merge and
+        // post-processing for both finalisation and live checkpoints.
+        // Finalisation is never cancelled, so the only throw the pipeline
+        // can produce (CancellationError) is a defensive catch here.
+        let output: MeetingTranscriptionPipeline.Output
+        do {
+            output = try await transcriptionPipeline().run(
+                mic: micPresent ? .file(micArchive) : .absent,
+                system: systemPresent ? .file(systemArchive) : .absent,
+                config: currentPipelineConfig(),
+                progress: { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.bumpFinalisingProgress(to: 0.45 + min(1, max(0, fraction)) * 0.40)
                     }
-                } else {
-                    micInput = .flat(SpeakerAligner.segment(tokens: detailed.tokenTimings))
                 }
-            } catch {
-                logger.warning("Mic transcription failed: \(error.localizedDescription, privacy: .public)")
-            }
-        }
-
-        state = .finalising(progress: 0.65)
-
-        // System transcription + diarization.
-        var systemSpeakerSegments: [SpeakerSegment] = []
-        var systemLanguage: String?
-        if systemPresent {
-            do {
-                let detailed = try await transcriptionEngine.transcribeFileDetailed(
-                    url: systemArchive,
-                    languageOverride: languageOverride
-                )
-                systemLanguage = detailed.result.detectedLanguage
-                state = .finalising(progress: 0.75)
-                if appState.meetingDiarizeSystem {
-                    do {
-                        systemSpeakerSegments = try await diarization.speakerSegments(
-                            samples: detailed.audioSamples,
-                            tokens: detailed.tokenTimings,
-                            progress: { [weak self] fraction in
-                                Task { @MainActor in
-                                    self?.bumpFinalisingProgress(to: 0.75 + min(1, max(0, fraction)) * 0.10)
-                                }
-                            }
-                        )
-                    } catch {
-                        diarizationFailed = true
-                        logger.warning("System diarization failed: \(error.localizedDescription, privacy: .public)")
-                        systemSpeakerSegments = fallbackOtherSegments(tokens: detailed.tokenTimings)
-                    }
-                } else {
-                    systemSpeakerSegments = fallbackOtherSegments(tokens: detailed.tokenTimings)
-                }
-            } catch {
-                logger.warning("System transcription failed: \(error.localizedDescription, privacy: .public)")
-            }
+            )
+        } catch {
+            state = .error(.finalisationFailed(error.localizedDescription))
+            lastSession = session
+            return
         }
 
         state = .finalising(progress: 0.85)
-
-        // Merge + post-process + write transcript. Cleanup runs per-paragraph
-        // so dedup and filler removal stay scoped to a single speaker. AI
-        // steps are off by construction (`meetingTranscriptionPreset` is
-        // guaranteed to have `requiresAI == false`), so passing
-        // `llmService: nil` is safe and stays fully on-device.
-        let mergedParagraphs = MeetingTranscriptMerger.merge(
-            mic: micInput,
-            systemSpeakerSegments: systemSpeakerSegments
-        )
-
-        let resolvedLanguageCode = micLanguage ?? systemLanguage
-        let languageHint: String = resolvedLanguageCode.map { WhisperLanguage.displayName(for: $0) }
-            ?? "the original language"
-
-        let postProcessor = PostProcessor()
-        var paragraphs: [MeetingTranscriptMerger.Paragraph] = []
-        for paragraph in mergedParagraphs {
-            let cleaned: String
-            do {
-                cleaned = try await postProcessor.process(
-                    paragraph.text,
-                    preset: postProcessingPreset,
-                    language: languageHint,
-                    llmService: nil
-                )
-            } catch {
-                logger.warning("Paragraph post-processing failed (\(postProcessingPreset.name, privacy: .public)): \(error.localizedDescription, privacy: .public) — keeping raw text")
-                paragraphs.append(paragraph)
-                continue
-            }
-            let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            paragraphs.append(MeetingTranscriptMerger.Paragraph(
-                speaker: paragraph.speaker,
-                startTime: paragraph.startTime,
-                text: trimmed
-            ))
-        }
+        let paragraphs = output.paragraphs
 
         let durationSeconds = computeDurationSeconds(
             startedAt: session.startedAt,
@@ -472,16 +553,44 @@ final class MeetingRecordingService {
             session: session,
             durationSeconds: durationSeconds,
             speakerCount: speakerCount,
-            language: micLanguage ?? systemLanguage,
+            language: output.language,
             micPresent: micPresent,
             systemPresent: systemPresent,
-            diarizationFailed: diarizationFailed,
+            diarizationFailed: output.diarizationFailed,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
             modelDescription: "Parakeet TDT v3"
         )
 
+        // Screenshot checkpoints: rewrite every segment md from this
+        // authoritative full pass (overwriting the provisional live ones)
+        // and weave inline image references into transcript.md. `load`
+        // covers crash and sleep recovery, where the live store is gone.
+        let checkpointFile = checkpointStore?.file ?? MeetingCheckpointStore.load(from: session.folder)
+        let markers = checkpointFile?.markers ?? []
+        if !markers.isEmpty {
+            let effectiveStart = checkpointFile?.sessionStartedAt ?? session.startedAt
+            for chunk in MeetingCheckpointStore.chunks(sessionStartedAt: effectiveStart, markers: markers) {
+                let segmentParagraphs = paragraphs.filter { chunk.range.contains(Double($0.startTime)) }
+                guard !segmentParagraphs.isEmpty else {
+                    MeetingSegmentWriter.removeIfExists(chunkStart: chunk.start, folder: session.folder)
+                    continue
+                }
+                do {
+                    try MeetingSegmentWriter.write(
+                        paragraphs: segmentParagraphs,
+                        sessionStartedAt: effectiveStart,
+                        chunkStart: chunk.start,
+                        folder: session.folder,
+                        provisional: false
+                    )
+                } catch {
+                    logger.warning("Segment write failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+
         do {
-            _ = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata)
+            _ = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata, markers: markers)
         } catch {
             state = .error(.finalisationFailed(error.localizedDescription))
             lastSession = session
@@ -495,16 +604,30 @@ final class MeetingRecordingService {
         }
         lastSession = session
         self.session = nil
+        checkpointStore = nil
         logger.notice("Meeting recording finalised at \(session.folder.path, privacy: .public)")
     }
 
-    /// Builds a single-speaker ("S0") segment list from the ASR token timings so
-    /// the merger labels the whole system track "Other 1" when diarization is
-    /// off or failed.
-    private func fallbackOtherSegments(tokens: [TokenTiming]) -> [SpeakerSegment] {
-        SpeakerAligner.segment(tokens: tokens).map { seg in
-            SpeakerSegment(speakerId: "S0", startTime: seg.startTime, endTime: seg.endTime, text: seg.text)
-        }
+    private func transcriptionPipeline() -> MeetingTranscriptionPipeline {
+        MeetingTranscriptionPipeline(engine: transcriptionEngine, diarization: diarization)
+    }
+
+    /// Snapshot of the settings the pipeline needs. Taken at call time so a
+    /// checkpoint job and the finalisation each run with the settings that
+    /// were current when they were queued.
+    ///
+    /// `meetingTranscriptionPreset` is guaranteed to have no AI steps;
+    /// `resolvedLanguage` enforces the model-vs-preset precedence (the
+    /// English-only model always wins, matching the existing behaviour in
+    /// PresetsSettingsView's mismatch warning).
+    private func currentPipelineConfig() -> MeetingTranscriptionPipeline.Config {
+        let preset = appState.meetingTranscriptionPreset
+        return MeetingTranscriptionPipeline.Config(
+            diarizeMic: appState.meetingDiarizeMic,
+            diarizeSystem: appState.meetingDiarizeSystem,
+            languageOverride: appState.resolvedLanguage(for: preset),
+            preset: preset
+        )
     }
 
     private func computeDurationSeconds(startedAt: Date, micArchive: URL?, systemArchive: URL?) -> Int {
@@ -536,6 +659,8 @@ final class MeetingRecordingService {
     }
 
     private func teardown(session: MeetingSession?, deleteFolder: Bool) async {
+        await drainCheckpointJobs()
+        checkpointStore = nil
         micTap?.stop()
         systemTap?.stop()
         micTap = nil

@@ -106,8 +106,15 @@ final class TranscriptionEngine: @unchecked Sendable {
     /// Transcribes a file and returns token timings + decoded samples so the
     /// caller can diarize (file transcription, meeting tracks) off the same data.
     func transcribeFileDetailed(url: URL, languageOverride: String?) async throws -> DetailedTranscriptionResult {
-        guard let asrManager else { throw TranscriptionError.engineNotReady }
         let samples = try AudioConverter().resampleAudioFile(url)
+        return try await transcribeSamplesDetailed(samples, languageOverride: languageOverride)
+    }
+
+    /// Same as `transcribeFileDetailed` for callers that assembled the 16 kHz
+    /// mono samples themselves (meeting checkpoints reading CAF chunks
+    /// mid-recording).
+    func transcribeSamplesDetailed(_ samples: [Float], languageOverride: String?) async throws -> DetailedTranscriptionResult {
+        guard let asrManager else { throw TranscriptionError.engineNotReady }
         var state = try TdtDecoderState()
         let result = try await asrManager.transcribe(
             samples,

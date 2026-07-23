@@ -24,19 +24,23 @@ enum MeetingTranscriptWriter {
         let modelDescription: String
     }
 
+    /// `markers` are screenshot checkpoints to weave into the body as inline
+    /// image references at their chronological position between paragraphs.
     static func write(
         paragraphs: [MeetingTranscriptMerger.Paragraph],
-        metadata: Metadata
+        metadata: Metadata,
+        markers: [MeetingCheckpointMarker] = []
     ) throws -> URL {
         let url = metadata.session.transcriptURL
-        let content = buildContent(paragraphs: paragraphs, metadata: metadata)
+        let content = buildContent(paragraphs: paragraphs, metadata: metadata, markers: markers)
         try content.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
 
     private static func buildContent(
         paragraphs: [MeetingTranscriptMerger.Paragraph],
-        metadata: Metadata
+        metadata: Metadata,
+        markers: [MeetingCheckpointMarker]
     ) -> String {
         var out = ""
         out += "---\n"
@@ -51,6 +55,9 @@ enum MeetingTranscriptWriter {
             out += "systemAudio: ./\(metadata.session.systemArchiveURL.lastPathComponent)\n"
         }
         out += "speakerCount: \(metadata.speakerCount)\n"
+        if !markers.isEmpty {
+            out += "screenshotCount: \(markers.count)\n"
+        }
         if let lang = metadata.language {
             out += "language: \(lang)\n"
         }
@@ -63,14 +70,31 @@ enum MeetingTranscriptWriter {
         out += "---\n\n"
         out += "# Meeting \(displayDate(metadata.session))\n\n"
 
+        var pendingMarkers = markers.sorted { $0.offsetSeconds < $1.offsetSeconds }
         for paragraph in paragraphs {
-            let rel = formatTimestamp(paragraph.startTime)
-            let abs = absoluteTimestamp(start: metadata.session.startedAt, offset: paragraph.startTime)
-            out += "**\(paragraph.speaker)** [\(rel) · \(abs)]\n"
-            out += paragraph.text
-            out += "\n\n"
+            while let next = pendingMarkers.first, Double(paragraph.startTime) >= next.offsetSeconds {
+                out += imageReference(next)
+                pendingMarkers.removeFirst()
+            }
+            out += paragraphMarkdown(paragraph, sessionStart: metadata.session.startedAt)
+        }
+        for marker in pendingMarkers {
+            out += imageReference(marker)
         }
         return out
+    }
+
+    private static func imageReference(_ marker: MeetingCheckpointMarker) -> String {
+        "![](\(marker.imageFile))\n\n"
+    }
+
+    /// One paragraph block: `**Speaker** [HH:MM:SS · yyyy-MM-dd HH:mm:ss]`
+    /// header plus text. Shared with `MeetingSegmentWriter` so segment files
+    /// stay byte-identical in format to transcript.md.
+    static func paragraphMarkdown(_ paragraph: MeetingTranscriptMerger.Paragraph, sessionStart: Date) -> String {
+        let rel = formatTimestamp(paragraph.startTime)
+        let abs = absoluteTimestamp(start: sessionStart, offset: paragraph.startTime)
+        return "**\(paragraph.speaker)** [\(rel) · \(abs)]\n\(paragraph.text)\n\n"
     }
 
     private static func displayDate(_ session: MeetingSession) -> String {
@@ -80,7 +104,7 @@ enum MeetingTranscriptWriter {
         return f.string(from: session.startedAt)
     }
 
-    private static func isoDate(_ date: Date) -> String {
+    static func isoDate(_ date: Date) -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         f.timeZone = .current

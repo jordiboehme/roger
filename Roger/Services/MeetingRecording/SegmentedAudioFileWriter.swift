@@ -56,6 +56,30 @@ final class SegmentedAudioFileWriter: @unchecked Sendable {
         }
     }
 
+    /// Closes the active chunk and opens the next, so everything appended so
+    /// far sits in fully flushed closed CAF files that are safe to read while
+    /// recording continues (an open `AVAudioFile` has no flush API — its tail
+    /// may still be buffered). Returns the closed chunk URLs. When the writer
+    /// is already stopped or errored, returns the existing chunk list
+    /// unchanged. Serialized on the writer queue, so it interleaves safely
+    /// with `append(_:)` and the timed rolls.
+    func rollSegment() async -> [URL] {
+        await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                guard let self else { continuation.resume(returning: []); return }
+                guard !self.stopped, self.lastError == nil, self.file != nil else {
+                    continuation.resume(returning: self.segments)
+                    return
+                }
+                self.rotate()
+                // rotate() appends the freshly opened chunk unless it tripped
+                // the disk-space gate and stopped the writer.
+                let closed = self.stopped ? self.segments : Array(self.segments.dropLast())
+                continuation.resume(returning: closed)
+            }
+        }
+    }
+
     /// Closes the active segment. Returns the full chunk list. Safe to call
     /// once — subsequent calls are no-ops.
     func close() async -> [URL] {
