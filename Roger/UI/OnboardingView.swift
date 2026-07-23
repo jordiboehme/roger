@@ -203,11 +203,19 @@ struct OnboardingView: View {
                     .foregroundStyle(.green)
             } else if coordinator.isSettingUpModel {
                 VStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.regular)
-                    Text("Loading model…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let progress = coordinator.modelSetupProgress {
+                        ProgressView(value: progress.fraction)
+                            .frame(width: 220)
+                        Text("\(progress.stage) (\(Int(progress.fraction * 100))%)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                            .controlSize(.regular)
+                        Text("Loading model…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else if case .error(let msg) = coordinator.appState.dictationState {
                 Text(msg)

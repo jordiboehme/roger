@@ -25,12 +25,21 @@ struct MenuBarView: View {
             }
 
             if coordinator.isSettingUpModel {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Loading model…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    if let progress = coordinator.modelSetupProgress {
+                        ProgressView(value: progress.fraction)
+                        Text("\(progress.stage) (\(Int(progress.fraction * 100))%)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading model…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)

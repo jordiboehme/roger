@@ -739,11 +739,21 @@ struct ModelSettingsView: View {
                                 .foregroundStyle(.secondary)
                             Spacer()
                             if isSettingUp {
-                                HStack(spacing: 6) {
-                                    ProgressView().controlSize(.small)
-                                    Text("Loading…")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    if let progress = coordinator.modelSetupProgress {
+                                        ProgressView(value: progress.fraction)
+                                            .frame(width: 140)
+                                        Text(progress.stage)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        HStack(spacing: 6) {
+                                            ProgressView().controlSize(.small)
+                                            Text("Loading…")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
                                 }
                             } else if isModelReady {
                                 Text("Ready")
