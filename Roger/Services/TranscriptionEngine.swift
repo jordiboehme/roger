@@ -6,6 +6,14 @@ import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Transcription")
 
+/// User-facing snapshot of model download/compile progress. Mapped from
+/// FluidAudio's `DownloadProgress` here so coordinators and views never
+/// see FluidAudio types.
+struct ModelSetupProgress: Sendable, Equatable {
+    let fraction: Double
+    let stage: String
+}
+
 /// On-device speech-to-text via FluidAudio's Parakeet TDT v3 (CoreML, runs on
 /// the Apple Neural Engine). Transcription is batch: the caller captures the
 /// whole audio buffer and hands it over on stop. `AsrManager` is an actor, so
@@ -36,14 +44,30 @@ final class TranscriptionEngine: @unchecked Sendable {
     /// multilingual model Roger uses. `melChunkContext: false` is the
     /// v3-recommended setting for multilingual long-form audio (avoids an
     /// English-bias drift at chunk boundaries on e.g. German meeting audio).
-    func setup(progressHandler: @Sendable @escaping (Double) -> Void) async throws {
+    func setup(progressHandler: @Sendable @escaping (ModelSetupProgress) -> Void) async throws {
         guard asrManager == nil else { return }
         let models = try await AsrModels.downloadAndLoad(version: .v3) { progress in
-            progressHandler(progress.fractionCompleted)
+            progressHandler(ModelSetupProgress(
+                fraction: progress.fractionCompleted,
+                stage: Self.stageDescription(for: progress.phase)
+            ))
         }
         asrManager = AsrManager(config: ASRConfig(melChunkContext: false), models: models)
-        progressHandler(1.0)
+        progressHandler(ModelSetupProgress(fraction: 1.0, stage: "Ready"))
         logger.info("Parakeet TDT v3 ready")
+    }
+
+    /// FluidAudio's fraction already spans download (0-0.5) and CoreML
+    /// compilation (0.5-1.0), so the stage label is the only mapping needed.
+    private static func stageDescription(for phase: DownloadPhase) -> String {
+        switch phase {
+        case .listing:
+            return "Preparing download…"
+        case .downloading(let completed, let total):
+            return "Downloading model - file \(min(completed + 1, max(total, 1))) of \(total)"
+        case .compiling:
+            return "Optimizing for Neural Engine…"
+        }
     }
 
     func uninstall() async {

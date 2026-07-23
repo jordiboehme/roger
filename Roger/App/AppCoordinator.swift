@@ -26,6 +26,10 @@ final class AppCoordinator {
 
     var hotkeyActive = false
     var isSettingUpModel = false
+    /// Live download/compile progress while `isSettingUpModel` — nil outside
+    /// setup and before the first callback arrives (UI falls back to an
+    /// indeterminate spinner for that brief window).
+    var modelSetupProgress: ModelSetupProgress?
     var isModelReady = false
     var lastModelError: String? = nil
     private(set) var activeRecordingPresetID: UUID?
@@ -412,15 +416,22 @@ final class AppCoordinator {
 
         isSettingUpModel = true
         lastModelError = nil
+        modelSetupProgress = nil
 
         do {
-            try await transcriptionEngine.setup { _ in }
+            try await transcriptionEngine.setup { [weak self] progress in
+                Task { @MainActor in
+                    self?.modelSetupProgress = progress
+                }
+            }
             isSettingUpModel = false
+            modelSetupProgress = nil
             isModelReady = true
             logger.info("Model setup complete")
         } catch {
             logger.error("Model setup failed: \(error)")
             isSettingUpModel = false
+            modelSetupProgress = nil
             lastModelError = error.localizedDescription
             appState.dictationState = .error("Model download failed — check your connection and retry")
         }
