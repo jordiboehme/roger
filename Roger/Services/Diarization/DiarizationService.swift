@@ -25,17 +25,29 @@ actor DiarizationService {
     }
 
     /// Clusters speakers over 16 kHz mono samples, returning time-ranged
-    /// speaker segments. Loads models on first use.
-    func diarize(_ samples: [Float]) async throws -> [TimedSpeakerSegment] {
+    /// speaker segments. Loads models on first use. `progress` reports a
+    /// 0-1 fraction roughly once per processed chunk, on the actor's thread.
+    func diarize(
+        _ samples: [Float],
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> [TimedSpeakerSegment] {
         try await prepare()
-        return try manager.performCompleteDiarization(samples, sampleRate: 16000).segments
+        return try manager.performCompleteDiarization(
+            samples,
+            sampleRate: 16000,
+            progressHandler: progress
+        ).segments
     }
 
     /// Diarizes `samples` and aligns the result against ASR `tokens`, returning
     /// Roger's speaker-attributed segments. Keeps FluidAudio's `TokenTiming` /
     /// `TimedSpeakerSegment` types out of the calling coordinators.
-    func speakerSegments(samples: [Float], tokens: [TokenTiming]) async throws -> [SpeakerSegment] {
-        let segments = try await diarize(samples)
+    func speakerSegments(
+        samples: [Float],
+        tokens: [TokenTiming],
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> [SpeakerSegment] {
+        let segments = try await diarize(samples, progress: progress)
         return SpeakerAligner.align(tokens: tokens, diarization: segments)
     }
 }
