@@ -143,12 +143,20 @@ private struct FloatingIndicatorContent: View {
                     Text("Transcribing")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
-                    Text(job.displayName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 220, alignment: .leading)
+                    if let fraction = coordinator.fileTranscriptionProgress {
+                        Text("Identifying speakers - \(Int(fraction * 100))%")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .frame(maxWidth: 220, alignment: .leading)
+                    } else {
+                        Text(job.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: 220, alignment: .leading)
+                    }
                 }
 
                 Button {

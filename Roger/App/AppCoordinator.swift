@@ -42,6 +42,14 @@ final class AppCoordinator {
     /// Currently-transcribing file, or nil when nothing is in flight. The
     /// floating indicator observes this to show the "Transcribing X" overlay.
     private(set) var activeFileTranscription: FileTranscriptionJob?
+    /// 0-1 fraction while a file transcription job is in its speaker
+    /// identification phase; nil during ASR and outside file jobs. Drives
+    /// the overlay's "Identifying speakers" line.
+    private(set) var fileTranscriptionProgress: Double?
+    /// True only while the current file job is inside its diarization phase;
+    /// gates the `speakerSegments` progress callback so a late in-flight
+    /// callback can't repaint the overlay after diarization has ended.
+    private var fileTranscriptionDiarizing = false
     private var fileTranscriptionTask: Task<Void, Never>?
     /// Shared anonymous speaker diarization (file transcription + meetings).
     let diarizationService = DiarizationService()
@@ -553,14 +561,25 @@ final class AppCoordinator {
                 // Diarization is best-effort: if model download or inference fails,
                 // fall back to the plain transcription rather than surfacing an error.
                 let textToParse: String
+                fileTranscriptionDiarizing = true
                 do {
                     let aligned = try await diarizationService.speakerSegments(
                         samples: detailed.audioSamples,
-                        tokens: detailed.tokenTimings
+                        tokens: detailed.tokenTimings,
+                        progress: { [weak self, job] fraction in
+                            Task { @MainActor in
+                                guard let self, self.fileTranscriptionDiarizing, self.activeFileTranscription == job else { return }
+                                self.fileTranscriptionProgress = fraction
+                            }
+                        }
                     )
+                    fileTranscriptionDiarizing = false
+                    fileTranscriptionProgress = nil
                     let diarized = formatDiarized(aligned)
                     textToParse = diarized.isEmpty ? detailed.result.text : diarized
                 } catch {
+                    fileTranscriptionDiarizing = false
+                    fileTranscriptionProgress = nil
                     logger.warning("Diarization failed, using plain transcript: \(error.localizedDescription, privacy: .public)")
                     textToParse = detailed.result.text
                 }
@@ -645,6 +664,8 @@ final class AppCoordinator {
 
     private func finishFileTranscription(error: String?) async {
         activeFileTranscription = nil
+        fileTranscriptionProgress = nil
+        fileTranscriptionDiarizing = false
         fileTranscriptionTask = nil
         floatingPanel.hide()
         if let error {
