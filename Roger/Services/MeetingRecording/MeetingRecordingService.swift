@@ -365,7 +365,7 @@ final class MeetingRecordingService {
                             tokens: detailed.tokenTimings,
                             progress: { [weak self] fraction in
                                 Task { @MainActor in
-                                    self?.bumpFinalisingProgress(to: 0.55 + fraction * 0.10)
+                                    self?.bumpFinalisingProgress(to: 0.55 + min(1, max(0, fraction)) * 0.10)
                                 }
                             }
                         )
@@ -403,7 +403,7 @@ final class MeetingRecordingService {
                             tokens: detailed.tokenTimings,
                             progress: { [weak self] fraction in
                                 Task { @MainActor in
-                                    self?.bumpFinalisingProgress(to: 0.75 + fraction * 0.10)
+                                    self?.bumpFinalisingProgress(to: 0.75 + min(1, max(0, fraction)) * 0.10)
                                 }
                             }
                         )

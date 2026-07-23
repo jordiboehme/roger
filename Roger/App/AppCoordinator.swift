@@ -569,7 +569,7 @@ final class AppCoordinator {
                         progress: { [weak self, job] fraction in
                             Task { @MainActor in
                                 guard let self, self.fileTranscriptionDiarizing, self.activeFileTranscription == job else { return }
-                                self.fileTranscriptionProgress = fraction
+                                self.fileTranscriptionProgress = min(1, max(0, fraction))
                             }
                         }
                     )

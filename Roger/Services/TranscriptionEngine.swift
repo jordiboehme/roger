@@ -53,7 +53,6 @@ final class TranscriptionEngine: @unchecked Sendable {
             ))
         }
         asrManager = AsrManager(config: ASRConfig(melChunkContext: false), models: models)
-        progressHandler(ModelSetupProgress(fraction: 1.0, stage: "Ready"))
         logger.info("Parakeet TDT v3 ready")
     }
 
