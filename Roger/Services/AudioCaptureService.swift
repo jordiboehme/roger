@@ -7,6 +7,8 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Audio
 final class AudioCaptureService: @unchecked Sendable {
     private var audioEngine: AVAudioEngine?
     private var capturedSamples: [Float] = []
+    private var tapBufferCount = 0
+    private var captureStartedAt: Date?
     private let lock = NSLock()
 
     /// Target sample rate for WhisperKit (16kHz mono)
@@ -14,6 +16,33 @@ final class AudioCaptureService: @unchecked Sendable {
 
     /// Duration of the silent warm-up capture that wakes the CoreAudio HAL.
     static let warmUpDuration: TimeInterval = 0.5
+
+    /// Minimum engine runtime before "zero buffers" counts as starvation
+    /// rather than an unlucky short window.
+    static let minStarvationWindow: TimeInterval = 0.4
+
+    /// User-facing guidance for the CoreAudio wedge seen on macOS 26.5.x:
+    /// permission granted and the engine runs, but the audio server never
+    /// delivers a buffer to this client. Only a fresh process (or a fresh
+    /// coreaudiod) recovers.
+    static let halStarvedAdvice = "macOS audio server is not delivering microphone data to Roger. Relaunch Roger - if it recurs, run 'sudo killall coreaudiod' in Terminal or reboot"
+
+    /// Post-capture health verdict. Tells "user was silent" (buffers flowed,
+    /// amplitudes near zero) apart from the coreaudiod wedge (engine ran,
+    /// the input tap never fired once).
+    enum CaptureHealth: Equatable, Sendable {
+        case ok
+        /// Engine ran at least `minStarvationWindow` yet the tap never
+        /// fired — the audio server is starving this client.
+        case halStarved
+        /// Capture too short (or never started) to judge.
+        case indeterminate
+    }
+
+    struct CaptureResult: Sendable {
+        let samples: [Float]?
+        let health: CaptureHealth
+    }
 
     /// UID of the input device to use, or nil for system default.
     var preferredInputUID: String?
@@ -29,9 +58,11 @@ final class AudioCaptureService: @unchecked Sendable {
         do {
             try startCapture()
             try? await Task.sleep(nanoseconds: UInt64(Self.warmUpDuration * 1_000_000_000))
-            let samples = stopCapture()
-            let count = samples?.count ?? 0
-            if count == 0 {
+            let result = stopCapture()
+            let count = result.samples?.count ?? 0
+            if result.health == .halStarved {
+                logger.error("Mic warm-up starved — the audio server delivered no buffers to this process (wedge suspect)")
+            } else if count == 0 {
                 logger.info("Mic warm-up produced no samples — HAL may be fully asleep")
             } else {
                 logger.info("Mic warm-up done (\(count) samples)")
@@ -74,10 +105,17 @@ final class AudioCaptureService: @unchecked Sendable {
 
         lock.lock()
         capturedSamples = []
+        tapBufferCount = 0
         lock.unlock()
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
+
+            // Counted before conversion: health tracks whether the HAL
+            // delivered anything at all, independent of conversion issues.
+            self.lock.lock()
+            self.tapBufferCount += 1
+            self.lock.unlock()
 
             if let converter {
                 let ratio = Self.targetSampleRate / inputFormat.sampleRate
@@ -113,6 +151,7 @@ final class AudioCaptureService: @unchecked Sendable {
         engine.prepare()
         try engine.start()
         audioEngine = engine
+        captureStartedAt = Date()
         let boundDeviceID = currentDeviceID(for: inputNode)
         let boundDeviceDescription: String
         if let id = boundDeviceID {
@@ -123,24 +162,62 @@ final class AudioCaptureService: @unchecked Sendable {
         logger.info("Audio capture started on \(boundDeviceDescription, privacy: .public) at \(inputFormat.sampleRate)Hz (\(inputFormat.channelCount)ch), converting to \(Self.targetSampleRate)Hz")
     }
 
-    func stopCapture() -> [Float]? {
+    @discardableResult
+    func stopCapture() -> CaptureResult {
+        let wasRunning = audioEngine != nil
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
 
+        let observed = captureStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        captureStartedAt = nil
+
         lock.lock()
         let samples = capturedSamples
+        let bufferCount = tapBufferCount
         capturedSamples = []
+        tapBufferCount = 0
         lock.unlock()
+
+        let health: CaptureHealth
+        if !wasRunning || observed < Self.minStarvationWindow {
+            health = .indeterminate
+        } else if bufferCount == 0 {
+            health = .halStarved
+        } else {
+            health = .ok
+        }
+
+        if health == .halStarved {
+            logger.error("HAL starvation: engine ran \(String(format: "%.2f", observed), privacy: .public)s without a single input buffer — audio server is wedged (relaunch Roger or restart coreaudiod)")
+        }
 
         guard !samples.isEmpty else {
             logger.warning("No samples captured")
-            return nil
+            return CaptureResult(samples: nil, health: health)
         }
 
         let peakAmplitude = samples.map { abs($0) }.max() ?? 0
         logger.notice("Captured \(samples.count) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate))s), peak amplitude: \(String(format: "%.4f", peakAmplitude))")
-        return samples
+        return CaptureResult(samples: samples, health: health)
+    }
+
+    /// Short capture probe for the settings test buttons. Retries once when
+    /// the first attempt yields nothing — a cold HAL legitimately needs one
+    /// capture as a wake-up call, and the retry keeps a sleeping HAL from
+    /// being misreported as the coreaudiod wedge.
+    func probe(duration: TimeInterval = 0.5) async throws -> CaptureResult {
+        var last = CaptureResult(samples: nil, health: .indeterminate)
+        for attempt in 1...2 {
+            try startCapture()
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            last = stopCapture()
+            if let samples = last.samples, !samples.isEmpty {
+                return last
+            }
+            logger.info("Mic probe attempt \(attempt) came back empty (health: \(String(describing: last.health), privacy: .public))")
+        }
+        return last
     }
 
     private func applyDeviceID(_ deviceID: AudioDeviceID, to inputNode: AVAudioInputNode) {

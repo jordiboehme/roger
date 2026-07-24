@@ -498,19 +498,20 @@ struct PermissionsSettingsView: View {
     private func testMicrophone() {
         micTestResult = nil
         let service = coordinator.audioCaptureService
-        do {
-            try service.startCapture()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                let samples = service.stopCapture()
-                if let samples, !samples.isEmpty {
+        Task {
+            do {
+                let result = try await service.probe()
+                if let samples = result.samples, !samples.isEmpty {
                     let peak = samples.map { abs($0) }.max() ?? 0
                     micTestResult = "OK — \(samples.count) samples (peak: \(String(format: "%.3f", peak)))"
+                } else if result.health == .halStarved {
+                    micTestResult = "Failed - \(AudioCaptureService.halStarvedAdvice)"
                 } else {
                     micTestResult = "Failed — no audio captured"
                 }
+            } catch {
+                micTestResult = "Failed — \(error.localizedDescription)"
             }
-        } catch {
-            micTestResult = "Failed — \(error.localizedDescription)"
         }
     }
 

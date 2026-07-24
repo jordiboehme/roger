@@ -273,7 +273,8 @@ final class AppCoordinator {
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
 
-        let samples = audioCaptureService.stopCapture()
+        let capture = audioCaptureService.stopCapture()
+        let samples = capture.samples
         let languageOverride = activeRecordingLanguageOverride
         activeRecordingLanguageOverride = nil
 
@@ -283,6 +284,18 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
+            return
+        }
+
+        // The engine ran for a full dictation without a single input buffer:
+        // that's the coreaudiod wedge, not silence. Name it instead of
+        // transcribing nothing.
+        if capture.health == .halStarved {
+            logger.error("Dictation got zero buffers from the HAL — surfacing audio-wedge guidance")
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            activeRecordingPresetID = nil
+            appState.dictationState = .error(AudioCaptureService.halStarvedAdvice)
             return
         }
 
@@ -454,6 +467,18 @@ final class AppCoordinator {
     /// Fires a brief silent capture so the CoreAudio HAL is warm before the
     /// user's first real Caps Lock press. Safe to call repeatedly — re-entrant
     /// calls are coalesced.
+    /// Relaunches the app — the fix for a process-scoped CoreAudio wedge.
+    /// Refuses while a meeting recording is active so a live session never
+    /// has to go through crash recovery.
+    func relaunchApp() {
+        guard !meetingRecorder.isActive else {
+            appState.dictationState = .error("Stop the meeting recording before relaunching Roger")
+            return
+        }
+        logger.notice("Relaunching Roger on user request (audio-wedge recovery)")
+        AppRelauncher.relaunch()
+    }
+
     func warmUpMicrophone() async {
         guard permissionManager.microphoneAuthorized else { return }
         guard !isWarmingUp else { return }
