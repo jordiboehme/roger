@@ -61,6 +61,7 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## Requirements
 
+- **Apple Silicon** - transcription runs on the Neural Engine, which Intel Macs don't have
 - **macOS 14.4 Sonoma** or later (Core Audio Process Tap floor for meeting recording)
 - **Microphone permission** (prompted on first launch)
 - **Accessibility permission** (for text insertion and global hotkey)

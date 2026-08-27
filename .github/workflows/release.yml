@@ -49,6 +49,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            ARCHS=arm64 \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
@@ -143,6 +144,7 @@ jobs:
             desc "macOS menu bar app for speech-to-text dictation into any application"
             homepage "https://github.com/jordiboehme/roger"
 
+            depends_on arch:  :arm64
             depends_on macos: :sonoma
 
             app "Roger.app"
