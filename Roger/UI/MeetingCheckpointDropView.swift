@@ -78,7 +78,13 @@ final class MeetingCheckpointDropView: NSView {
                 return false
             }
             let onDrop = self.onDrop
-            receiver.receivePromisedFiles(atDestination: tempDir, options: [:], operationQueue: promiseQueue) { url, error in
+            // @Sendable keeps this closure nonisolated. Without it, a closure
+            // formed in a @MainActor context is inferred MainActor-isolated and
+            // Swift 6 compiles a dynamic isolation assertion into its entry —
+            // which traps (EXC_BREAKPOINT) when AppKit invokes the reader on
+            // `promiseQueue`, crashing the app on every screenshot-thumbnail
+            // drop.
+            receiver.receivePromisedFiles(atDestination: tempDir, options: [:], operationQueue: promiseQueue) { @Sendable url, error in
                 Task { @MainActor in
                     if let error {
                         logger.warning("File promise failed: \(error.localizedDescription, privacy: .public)")
