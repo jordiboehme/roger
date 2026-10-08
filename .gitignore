@@ -22,8 +22,8 @@ Package.resolved
 # macOS
 .DS_Store
 
-# Claude Code
-CLAUDE.md
+# Agent instructions
+AGENTS.md
 .claude/
 .serena/
 
