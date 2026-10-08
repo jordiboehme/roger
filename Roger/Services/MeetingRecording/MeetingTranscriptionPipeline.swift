@@ -38,10 +38,12 @@ struct MeetingTranscriptionPipeline: Sendable {
     }
 
     /// `progress` spans 0-1 across all stages and may fire from any thread.
+    /// `breaks` are screenshot offsets where paragraphs must end.
     func run(
         mic: TrackSource,
         system: TrackSource,
         config: Config,
+        breaks: [Double] = [],
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> Output {
         // Mic track — whichever path the result follows, we end up with a
@@ -114,7 +116,8 @@ struct MeetingTranscriptionPipeline: Sendable {
         // false`), so `llmService: nil` is safe and stays fully on-device.
         let mergedParagraphs = MeetingTranscriptMerger.merge(
             mic: micInput,
-            systemSpeakerSegments: systemSpeakerSegments
+            systemSpeakerSegments: systemSpeakerSegments,
+            breaks: breaks
         )
 
         let resolvedLanguageCode = micLanguage ?? systemLanguage

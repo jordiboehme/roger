@@ -348,7 +348,12 @@ final class MeetingRecordingService {
 
         let output: MeetingTranscriptionPipeline.Output
         do {
-            output = try await transcriptionPipeline().run(mic: mic, system: system, config: config)
+            output = try await transcriptionPipeline().run(
+                mic: mic,
+                system: system,
+                config: config,
+                breaks: [previousOffset, marker.offsetSeconds]
+            )
         } catch {
             // Only CancellationError reaches here — stop was requested and
             // finalisation takes over.
@@ -523,12 +528,16 @@ final class MeetingRecordingService {
         // Finalisation is never cancelled, so the only throw the pipeline
         // can produce (CancellationError) is a defensive catch here.
         let finalConfig = currentPipelineConfig()
+        // `load` covers crash and sleep recovery, where the live store is gone.
+        let checkpointFile = checkpointStore?.file ?? MeetingCheckpointStore.load(from: session.folder)
+        let markers = checkpointFile?.markers ?? []
         let output: MeetingTranscriptionPipeline.Output
         do {
             output = try await transcriptionPipeline().run(
                 mic: micPresent ? .file(micArchive) : .absent,
                 system: systemPresent ? .file(systemArchive) : .absent,
                 config: finalConfig,
+                breaks: markers.map(\.offsetSeconds),
                 progress: { [weak self] fraction in
                     Task { @MainActor in
                         self?.bumpFinalisingProgress(to: 0.45 + min(1, max(0, fraction)) * 0.40)
@@ -564,10 +573,7 @@ final class MeetingRecordingService {
 
         // Screenshot checkpoints: rewrite every segment md from this
         // authoritative full pass (overwriting the provisional live ones)
-        // and weave inline image references into transcript.md. `load`
-        // covers crash and sleep recovery, where the live store is gone.
-        let checkpointFile = checkpointStore?.file ?? MeetingCheckpointStore.load(from: session.folder)
-        let markers = checkpointFile?.markers ?? []
+        // and weave inline image references into transcript.md.
         if !markers.isEmpty {
             let effectiveStart = checkpointFile?.sessionStartedAt ?? session.startedAt
             for chunk in MeetingCheckpointStore.chunks(sessionStartedAt: effectiveStart, markers: markers) {

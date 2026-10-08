@@ -76,39 +76,68 @@ enum SpeakerAligner {
             changes[k] = best
         }
 
-        // Rebuild runs: each change hands the following words to the speaker
+        // Rebuild turns: each change hands the following words to the speaker
         // the diarizer gave the original change point.
-        var result: [SpeakerSegment] = []
+        var turns: [Turn] = []
         var runStart = 0
         var runSpeaker = speakers[0]
         let originalChanges = (1..<words.count).filter { speakers[$0] != speakers[$0 - 1] }
         for (k, change) in changes.enumerated() {
-            appendRun(words[runStart..<change], speaker: runSpeaker, to: &result)
+            append(Turn(speaker: runSpeaker, range: runStart..<change), to: &turns)
             runStart = change
             runSpeaker = speakers[originalChanges[k]]
         }
-        appendRun(words[runStart..<words.count], speaker: runSpeaker, to: &result)
-        return mergeShortTurns(result)
+        append(Turn(speaker: runSpeaker, range: runStart..<words.count), to: &turns)
+        turns = mergeShortTurns(turns, words: words)
+
+        // A turn can be minutes of one voice. Hand it out in sentence and
+        // pause sized pieces so callers can break paragraphs and place
+        // screenshots inside it.
+        return turns.flatMap { pieces(of: $0, words: words) }
+    }
+
+    /// A speaker turn as a range of `words`.
+    private struct Turn {
+        var speaker: String
+        var range: Range<Int>
+    }
+
+    private static func append(_ turn: Turn, to turns: inout [Turn]) {
+        guard !turn.range.isEmpty else { return }
+        if let last = turns.last, last.speaker == turn.speaker {
+            turns[turns.count - 1].range = last.range.lowerBound..<turn.range.upperBound
+        } else {
+            turns.append(turn)
+        }
     }
 
     /// Snapping can leave a turn of a word or two between two others, for
     /// example "built out" in the middle of a sentence. Such turns join the
     /// turn before them; same-speaker neighbours then merge.
-    private static func mergeShortTurns(_ turns: [SpeakerSegment], maxWords: Int = 3, maxDuration: Double = 1.5) -> [SpeakerSegment] {
-        var result: [SpeakerSegment] = []
+    private static func mergeShortTurns(_ turns: [Turn], words: [Word], maxWords: Int = 3, maxDuration: Double = 1.5) -> [Turn] {
+        var result: [Turn] = []
         for turn in turns {
-            let isShort = turn.text.split(separator: " ").count <= maxWords && turn.endTime - turn.startTime < maxDuration
-            if let previous = result.last, isShort || previous.speakerId == turn.speakerId {
-                result[result.count - 1] = SpeakerSegment(
-                    speakerId: previous.speakerId,
-                    startTime: previous.startTime,
-                    endTime: turn.endTime,
-                    text: previous.text + " " + turn.text
-                )
+            let duration = words[turn.range.upperBound - 1].end - words[turn.range.lowerBound].start
+            let isShort = turn.range.count <= maxWords && duration < maxDuration
+            if let previous = result.last, isShort || previous.speaker == turn.speaker {
+                result[result.count - 1].range = previous.range.lowerBound..<turn.range.upperBound
             } else {
                 result.append(turn)
             }
         }
+        return result
+    }
+
+    /// Splits a turn after each sentence end and at pauses longer than
+    /// `pause` seconds.
+    private static func pieces(of turn: Turn, words: [Word], pause: Double = 0.8) -> [SpeakerSegment] {
+        var result: [SpeakerSegment] = []
+        var start = turn.range.lowerBound
+        for i in turn.range.dropFirst() where endsSentence(words[i - 1]) || words[i].start - words[i - 1].end > pause {
+            appendPiece(words[start..<i], speaker: turn.speaker, to: &result)
+            start = i
+        }
+        appendPiece(words[start..<turn.range.upperBound], speaker: turn.speaker, to: &result)
         return result
     }
 
@@ -168,25 +197,19 @@ enum SpeakerAligner {
     /// How much the gap between two words looks like a speaker turn.
     private static func breakScore(before: Word, after: Word) -> Double {
         let gap = max(0, after.start - before.end)
-        let trimmed = before.text.trimmingCharacters(in: .whitespaces)
-        let sentenceEnd = trimmed.hasSuffix(".") || trimmed.hasSuffix("?") || trimmed.hasSuffix("!")
-        return min(gap, 2) + (sentenceEnd ? 1 : 0)
+        return min(gap, 2) + (endsSentence(before) ? 1 : 0)
     }
 
-    private static func appendRun(_ run: ArraySlice<Word>, speaker: String, to result: inout [SpeakerSegment]) {
+    private static func endsSentence(_ word: Word) -> Bool {
+        let trimmed = word.text.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasSuffix(".") || trimmed.hasSuffix("?") || trimmed.hasSuffix("!")
+    }
+
+    private static func appendPiece(_ run: ArraySlice<Word>, speaker: String, to result: inout [SpeakerSegment]) {
         guard let first = run.first, let last = run.last else { return }
         let text = detokenize(run.map(\.text).joined())
         guard !text.isEmpty else { return }
-        if let previous = result.last, previous.speakerId == speaker {
-            result[result.count - 1] = SpeakerSegment(
-                speakerId: speaker,
-                startTime: previous.startTime,
-                endTime: last.end,
-                text: previous.text + " " + text
-            )
-        } else {
-            result.append(SpeakerSegment(speakerId: speaker, startTime: first.start, endTime: last.end, text: text))
-        }
+        result.append(SpeakerSegment(speakerId: speaker, startTime: first.start, endTime: last.end, text: text))
     }
 
     // MARK: - Helpers

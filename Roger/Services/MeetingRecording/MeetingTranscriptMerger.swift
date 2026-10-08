@@ -24,10 +24,13 @@ enum MeetingTranscriptMerger {
     }
 
     /// `systemSpeakerSegments` is the diarizer's speaker-attributed segments
-    /// from the system m4a, aligned to the ASR token timings.
+    /// from the system m4a, aligned to the ASR token timings. `breaks` are
+    /// session offsets (screenshot times) where a paragraph must end, so an
+    /// image lands where it was taken and not after a long monologue.
     static func merge(
         mic: MicInput,
-        systemSpeakerSegments: [SpeakerSegment]
+        systemSpeakerSegments: [SpeakerSegment],
+        breaks: [Double] = []
     ) -> [Paragraph] {
         // 1. Resolve mic-side: produce labelled (speaker, start, end, text)
         // entries, plus the set of mic cluster IDs that should NOT be in
@@ -121,7 +124,7 @@ enum MeetingTranscriptMerger {
         }
         .sorted { $0.start < $1.start }
 
-        return groupIntoParagraphs(labelled)
+        return groupIntoParagraphs(labelled, breaks: breaks.map { Float($0) }.sorted())
     }
 
     // MARK: - Internals
@@ -152,8 +155,9 @@ enum MeetingTranscriptMerger {
 
     /// Groups consecutive same-speaker entries into paragraphs. Starts a new
     /// paragraph when speaker changes, on a > 1.5 s silence between entries,
-    /// or when the running paragraph already exceeds 80 words.
-    private static func groupIntoParagraphs(_ entries: [LabelledEntry]) -> [Paragraph] {
+    /// when the running paragraph already exceeds 80 words or when a break
+    /// lies between the paragraph start and the entry.
+    private static func groupIntoParagraphs(_ entries: [LabelledEntry], breaks: [Float]) -> [Paragraph] {
         guard !entries.isEmpty else { return [] }
         let gapThreshold: Float = 1.5
         let maxWords = 80
@@ -169,8 +173,9 @@ enum MeetingTranscriptMerger {
             let speakerChanged = entry.speaker != currentSpeaker
             let bigGap = (entry.start - currentEnd) > gapThreshold
             let tooLong = currentWordCount > maxWords
+            let crossesBreak = breaks.contains { $0 > currentStart && $0 <= entry.start }
 
-            if speakerChanged || bigGap || tooLong {
+            if speakerChanged || bigGap || tooLong || crossesBreak {
                 paragraphs.append(Paragraph(
                     speaker: currentSpeaker,
                     startTime: currentStart,
