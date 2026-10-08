@@ -1,5 +1,6 @@
 import AppKit
 import CoreAudio
+import FluidAudio
 import Foundation
 import Observation
 import os
@@ -74,6 +75,9 @@ final class AppCoordinator {
     var meetingDropTargetActive: Bool = false
 
     init() {
+        // FluidAudio's debug lines include recognised words. Keep transcripts
+        // out of the console and the system log, even in Debug builds.
+        AppLogger.minimumLevel = .info
         // Share one diarization service across file transcription and meetings
         // so its CoreML models load once per launch.
         self.meetingRecorder = MeetingRecordingService(

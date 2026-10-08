@@ -9,10 +9,11 @@ options:
 packages:
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
-    from: "0.15.6"
+    from: "0.17.7"
+    traits: []
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts.git
-    from: "3.0.1"
+    from: "3.1.0"
 
 targets:
   Roger:
