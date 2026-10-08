@@ -34,7 +34,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger
-        MARKETING_VERSION: "0.21.0"
+        MARKETING_VERSION: "0.22.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_FILE: Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/Roger.entitlements
