@@ -105,8 +105,14 @@ enum MeetingTranscriptWriter {
         return text + ", recorded and transcribed on this Mac by Roger."
     }
 
+    /// `![Screenshot at HH:MM:SS · yyyy-MM-dd HH:mm:ss](file)`, timed like
+    /// the paragraph headers. The file name has spaces, which CommonMark only
+    /// allows in a link target when percent-encoded.
     private static func imageReference(_ marker: MeetingCheckpointMarker) -> String {
-        "![](\(marker.imageFile))\n\n"
+        let rel = formatTimestamp(Float(marker.offsetSeconds))
+        let abs = absoluteFormatter.string(from: marker.capturedAt)
+        let target = marker.imageFile.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? marker.imageFile
+        return "![Screenshot at \(rel) · \(abs)](\(target))\n\n"
     }
 
     /// One paragraph block: `**Speaker** [HH:MM:SS · yyyy-MM-dd HH:mm:ss]`
