@@ -59,7 +59,7 @@ final class AppCoordinator {
     let diarizationService = DiarizationService()
 
     /// Meeting recording orchestrator. Builds on Core Audio Process Taps
-    /// (macOS 14.4+, the project deployment floor).
+    /// (macOS 14.4+, below the macOS 15 deployment floor).
     let meetingRecorder: MeetingRecordingService
 
     /// Recovered sessions from a prior crash (CAF chunks but no transcript).

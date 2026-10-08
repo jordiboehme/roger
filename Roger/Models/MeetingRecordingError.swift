@@ -5,7 +5,6 @@ import Foundation
 /// case rather than being exposed verbatim — this gives the UI a stable
 /// surface to switch on.
 enum MeetingRecordingError: LocalizedError, Sendable {
-    case unsupportedOS
     case alreadyRecording
     case dictationActive
     case fileTranscriptionActive
@@ -19,8 +18,6 @@ enum MeetingRecordingError: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedOS:
-            return "Meeting recording requires macOS 14.4 or later."
         case .alreadyRecording:
             return "A meeting recording is already in progress."
         case .dictationActive:
