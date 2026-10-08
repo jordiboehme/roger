@@ -558,7 +558,7 @@ final class MeetingRecordingService {
             systemPresent: systemPresent,
             diarizationFailed: output.diarizationFailed,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
-            modelDescription: "Parakeet TDT v3"
+            modelDescription: TranscriptionEngine.modelName
         )
 
         // Screenshot checkpoints: rewrite every segment md from this

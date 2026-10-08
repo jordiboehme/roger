@@ -725,7 +725,7 @@ struct ModelSettingsView: View {
             VStack(spacing: 16) {
                 settingsCard(icon: "waveform", title: "Transcription") {
                     settingsRow("Model") {
-                        Text("Parakeet TDT v3")
+                        Text(TranscriptionEngine.modelName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -892,18 +892,10 @@ struct AboutView: View {
             Spacer()
 
             VStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Text("Powered by")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Link("FluidAudio", destination: URL(string: "https://github.com/FluidInference/FluidAudio")!)
-                        .font(.caption2)
-                    Text("&")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Link("NVIDIA Parakeet", destination: URL(string: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3")!)
-                        .font(.caption2)
-                }
+                Text("Powered by [FluidAudio](https://github.com/FluidInference/FluidAudio), [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) & [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .tint(.accentColor)
 
                 Text("Created with \u{2764}\u{FE0F} by Jordi Böhme  \u{00B7}  MIT License")
                     .font(.caption2)

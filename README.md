@@ -20,7 +20,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 - **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Slide checkpoints** - drop a screenshot of a shared slide onto the recording overlay and Roger saves it next to a timestamped transcript segment of the audio since the last drop, while the recording keeps running. The session folder becomes a chronological record of what was said and shown, ready for an AI agent
 - **Mute yourself everywhere** — while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once — no per-app setup, no plugin
-- **Completely private** — Powered by [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) via [FluidAudio](https://github.com/FluidInference/FluidAudio) on Apple Silicon. Your audio never leaves your Mac
+- **Completely private** — Powered by [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), a post-trained [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), via [FluidAudio](https://github.com/FluidInference/FluidAudio) on Apple Silicon. Your audio never leaves your Mac
 - **Speaks your language** — English and German with automatic detection, plus 23 more European languages via Parakeet's multilingual model
 - **Cheat-sheet menu bar** — one glance at the popup tells you which Caps Lock combo maps to which preset
 - **Quick copy** — click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
@@ -69,7 +69,7 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## How It Works
 
-Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
+Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) (built on [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
 
 ### Transcribing files
 

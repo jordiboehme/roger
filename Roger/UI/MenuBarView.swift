@@ -298,7 +298,7 @@ struct MenuBarView: View {
     }
 
     private var statusSubtitle: String {
-        coordinator.transcriptionEngine.isReady ? "Parakeet TDT v3 · Model loaded" : "Model not loaded"
+        coordinator.transcriptionEngine.isReady ? "\(TranscriptionEngine.modelName) · Model loaded" : "Model not loaded"
     }
 
     // MARK: - Shortcuts cheat sheet

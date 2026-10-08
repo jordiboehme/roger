@@ -14,7 +14,7 @@ struct ModelSetupProgress: Sendable, Equatable {
     let stage: String
 }
 
-/// On-device speech-to-text via FluidAudio's Parakeet TDT v3 (CoreML, runs on
+/// On-device speech-to-text via FluidAudio's Parakeet Ultra (CoreML, runs on
 /// the Apple Neural Engine). Transcription is batch: the caller captures the
 /// whole audio buffer and hands it over on stop. `AsrManager` is an actor, so
 /// this is a thin lifecycle wrapper that maps Roger's language pin to Parakeet's
@@ -40,20 +40,46 @@ final class TranscriptionEngine: @unchecked Sendable {
 
     var isReady: Bool { asrManager != nil }
 
-    /// Downloads (first launch) and loads Parakeet TDT v3 — the single
-    /// multilingual model Roger uses. `melChunkContext: false` is the
-    /// v3-recommended setting for multilingual long-form audio (avoids an
-    /// English-bias drift at chunk boundaries on e.g. German meeting audio).
+    /// The single multilingual model Roger uses: Parakeet Ultra, a post-trained
+    /// v3 with the same 25 languages, tokenizer and speed but lower error rates.
+    static let modelVersion: AsrModelVersion = .ultra
+    static let modelName = "Parakeet Ultra"
+
+    /// Models earlier Roger versions downloaded. Removed once the current model
+    /// is loaded, so an upgrade never leaves an unused ~480 MB bundle behind.
+    private static let legacyModelVersions: [AsrModelVersion] = [.v3]
+
+    /// Downloads (first launch) and loads Parakeet Ultra. `melChunkContext:
+    /// false` is the recommended setting for v3-family multilingual long-form
+    /// audio (avoids an English-bias drift at chunk boundaries on e.g. German
+    /// meeting audio).
     func setup(progressHandler: @Sendable @escaping (ModelSetupProgress) -> Void) async throws {
         guard asrManager == nil else { return }
-        let models = try await AsrModels.downloadAndLoad(version: .v3) { progress in
+        let models = try await AsrModels.downloadAndLoad(version: Self.modelVersion) { progress in
             progressHandler(ModelSetupProgress(
                 fraction: progress.fractionCompleted,
                 stage: Self.stageDescription(for: progress.phase)
             ))
         }
         asrManager = AsrManager(config: ASRConfig(melChunkContext: false), models: models)
-        logger.info("Parakeet TDT v3 ready")
+        logger.info("\(Self.modelName, privacy: .public) ready")
+        Self.removeLegacyModels()
+    }
+
+    /// Deletes caches of models Roger no longer uses. Only called after the
+    /// current model loaded, so a failed download never costs the old one.
+    private static func removeLegacyModels() {
+        let current = AsrModels.defaultCacheDirectory(for: modelVersion).standardizedFileURL
+        for version in legacyModelVersions {
+            let dir = AsrModels.defaultCacheDirectory(for: version).standardizedFileURL
+            guard dir != current, FileManager.default.fileExists(atPath: dir.path) else { continue }
+            do {
+                try FileManager.default.removeItem(at: dir)
+                logger.notice("Removed legacy model at \(dir.path, privacy: .public)")
+            } catch {
+                logger.error("Failed to remove legacy model at \(dir.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     /// FluidAudio's fraction already spans download (0-0.5) and CoreML
@@ -71,9 +97,10 @@ final class TranscriptionEngine: @unchecked Sendable {
 
     func uninstall() async {
         asrManager = nil
-        let dir = AsrModels.defaultCacheDirectory(for: .v3)
+        let dir = AsrModels.defaultCacheDirectory(for: Self.modelVersion)
         try? FileManager.default.removeItem(at: dir)
         logger.info("Parakeet model removed from \(dir.path, privacy: .public)")
+        Self.removeLegacyModels()
     }
 
     // MARK: - Transcription
@@ -139,7 +166,7 @@ final class TranscriptionEngine: @unchecked Sendable {
     }
 
     /// Maps Roger's ISO-639-1 language pin to Parakeet's optional script hint.
-    /// `nil` (multilingual / auto) leaves v3 to detect across all 25 languages.
+    /// `nil` (multilingual / auto) leaves the model to detect across all 25 languages.
     private static func languageHint(_ code: String?) -> Language? {
         guard let code else { return nil }
         return Language(rawValue: code)
