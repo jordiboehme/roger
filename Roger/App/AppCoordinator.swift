@@ -99,7 +99,10 @@ final class AppCoordinator {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.systemMicMute.restoreIfNeeded() }
+            MainActor.assumeIsolated {
+                self?.systemMicMute.restoreIfNeeded()
+                self?.systemMicMute.reapplyReleasedMute()
+            }
         }
     }
 
@@ -236,7 +239,8 @@ final class AppCoordinator {
             floatingPanel.show(coordinator: self)
 
             // A mic muted at the device level (often left over from an
-            // earlier meeting) records pure silence. Release it first.
+            // earlier meeting) records pure silence. Lift the mute for this
+            // dictation; it is re-applied when the capture ends.
             systemMicMute.releaseStaleMute()
             audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
             try audioCaptureService.startCapture()
@@ -249,6 +253,7 @@ final class AppCoordinator {
             activeRecordingPresetID = nil
             activeRecordingLanguageOverride = nil
             _ = audioCaptureService.stopCapture()
+            systemMicMute.reapplyReleasedMute()
             logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
         }
@@ -281,6 +286,7 @@ final class AppCoordinator {
         recordingStartTime = nil
 
         let capture = audioCaptureService.stopCapture()
+        systemMicMute.reapplyReleasedMute()
         let samples = capture.samples
         let languageOverride = activeRecordingLanguageOverride
         activeRecordingLanguageOverride = nil

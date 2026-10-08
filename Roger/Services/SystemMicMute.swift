@@ -14,8 +14,8 @@ import os
 /// whether *it* muted the device and restores on unmute / recording stop /
 /// app quit. The hold is also persisted, so a crash or force quit is undone on
 /// the next launch. A mute Roger doesn't hold (left over from an earlier
-/// session or set elsewhere) is released when dictation starts, see
-/// `releaseStaleMute()`.
+/// session or set elsewhere) is lifted for the length of a dictation, see
+/// `releaseStaleMute()` and `reapplyReleasedMute()`.
 @MainActor
 @Observable
 final class SystemMicMute {
@@ -44,6 +44,10 @@ final class SystemMicMute {
         let previousVolume: Float32?
     }
     private static let pendingRestoreKey = "systemMicMutePendingRestore"
+
+    /// A foreign mute lifted for the current dictation, re-applied when the
+    /// capture ends so a deliberate mute (e.g. in a call) stays in place.
+    private var releasedForDictation: AudioDeviceID?
 
     init(appState: AppState) {
         self.appState = appState
@@ -96,13 +100,22 @@ final class SystemMicMute {
     /// Unmutes the target input device if it is muted at the HAL level while
     /// Roger holds no mute. A muted device delivers silence, so dictation
     /// would record nothing, and nothing on screen tells the user why.
-    /// Returns true when it unmuted.
-    @discardableResult
-    func releaseStaleMute() -> Bool {
-        guard !isMuted, let device = targetInputDevice(), readMute(device) == 1 else { return false }
-        guard setMute(device, false) else { return false }
+    /// Pair with `reapplyReleasedMute()` when the capture ends.
+    func releaseStaleMute() {
+        guard !isMuted, let device = targetInputDevice(), readMute(device) == 1 else { return }
+        guard setMute(device, false) else { return }
+        releasedForDictation = device
         Self.logger.notice("Input device \(device, privacy: .public) was muted outside Roger's hold — unmuted for dictation")
-        return true
+    }
+
+    /// Mutes the device again if `releaseStaleMute()` lifted a mute for this
+    /// dictation. Safe to call when nothing was lifted.
+    func reapplyReleasedMute() {
+        guard let device = releasedForDictation else { return }
+        releasedForDictation = nil
+        if setMute(device, true) {
+            Self.logger.notice("Input device \(device, privacy: .public) muted again after dictation")
+        }
     }
 
     // MARK: - Crash recovery
