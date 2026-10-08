@@ -596,8 +596,17 @@ final class AppCoordinator {
             let preset = appState.fileTranscriptionPreset
             let languageOverride = appState.resolvedLanguage(for: preset)
 
-            let result: TranscriptionEngine.TranscriptionResult
-            let processedText: String
+            let recording = await MediaAudioExtractor.recordingInfo(for: job.sourceURL)
+            try Task.checkCancellation()
+
+            // Diarized jobs end up as timestamped speaker paragraphs; the
+            // plain path as one block of text. Each piece is cleaned up on
+            // its own so filler removal never touches the speaker headers.
+            var paragraphs: [MeetingTranscriptMerger.Paragraph] = []
+            var plainText = ""
+            var detectedLanguage: String?
+            var diarized = false
+            var diarizationFailed = false
 
             if appState.fileTranscriptionDiarize {
                 let detailed = try await transcriptionEngine.transcribeFileDetailed(
@@ -605,17 +614,11 @@ final class AppCoordinator {
                     languageOverride: languageOverride
                 )
                 try Task.checkCancellation()
-
-                let languageName: String = {
-                    if let code = detailed.result.detectedLanguage {
-                        return WhisperLanguage.displayName(for: code)
-                    }
-                    return "the original language"
-                }()
+                detectedLanguage = detailed.result.detectedLanguage
+                let languageName = Self.languageName(for: detectedLanguage)
 
                 // Diarization is best-effort: if model download or inference fails,
                 // fall back to the plain transcription rather than surfacing an error.
-                let textToParse: String
                 fileTranscriptionDiarizing = true
                 do {
                     let aligned = try await diarizationService.speakerSegments(
@@ -630,58 +633,79 @@ final class AppCoordinator {
                     )
                     fileTranscriptionDiarizing = false
                     fileTranscriptionProgress = nil
-                    let diarized = formatDiarized(aligned)
-                    textToParse = diarized.isEmpty ? detailed.result.text : diarized
+                    diarized = !aligned.isEmpty
+                    // Number speakers by first appearance, not by cluster id.
+                    var speakerNumbers: [String: Int] = [:]
+                    for segment in Self.mergeSpeakerRuns(aligned) {
+                        let text = try await postProcessor.process(
+                            segment.text,
+                            preset: preset,
+                            language: languageName,
+                            llmService: nil
+                        )
+                        guard !text.isEmpty else { continue }
+                        if speakerNumbers[segment.speakerId] == nil {
+                            speakerNumbers[segment.speakerId] = speakerNumbers.count + 1
+                        }
+                        paragraphs.append(.init(
+                            speaker: "Speaker \(speakerNumbers[segment.speakerId]!)",
+                            startTime: Float(segment.startTime),
+                            text: text
+                        ))
+                    }
                 } catch {
                     fileTranscriptionDiarizing = false
                     fileTranscriptionProgress = nil
+                    diarizationFailed = true
                     logger.warning("Diarization failed, using plain transcript: \(error.localizedDescription, privacy: .public)")
-                    textToParse = detailed.result.text
                 }
-
-                result = detailed.result
-                processedText = try await postProcessor.process(
-                    textToParse,
-                    preset: preset,
-                    language: languageName,
-                    llmService: nil
-                )
+                if !diarized {
+                    plainText = try await postProcessor.process(
+                        detailed.result.text,
+                        preset: preset,
+                        language: languageName,
+                        llmService: nil
+                    )
+                }
             } else {
                 let r = try await transcriptionEngine.transcribeFile(
                     url: prepared.url,
                     languageOverride: languageOverride
                 )
-                result = r
                 try Task.checkCancellation()
-                let languageName: String = {
-                    if let code = r.detectedLanguage {
-                        return WhisperLanguage.displayName(for: code)
-                    }
-                    return "the original language"
-                }()
-                processedText = try await postProcessor.process(
+                detectedLanguage = r.detectedLanguage
+                plainText = try await postProcessor.process(
                     r.text,
                     preset: preset,
-                    language: languageName,
+                    language: Self.languageName(for: detectedLanguage),
                     llmService: nil
                 )
             }
 
             try Task.checkCancellation()
-            _ = result  // silence unused-variable warning; result holds detected language
 
-            guard !processedText.isEmpty else {
+            guard !paragraphs.isEmpty || !plainText.isEmpty else {
                 logger.warning("File transcription produced empty text: \(job.displayName, privacy: .public)")
                 await finishFileTranscription(error: "No speech detected in \(job.displayName)")
                 return
             }
 
             let outputURL = try TranscriptOutputWriter.write(
-                transcript: processedText,
                 source: job.sourceURL,
                 location: appState.fileTranscriptOutputLocation,
                 customFolder: appState.fileTranscriptOutputFolder
-            )
+            ) { destination in
+                MediaTranscriptFormatter.content(
+                    source: job.sourceURL,
+                    destination: destination,
+                    recording: recording,
+                    paragraphs: paragraphs,
+                    plainText: plainText,
+                    language: detectedLanguage,
+                    diarized: diarized,
+                    diarizationFailed: diarizationFailed
+                )
+            }
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
             await finishFileTranscription(error: nil)
@@ -694,27 +718,27 @@ final class AppCoordinator {
         }
     }
 
-    private func formatDiarized(_ segments: [SpeakerSegment]) -> String {
-        var lines: [String] = []
-        var currentSpeaker: String? = nil
-        var buffer: [String] = []
-
-        func flush() {
-            guard let speaker = currentSpeaker, !buffer.isEmpty else { buffer = []; return }
-            let label = speaker.hasPrefix("S") ? "Speaker \(speaker.dropFirst())" : speaker
-            lines.append("[\(label)]\n\(buffer.joined(separator: " "))")
-            buffer = []
-        }
-
+    /// Joins consecutive segments of the same speaker into one paragraph.
+    private static func mergeSpeakerRuns(_ segments: [SpeakerSegment]) -> [SpeakerSegment] {
+        var merged: [SpeakerSegment] = []
         for segment in segments {
-            if segment.speakerId != currentSpeaker {
-                flush()
-                currentSpeaker = segment.speakerId
+            if let last = merged.last, last.speakerId == segment.speakerId {
+                merged[merged.count - 1] = SpeakerSegment(
+                    speakerId: last.speakerId,
+                    startTime: last.startTime,
+                    endTime: segment.endTime,
+                    text: last.text + " " + segment.text
+                )
+            } else {
+                merged.append(segment)
             }
-            buffer.append(segment.text)
         }
-        flush()
-        return lines.joined(separator: "\n\n")
+        return merged
+    }
+
+    private static func languageName(for code: String?) -> String {
+        guard let code else { return "the original language" }
+        return WhisperLanguage.displayName(for: code)
     }
 
     private func finishFileTranscription(error: String?) async {

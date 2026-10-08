@@ -16,7 +16,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 - **Near-instant results** — release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
-- **Drop files to transcribe** — drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a `.txt` transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
+- **Drop files to transcribe** — drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a Markdown transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
 - **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Slide checkpoints** - drop a screenshot of a shared slide onto the recording overlay and Roger saves it next to a timestamped transcript segment of the audio since the last drop, while the recording keeps running. The session folder becomes a chronological record of what was said and shown, ready for an AI agent
 - **Mute yourself everywhere** — while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once — no per-app setup, no plugin
@@ -73,13 +73,42 @@ Roger captures audio from your chosen input device — system default or a speci
 
 ### Transcribing files
 
-Drop any audio or video file on Roger's menu bar icon, or right-click it in Finder and pick Open With > Roger or Services > Transcribe with Roger, and it writes the transcript to a `.txt` next to the source — or into a folder you pick once. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
+Drop any audio or video file on Roger's menu bar icon, or right-click it in Finder and pick Open With > Roger or Services > Transcribe with Roger, and it writes the transcript to a Markdown file (`talk.mp4.md`) next to the source — or into a folder you pick once. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
 
 ### Recording meetings
 
-Roger records your mic and everything you hear from the system on two separate tracks, encodes both as M4A on stop, then transcribes each track and diarizes the remote one to label participants. The result lands in a per-meeting folder under `~/Documents/Roger Recordings/` (configurable) with `mic.m4a`, `system.m4a` and `transcript.md`. The markdown carries YAML frontmatter and stamps every speaker turn with both an elapsed offset and the absolute local time, so a knowledge base can ingest it directly — and screenshots or notes you capture mid-call line up with what was said. Audio is chunked to disk every 30 minutes, so a crash mid-call doesn't lose work — Roger offers to resume finalizing on next launch. Start from the menu bar item or assign a global hotkey under Settings › Recordings. While a recording is live, your dictation hotkey toggles a system-level mic mute — one press silences you in the meeting app and on the recording alike, with no per-app setup. Turn on mic-side speaker detection there too if more than one person speaks into the same mic.
+Roger records your mic and everything you hear from the system on two separate tracks, encodes both as M4A on stop, then transcribes each track and diarizes the remote one to label participants. The result lands in a per-meeting folder under `~/Documents/Roger Recordings/` (configurable) with `mic.m4a`, `system.m4a` and `transcript.md`. The markdown stamps every speaker turn with both an elapsed offset and the absolute local time, so a knowledge base can ingest it directly — and screenshots or notes you capture mid-call line up with what was said. Audio is chunked to disk every 30 minutes, so a crash mid-call doesn't lose work — Roger offers to resume finalizing on next launch. Start from the menu bar item or assign a global hotkey under Settings › Recordings. While a recording is live, your dictation hotkey toggles a system-level mic mute — one press silences you in the meeting app and on the recording alike, with no per-app setup. Turn on mic-side speaker detection there too if more than one person speaks into the same mic.
 
 While a recording is live you can also drop screenshots of shared slides onto the floating overlay - straight from the macOS screenshot thumbnail, from Finder or from a browser. Each drop lands in the session folder named by its capture time and triggers a transcript segment covering the audio since the previous drop, written as a matching timestamped markdown file while the recording continues. Speaker labels stay stable across segments because every checkpoint transcribes the meeting from the start. On stop, Roger rewrites all segments from the final full-quality pass and weaves the screenshots into `transcript.md` as inline images, so the folder reads as a chronological dataset of what was said and shown - hand it to an AI agent and it can follow the meeting slide by slide.
+
+### Transcript format
+
+Every transcript Roger writes is a Markdown file in the [Open Knowledge Format](https://okf.md) (OKF v0.2) that [Crystalline](https://github.com/jordiboehme/crystalline) can index without changes. The YAML frontmatter says what the file is, which speech model wrote it and when the recording took place:
+
+```yaml
+---
+type: source
+title: "Meeting 2026-10-08 14:03"
+description: "Meeting transcript, 31 minutes, 2 speakers, recorded and transcribed on this Mac by Roger."
+tags: [meeting, transcript]
+generated: { by: roger/0.22.0, model: "FluidInference/parakeet-ultra-coreml", at: 2026-10-08T14:35:12+02:00 }
+recorded_at: 2026-10-08
+source_date: 2026-10-08
+temporal_confidence: explicit
+sources:
+  - { id: mic, resource: "mic.m4a" }
+  - { id: system, resource: "system.m4a" }
+status: stable
+started_at: 2026-10-08T14:03:00+02:00
+ended_at: 2026-10-08T14:33:32+02:00
+duration_seconds: 1832
+speaker_count: 2
+language: "en"
+diarization_model: "FluidInference/speaker-diarization-coreml"
+---
+```
+
+For a dropped file, `resource` points at the source file and the recording time comes from the file's own metadata. If the file has none, Roger uses its creation date and marks it with `temporal_confidence: inferred`. Slide segment files carry `status: draft` while the meeting is still running and `stable` after the final pass.
 
 ### Presets
 

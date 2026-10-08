@@ -1,9 +1,8 @@
 import Foundation
 
 /// Writes a meeting transcript as a single Markdown file inside the session
-/// folder. Format is designed for ingestion by note-keeping systems like
-/// basic-memory: YAML frontmatter with stable keys, body of timestamped
-/// speaker paragraphs.
+/// folder: an OKF concept with Crystalline-compatible frontmatter (see
+/// `TranscriptFrontmatter`) and a body of timestamped speaker paragraphs.
 ///
 /// Each paragraph header is `**Speaker** [offset · localDateTime]`, where
 /// `offset` is HH:MM:SS from recording start and `localDateTime` is the
@@ -19,9 +18,9 @@ enum MeetingTranscriptWriter {
         let language: String?
         let micPresent: Bool
         let systemPresent: Bool
+        /// True when at least one track went through speaker diarization.
+        let diarized: Bool
         let diarizationFailed: Bool
-        let appVersion: String
-        let modelDescription: String
     }
 
     /// `markers` are screenshot checkpoints to weave into the body as inline
@@ -42,32 +41,42 @@ enum MeetingTranscriptWriter {
         metadata: Metadata,
         markers: [MeetingCheckpointMarker]
     ) -> String {
-        var out = ""
-        out += "---\n"
-        out += "title: \"Meeting \(displayDate(metadata.session))\"\n"
-        out += "type: meeting-recording\n"
-        out += "date: \(isoDate(metadata.session.startedAt))\n"
-        out += "durationSeconds: \(metadata.durationSeconds)\n"
+        let session = metadata.session
+        let endedAt = session.startedAt.addingTimeInterval(TimeInterval(metadata.durationSeconds))
+        var sources: [TranscriptFrontmatter.Source] = []
         if metadata.micPresent {
-            out += "mic: ./\(metadata.session.micArchiveURL.lastPathComponent)\n"
+            sources.append(.init(id: "mic", resource: session.micArchiveURL.lastPathComponent))
         }
         if metadata.systemPresent {
-            out += "systemAudio: ./\(metadata.session.systemArchiveURL.lastPathComponent)\n"
+            sources.append(.init(id: "system", resource: session.systemArchiveURL.lastPathComponent))
         }
-        out += "speakerCount: \(metadata.speakerCount)\n"
+        var fm = TranscriptFrontmatter(
+            title: "Meeting \(displayDate(session))",
+            description: description(metadata, screenshots: markers.count),
+            tags: ["meeting", "transcript"],
+            sourceDate: session.startedAt,
+            temporalConfidence: .explicit,
+            sources: sources,
+            status: "stable"
+        )
+        fm.add("started_at", date: session.startedAt)
+        fm.add("ended_at", date: endedAt)
+        fm.add("duration_seconds", metadata.durationSeconds)
+        fm.add("speaker_count", metadata.speakerCount)
         if !markers.isEmpty {
-            out += "screenshotCount: \(markers.count)\n"
+            fm.add("screenshot_count", markers.count)
         }
         if let lang = metadata.language {
-            out += "language: \(lang)\n"
+            fm.add("language", lang)
+        }
+        if metadata.diarized && !metadata.diarizationFailed {
+            fm.add("diarization_model", TranscriptFrontmatter.diarizationModel)
         }
         if metadata.diarizationFailed {
-            out += "diarizationFailed: true\n"
+            fm.add("diarization_failed", true)
         }
-        out += "roger:\n"
-        out += "  version: \(metadata.appVersion)\n"
-        out += "  model: \"\(metadata.modelDescription)\"\n"
-        out += "---\n\n"
+
+        var out = fm.render()
         out += "# Meeting \(displayDate(metadata.session))\n\n"
 
         var pendingMarkers = markers.sorted { $0.offsetSeconds < $1.offsetSeconds }
@@ -84,30 +93,44 @@ enum MeetingTranscriptWriter {
         return out
     }
 
+    /// One plain sentence saying what the file is, for OKF indexes and search
+    /// snippets. Not a summary of what was said.
+    private static func description(_ metadata: Metadata, screenshots: Int) -> String {
+        let minutes = max(1, Int((Double(metadata.durationSeconds) / 60).rounded()))
+        var text = "Meeting transcript, \(minutes) minute\(minutes == 1 ? "" : "s"), "
+        text += "\(metadata.speakerCount) speaker\(metadata.speakerCount == 1 ? "" : "s")"
+        if screenshots > 0 {
+            text += ", \(screenshots) slide screenshot\(screenshots == 1 ? "" : "s")"
+        }
+        return text + ", recorded and transcribed on this Mac by Roger."
+    }
+
     private static func imageReference(_ marker: MeetingCheckpointMarker) -> String {
         "![](\(marker.imageFile))\n\n"
     }
 
     /// One paragraph block: `**Speaker** [HH:MM:SS · yyyy-MM-dd HH:mm:ss]`
-    /// header plus text. Shared with `MeetingSegmentWriter` so segment files
-    /// stay byte-identical in format to transcript.md.
-    static func paragraphMarkdown(_ paragraph: MeetingTranscriptMerger.Paragraph, sessionStart: Date) -> String {
+    /// header plus text. Shared with `MeetingSegmentWriter` and dropped-file
+    /// transcripts so every Roger transcript uses the same body format.
+    /// Without a known start time the header carries the offset only.
+    static func paragraphMarkdown(_ paragraph: MeetingTranscriptMerger.Paragraph, sessionStart: Date?) -> String {
         let rel = formatTimestamp(paragraph.startTime)
+        guard let sessionStart else {
+            return "**\(paragraph.speaker)** [\(rel)]\n\(paragraph.text)\n\n"
+        }
         let abs = absoluteTimestamp(start: sessionStart, offset: paragraph.startTime)
         return "**\(paragraph.speaker)** [\(rel) · \(abs)]\n\(paragraph.text)\n\n"
     }
 
     private static func displayDate(_ session: MeetingSession) -> String {
+        displayDate(session.startedAt)
+    }
+
+    /// `yyyy-MM-dd HH:mm` in local time, used in meeting and segment titles.
+    static func displayDate(_ date: Date) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd HH:mm"
-        return f.string(from: session.startedAt)
-    }
-
-    static func isoDate(_ date: Date) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        f.timeZone = .current
         return f.string(from: date)
     }
 

@@ -363,6 +363,7 @@ final class MeetingRecordingService {
                 paragraphs: segmentParagraphs,
                 sessionStartedAt: session.startedAt,
                 chunkStart: chunkStart,
+                chunkEnd: session.startedAt.addingTimeInterval(marker.offsetSeconds),
                 folder: session.folder,
                 provisional: true
             )
@@ -521,12 +522,13 @@ final class MeetingRecordingService {
         // post-processing for both finalisation and live checkpoints.
         // Finalisation is never cancelled, so the only throw the pipeline
         // can produce (CancellationError) is a defensive catch here.
+        let finalConfig = currentPipelineConfig()
         let output: MeetingTranscriptionPipeline.Output
         do {
             output = try await transcriptionPipeline().run(
                 mic: micPresent ? .file(micArchive) : .absent,
                 system: systemPresent ? .file(systemArchive) : .absent,
-                config: currentPipelineConfig(),
+                config: finalConfig,
                 progress: { [weak self] fraction in
                     Task { @MainActor in
                         self?.bumpFinalisingProgress(to: 0.45 + min(1, max(0, fraction)) * 0.40)
@@ -556,9 +558,8 @@ final class MeetingRecordingService {
             language: output.language,
             micPresent: micPresent,
             systemPresent: systemPresent,
-            diarizationFailed: output.diarizationFailed,
-            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
-            modelDescription: TranscriptionEngine.modelName
+            diarized: (micPresent && finalConfig.diarizeMic) || (systemPresent && finalConfig.diarizeSystem),
+            diarizationFailed: output.diarizationFailed
         )
 
         // Screenshot checkpoints: rewrite every segment md from this
@@ -580,6 +581,9 @@ final class MeetingRecordingService {
                         paragraphs: segmentParagraphs,
                         sessionStartedAt: effectiveStart,
                         chunkStart: chunk.start,
+                        chunkEnd: effectiveStart.addingTimeInterval(
+                            chunk.range.upperBound.isFinite ? chunk.range.upperBound : Double(durationSeconds)
+                        ),
                         folder: session.folder,
                         provisional: false
                     )

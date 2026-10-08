@@ -1,7 +1,7 @@
 import Foundation
 
-/// Writes a transcribed `.txt` file next to the source or into the user's
-/// configured folder, with automatic collision handling.
+/// Writes a dropped file's Markdown transcript next to the source or into
+/// the user's configured folder, with automatic collision handling.
 enum TranscriptOutputWriter {
     enum WriteError: LocalizedError {
         case destinationNotWritable(URL)
@@ -14,15 +14,16 @@ enum TranscriptOutputWriter {
         }
     }
 
-    /// Writes `transcript` to a `.txt` file derived from `source`. The file
-    /// name is `<sourceLastPathComponent>.txt` (e.g. `meeting.m4a.txt`). If
-    /// that file already exists, appends `-1`, `-2` … until a free name is
-    /// found. Returns the URL of the written file.
+    /// Writes a `.md` file derived from `source`. The file name is
+    /// `<sourceLastPathComponent>.md` (e.g. `meeting.m4a.md`). If that file
+    /// already exists, appends `-1`, `-2` … until a free name is found.
+    /// `content` receives the final destination so it can point back at the
+    /// source with a relative path. Returns the URL of the written file.
     static func write(
-        transcript: String,
         source: URL,
         location: FileTranscriptOutputLocation,
-        customFolder: URL?
+        customFolder: URL?,
+        content: (URL) -> String
     ) throws -> URL {
         let baseDir: URL
         switch location {
@@ -32,11 +33,11 @@ enum TranscriptOutputWriter {
             baseDir = customFolder ?? source.deletingLastPathComponent()
         }
 
-        let candidate = baseDir.appendingPathComponent("\(source.lastPathComponent).txt")
+        let candidate = baseDir.appendingPathComponent("\(source.lastPathComponent).md")
         let destination = uniqueDestination(for: candidate)
 
         do {
-            try transcript.write(to: destination, atomically: true, encoding: .utf8)
+            try content(destination).write(to: destination, atomically: true, encoding: .utf8)
         } catch {
             throw WriteError.destinationNotWritable(destination)
         }
@@ -44,7 +45,7 @@ enum TranscriptOutputWriter {
     }
 
     /// Walks `base`, `base-1`, `base-2` … until a file doesn't exist.
-    /// Handles multi-dot filenames (`meeting.m4a.txt`) by inserting the
+    /// Handles multi-dot filenames (`meeting.m4a.md`) by inserting the
     /// suffix before the final extension only.
     private static func uniqueDestination(for url: URL) -> URL {
         let fm = FileManager.default

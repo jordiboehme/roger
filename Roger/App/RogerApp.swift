@@ -270,9 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// cloud-synced folders that are not fully downloaded. Fall back to the
     /// file extension so such files are not silently rejected.
     nonisolated static func isTranscribable(_ url: URL) -> Bool {
-        let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
-            ?? UTType(filenameExtension: url.pathExtension)
-        guard let type else { return false }
+        guard let type = MediaAudioExtractor.contentType(of: url) else { return false }
         return type.conforms(to: .audio) || type.conforms(to: .movie)
     }
 
