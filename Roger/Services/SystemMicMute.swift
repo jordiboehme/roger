@@ -11,8 +11,11 @@ import os
 /// recording-pipeline change is needed and the mic timeline stays intact.
 ///
 /// HAL device state persists after our process exits, so Roger remembers
-/// whether *it* muted the device and the prior value, and restores on
-/// unmute / recording stop / app quit — the user is never left stranded muted.
+/// whether *it* muted the device and restores on unmute / recording stop /
+/// app quit. The hold is also persisted, so a crash or force quit is undone on
+/// the next launch. A mute Roger doesn't hold (left over from an earlier
+/// session or set elsewhere) is released when dictation starts, see
+/// `releaseStaleMute()`.
 @MainActor
 @Observable
 final class SystemMicMute {
@@ -24,14 +27,27 @@ final class SystemMicMute {
     private let appState: AppState
 
     /// How the current mute was achieved, captured so we can undo it exactly.
+    /// Undoing a HAL mute always unmutes: a device that was already muted
+    /// when Roger took the hold was a stale mute, not a state worth keeping.
     private enum Applied {
-        case mute(device: AudioDeviceID, previous: UInt32)
+        case mute(device: AudioDeviceID)
         case volume(device: AudioDeviceID, previous: Float32)
     }
     private var applied: Applied?
 
+    /// The hold as written to UserDefaults, keyed by device UID because
+    /// `AudioDeviceID`s don't survive a relaunch.
+    private struct PendingRestore: Codable {
+        enum Kind: String, Codable { case mute, volume }
+        let deviceUID: String
+        let kind: Kind
+        let previousVolume: Float32?
+    }
+    private static let pendingRestoreKey = "systemMicMutePendingRestore"
+
     init(appState: AppState) {
         self.appState = appState
+        restorePendingFromPreviousRun()
     }
 
     func toggle() {
@@ -45,8 +61,9 @@ final class SystemMicMute {
             return
         }
         // Primary: the device's own input mute.
-        if let previous = readMute(device), setMute(device, true) {
-            applied = .mute(device: device, previous: previous)
+        if readMute(device) != nil, setMute(device, true) {
+            applied = .mute(device: device)
+            persistPendingRestore(device: device, kind: .mute, previousVolume: nil)
             isMuted = true
             Self.logger.notice("Input device \(device, privacy: .public) muted (HAL mute)")
             return
@@ -54,6 +71,7 @@ final class SystemMicMute {
         // Fallback: drop the input volume to zero and restore it on unmute.
         if let previousVolume = readVolume(device), setVolume(device, 0) {
             applied = .volume(device: device, previous: previousVolume)
+            persistPendingRestore(device: device, kind: .volume, previousVolume: previousVolume)
             isMuted = true
             Self.logger.notice("Input device \(device, privacy: .public) muted (volume-0 fallback)")
             return
@@ -65,13 +83,54 @@ final class SystemMicMute {
         defer { isMuted = false }
         guard let applied else { return }
         switch applied {
-        case let .mute(device, previous):
-            _ = setMute(device, previous != 0)
+        case let .mute(device):
+            _ = setMute(device, false)
         case let .volume(device, previous):
             _ = setVolume(device, previous)
         }
         self.applied = nil
+        UserDefaults.standard.removeObject(forKey: Self.pendingRestoreKey)
         Self.logger.notice("Input device unmuted (restored prior state)")
+    }
+
+    /// Unmutes the target input device if it is muted at the HAL level while
+    /// Roger holds no mute. A muted device delivers silence, so dictation
+    /// would record nothing, and nothing on screen tells the user why.
+    /// Returns true when it unmuted.
+    @discardableResult
+    func releaseStaleMute() -> Bool {
+        guard !isMuted, let device = targetInputDevice(), readMute(device) == 1 else { return false }
+        guard setMute(device, false) else { return false }
+        Self.logger.notice("Input device \(device, privacy: .public) was muted outside Roger's hold — unmuted for dictation")
+        return true
+    }
+
+    // MARK: - Crash recovery
+
+    private func persistPendingRestore(device: AudioDeviceID, kind: PendingRestore.Kind, previousVolume: Float32?) {
+        guard let uid = AudioDeviceLookup.uid(for: device) else { return }
+        let pending = PendingRestore(deviceUID: uid, kind: kind, previousVolume: previousVolume)
+        if let data = try? JSONEncoder().encode(pending) {
+            UserDefaults.standard.set(data, forKey: Self.pendingRestoreKey)
+        }
+    }
+
+    /// Undoes a hold the previous run never released (crash, force quit,
+    /// power loss). The device may be gone by now; then the record is dropped.
+    private func restorePendingFromPreviousRun() {
+        let defaults = UserDefaults.standard
+        guard let data = defaults.data(forKey: Self.pendingRestoreKey) else { return }
+        defaults.removeObject(forKey: Self.pendingRestoreKey)
+        guard let pending = try? JSONDecoder().decode(PendingRestore.self, from: data),
+              let device = AudioDeviceLookup.deviceID(forUID: pending.deviceUID)
+        else { return }
+        switch pending.kind {
+        case .mute:
+            _ = setMute(device, false)
+        case .volume:
+            if let previous = pending.previousVolume { _ = setVolume(device, previous) }
+        }
+        Self.logger.notice("Restored input device \(device, privacy: .public) left muted by a previous run")
     }
 
     /// Restore the device if Roger currently holds it muted. Safe to call

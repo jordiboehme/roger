@@ -49,6 +49,10 @@ enum AudioDeviceLookup {
         availableInputs().first { $0.id == uid }?.deviceID
     }
 
+    static func uid(for id: AudioDeviceID) -> String? {
+        stringProperty(id, kAudioDevicePropertyDeviceUID)
+    }
+
     static var systemDefaultInputID: AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,

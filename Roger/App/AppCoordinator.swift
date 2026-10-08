@@ -235,6 +235,9 @@ final class AppCoordinator {
             activeRecordingLanguageOverride = languageOverride
             floatingPanel.show(coordinator: self)
 
+            // A mic muted at the device level (often left over from an
+            // earlier meeting) records pure silence. Release it first.
+            systemMicMute.releaseStaleMute()
             audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
             try audioCaptureService.startCapture()
 
