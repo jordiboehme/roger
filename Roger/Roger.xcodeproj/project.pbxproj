@@ -61,6 +61,7 @@
 		D13A328850B8D7C25C30690C /* RogerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3781C2D3C0D65D52F9F304DD /* RogerApp.swift */; };
 		D3166B29587CA700D443E718 /* KeyComboBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */; };
 		D40D8905815EB05DB08EC4F3 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FE02D8F52A5C784CB71EF8 /* OnboardingView.swift */; };
+		E3EDB5894F926A54455C941A /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4311308E48E7F37EE21AD540 /* AudioFileLoader.swift */; };
 		EA5B861EE5B7EECBBC1BA9B4 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCA55416A36AA2C965EA71E /* AudioCaptureService.swift */; };
 		EABF66A0BAD65C7763DCA198 /* MediaAudioExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B68B6A4253D5A3D581849D /* MediaAudioExtractor.swift */; };
 		EC0F951EE4CF6470CCF8EFB6 /* MeetingTranscriptionPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF6405D1966845C33DBAE03 /* MeetingTranscriptionPipeline.swift */; };
@@ -85,6 +86,7 @@
 		3AA529E63B0287F8A43365E6 /* MeetingTranscriptMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptMerger.swift; sourceTree = "<group>"; };
 		3BE86EFF73F4A584A20887D5 /* AudioSegmentConcatenator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSegmentConcatenator.swift; sourceTree = "<group>"; };
 		3FF6405D1966845C33DBAE03 /* MeetingTranscriptionPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptionPipeline.swift; sourceTree = "<group>"; };
+		4311308E48E7F37EE21AD540 /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
 		47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptOutputWriter.swift; sourceTree = "<group>"; };
 		48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInsertionService.swift; sourceTree = "<group>"; };
 		492FB21522C9926A1E7649A7 /* RecordingsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsSettingsView.swift; sourceTree = "<group>"; };
@@ -263,6 +265,7 @@
 			children = (
 				EBCA55416A36AA2C965EA71E /* AudioCaptureService.swift */,
 				53D9E7817E6899F5FE497ED9 /* AudioDeviceLookup.swift */,
+				4311308E48E7F37EE21AD540 /* AudioFileLoader.swift */,
 				D6F369869C241C4566988E63 /* AudioLevelMeter.swift */,
 				83E66D0A924C57BD54A258ED /* HotkeyManager.swift */,
 				B6DCE169264032BC365088F8 /* KeychainManager.swift */,
@@ -365,6 +368,7 @@
 				EA5B861EE5B7EECBBC1BA9B4 /* AudioCaptureService.swift in Sources */,
 				AAFE08E407CAB1EFCCEE01C1 /* AudioChunkSampleReader.swift in Sources */,
 				BD0C0395EAE39F3679BC84E3 /* AudioDeviceLookup.swift in Sources */,
+				E3EDB5894F926A54455C941A /* AudioFileLoader.swift in Sources */,
 				B6E2306EFA7E5281695B4565 /* AudioLevelMeter.swift in Sources */,
 				150D6009EA72368497B01286 /* AudioSegmentConcatenator.swift in Sources */,
 				1038DD2220D3268A9CCA4830 /* CapsModifier.swift in Sources */,

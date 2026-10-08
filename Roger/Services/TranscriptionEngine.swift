@@ -118,12 +118,15 @@ final class TranscriptionEngine: @unchecked Sendable {
     }
 
     /// Transcribes an audio file directly (menu-bar drag-and-drop). FluidAudio
-    /// loads + chunks the file internally.
+    /// chunks the samples internally.
     func transcribeFile(url: URL, languageOverride: String?) async throws -> TranscriptionResult {
         guard let asrManager else { throw TranscriptionError.engineNotReady }
+        // Load through Roger's tolerant reader rather than handing FluidAudio
+        // the URL: its reader stops silently at the first mid-file decode error.
+        let samples = try AudioFileLoader.load16kMono(url)
         var state = try TdtDecoderState()
         let result = try await asrManager.transcribe(
-            url,
+            samples,
             decoderState: &state,
             language: Self.languageHint(languageOverride)
         )
@@ -133,7 +136,7 @@ final class TranscriptionEngine: @unchecked Sendable {
     /// Transcribes a file and returns token timings + decoded samples so the
     /// caller can diarize (file transcription, meeting tracks) off the same data.
     func transcribeFileDetailed(url: URL, languageOverride: String?) async throws -> DetailedTranscriptionResult {
-        let samples = try AudioConverter().resampleAudioFile(url)
+        let samples = try AudioFileLoader.load16kMono(url)
         return try await transcribeSamplesDetailed(samples, languageOverride: languageOverride)
     }
 
