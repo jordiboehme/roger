@@ -16,7 +16,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 - **Near-instant results** — release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
-- **Drop files to transcribe** — drag an audio or video file onto the menu bar icon and Roger writes a `.txt` transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
+- **Drop files to transcribe** — drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a `.txt` transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
 - **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Slide checkpoints** - drop a screenshot of a shared slide onto the recording overlay and Roger saves it next to a timestamped transcript segment of the audio since the last drop, while the recording keeps running. The session folder becomes a chronological record of what was said and shown, ready for an AI agent
 - **Mute yourself everywhere** — while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once — no per-app setup, no plugin
@@ -73,7 +73,7 @@ Roger captures audio from your chosen input device — system default or a speci
 
 ### Transcribing files
 
-Drop any audio or video file on Roger's menu bar icon and it writes the transcript to a `.txt` next to the source — or into a folder you pick once. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
+Drop any audio or video file on Roger's menu bar icon, or right-click it in Finder and pick Open With > Roger or Services > Transcribe with Roger, and it writes the transcript to a `.txt` next to the source — or into a folder you pick once. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
 
 ### Recording meetings
 

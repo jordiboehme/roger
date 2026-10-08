@@ -77,6 +77,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !coordinator.appState.hasCompletedOnboarding {
             showOnboarding(coordinator: coordinator)
         }
+
+        // Finder > Services > "Transcribe with Roger" (declared in Info.plist).
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+    }
+
+    // MARK: - Open With / Services
+
+    /// Finder "Open With > Roger" and `open -a Roger <file>`. Can arrive
+    /// before the model has loaded; the coordinator queues it in that case.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first(where: Self.isTranscribable) else {
+            appLogger.info("Opened files contain nothing Roger can transcribe")
+            return
+        }
+        handleDrop(url: url)
+    }
+
+    /// Services entry point, wired via `NSMessage` = `transcribeFiles`.
+    @objc func transcribeFiles(
+        _ pboard: NSPasteboard,
+        userData: String?,
+        error: AutoreleasingUnsafeMutablePointer<NSString?>
+    ) {
+        let urls = pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        guard let url = urls.first(where: Self.isTranscribable) else {
+            error.pointee = "Roger can only transcribe audio and video files." as NSString
+            return
+        }
+        handleDrop(url: url)
     }
 
     // MARK: - Status Item
@@ -111,8 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // returns nil so mouse clicks fall through to the button below.
         let drop = StatusBarDropView(frame: button.bounds)
         drop.autoresizingMask = [.width, .height]
-        drop.isAcceptable = { [weak self] url in
-            self?.isTranscribable(url) ?? false
+        drop.isAcceptable = { url in
+            Self.isTranscribable(url)
         }
         drop.onDrop = { [weak self] url in
             self?.handleDrop(url: url)
@@ -236,10 +266,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Drag & Drop
 
-    fileprivate func isTranscribable(_ url: URL) -> Bool {
-        guard let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType) else {
-            return false
-        }
+    /// The content type lookup can come back empty, for example for files in
+    /// cloud-synced folders that are not fully downloaded. Fall back to the
+    /// file extension so such files are not silently rejected.
+    nonisolated static func isTranscribable(_ url: URL) -> Bool {
+        let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
+            ?? UTType(filenameExtension: url.pathExtension)
+        guard let type else { return false }
         return type.conforms(to: .audio) || type.conforms(to: .movie)
     }
 

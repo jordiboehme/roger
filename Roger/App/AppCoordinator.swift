@@ -43,6 +43,9 @@ final class AppCoordinator {
     /// Currently-transcribing file, or nil when nothing is in flight. The
     /// floating indicator observes this to show the "Transcribing X" overlay.
     private(set) var activeFileTranscription: FileTranscriptionJob?
+    /// A file handed over (Open With, Services) before the speech model was
+    /// loaded, for example when that launched Roger. Starts once setup ends.
+    private var pendingMediaFile: URL?
     /// 0-1 fraction while a file transcription job is in its speaker
     /// identification phase; nil during ASR and outside file jobs. Drives
     /// the overlay's "Identifying speakers" line.
@@ -466,11 +469,16 @@ final class AppCoordinator {
             modelSetupProgress = nil
             isModelReady = true
             logger.info("Model setup complete")
+            if let pending = pendingMediaFile {
+                pendingMediaFile = nil
+                handleDroppedMediaFile(url: pending)
+            }
         } catch {
             logger.error("Model setup failed: \(error)")
             isSettingUpModel = false
             modelSetupProgress = nil
             lastModelError = error.localizedDescription
+            pendingMediaFile = nil
             appState.dictationState = .error("Model download failed — check your connection and retry")
         }
     }
@@ -540,7 +548,12 @@ final class AppCoordinator {
             return
         }
         guard transcriptionEngine.isReady else {
-            appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+            if lastModelError == nil {
+                logger.info("Speech model still loading — queued: \(url.lastPathComponent, privacy: .public)")
+                pendingMediaFile = url
+            } else {
+                appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+            }
             return
         }
 
