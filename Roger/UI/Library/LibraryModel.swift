@@ -51,6 +51,16 @@ final class LibraryModel {
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private let searchDebounce: Duration
+    /// Bumped by `replaceIndex`. A reload that started on an older index
+    /// throws its results away.
+    @ObservationIgnored private var indexGeneration = 0
+    /// Every reload takes the next number; one that finishes after a newer
+    /// one has been applied throws its results away.
+    @ObservationIgnored private var lastStartedReload = 0
+    @ObservationIgnored private var lastAppliedReload = 0
+    /// While the window is closed, changes are not loaded; `resume()`
+    /// loads once.
+    @ObservationIgnored private var isPaused = false
 
     init(index: any LibraryIndex, searchDebounce: Duration = .milliseconds(150)) {
         self.index = index
@@ -73,7 +83,9 @@ final class LibraryModel {
         let stream = index.changes
         changeTask = Task { [weak self] in
             for await _ in stream {
-                await self?.reload()
+                guard let self else { return }
+                if self.isPaused { continue }
+                await self.reload()
             }
         }
         scheduleReload()
@@ -85,9 +97,26 @@ final class LibraryModel {
         searchTask?.cancel()
     }
 
+    /// The window closed: ignore changes until `resume()`. The stream is
+    /// still read, not cancelled, because a cancelled `AsyncStream` ends for
+    /// good and the store keeps the same index for the next opening.
+    func pause() {
+        isPaused = true
+        reloadTask?.cancel()
+        searchTask?.cancel()
+    }
+
+    /// The window opens again: follow changes and load once.
+    func resume() {
+        guard isPaused else { return }
+        isPaused = false
+        scheduleReload()
+    }
+
     /// The library folder or the extra folders changed.
     func replaceIndex(_ newIndex: any LibraryIndex) {
         stop()
+        indexGeneration += 1
         index = newIndex
         isLoading = true
         results = []
@@ -112,8 +141,16 @@ final class LibraryModel {
     }
 
     func reload() async {
+        let index = self.index
+        let generation = indexGeneration
+        lastStartedReload += 1
+        let reloadNumber = lastStartedReload
         let all = await index.items()
         let found = await index.search(query)
+        // Drop the results when the index was replaced, this reload was
+        // cancelled or a newer reload has already been applied.
+        guard generation == indexGeneration, !Task.isCancelled, reloadNumber > lastAppliedReload else { return }
+        lastAppliedReload = reloadNumber
         counts = Dictionary(grouping: all, by: \.kind).mapValues(\.count)
         totalCount = all.count
         results = found

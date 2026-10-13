@@ -24,6 +24,47 @@ private final class FakeLibraryIndex: LibraryIndex, @unchecked Sendable {
     }
 }
 
+/// `items()` waits until `release()`, so a test can replace the index while
+/// a reload on it is still running.
+private final class GatedLibraryIndex: LibraryIndex, @unchecked Sendable {
+    private let lock = NSLock()
+    private let stored: [LibraryItem]
+    private var gate: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+    let changes = AsyncStream<Void> { _ in }
+    let called: AsyncStream<Void>
+    private let calledContinuation: AsyncStream<Void>.Continuation
+
+    init(_ items: [LibraryItem]) {
+        stored = items
+        (called, calledContinuation) = AsyncStream.makeStream(of: Void.self)
+    }
+
+    func items() async -> [LibraryItem] {
+        calledContinuation.yield()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let resumeNow = lock.withLock {
+                if isReleased { return true }
+                gate = continuation
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+        return stored
+    }
+
+    func search(_ query: LibraryQuery) async -> [LibraryItem] { query.apply(to: stored) }
+
+    func release() {
+        let waiting = lock.withLock {
+            isReleased = true
+            defer { gate = nil }
+            return gate
+        }
+        waiting?.resume()
+    }
+}
+
 @MainActor
 struct LibraryModelTests {
     private let items = [
@@ -117,5 +158,53 @@ struct LibraryModelTests {
         fake.set([items[1]])
         await model.reload()
         #expect(model.selection == [items[0].id])
+    }
+
+    @Test func reloadOnAReplacedIndexIsDropped() async {
+        let old = GatedLibraryIndex(items)
+        let model = LibraryModel(index: old)
+        var calls = old.called.makeAsyncIterator()
+        let stale = Task { await model.reload() }
+        _ = await calls.next()
+
+        let fresh = FakeLibraryIndex([items[2]])
+        model.replaceIndex(fresh)
+        await model.reload()
+        #expect(model.results.map(\.title) == ["meeting"])
+
+        old.release()
+        await stale.value
+        #expect(model.results.map(\.title) == ["meeting"])
+        #expect(model.totalCount == 1)
+        #expect(model.counts[.log] == nil)
+        model.stop()
+    }
+
+    @Test func pausedModelReloadsOnResumeAndFollowsChangesAgain() async throws {
+        let fake = FakeLibraryIndex(items)
+        let model = LibraryModel(index: fake)
+        model.start()
+        await model.reload()
+        #expect(model.totalCount == 3)
+
+        model.pause()
+        fake.set([items[0]])
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.totalCount == 3)
+
+        model.resume()
+        try await waitUntil { model.totalCount == 1 }
+
+        // The change stream still works after a pause.
+        fake.set([items[0], items[1]])
+        try await waitUntil { model.totalCount == 2 }
+        model.stop()
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 where !condition() {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(condition())
     }
 }

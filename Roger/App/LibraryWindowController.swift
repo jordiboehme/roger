@@ -27,6 +27,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
         let window = self.window ?? makeWindow()
         refreshScope()
         if let url { model?.select(url: url) }
+        // Reopened after a close: follow changes again and load once.
+        model?.resume()
         isOpen = true
         NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
@@ -48,6 +50,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         isOpen = false
+        // No reloads while nobody looks at the list.
+        model?.pause()
         NSApp.setActivationPolicy(.accessory)
     }
 
