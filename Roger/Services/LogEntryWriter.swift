@@ -26,7 +26,12 @@ enum LogEntryWriter {
     }
 
     static func title(for entry: LogEntry) -> String {
-        let heading = "Log \(displayTime(entry.startedAt))"
+        title(for: entry, time: displayTime(entry.startedAt))
+    }
+
+    /// `time` is the `yyyy-MM-dd HH:mm` display string of `entry.startedAt`.
+    private static func title(for entry: LogEntry, time: String) -> String {
+        let heading = "Log \(time)"
         let words = entry.text.split(whereSeparator: \.isWhitespace).prefix(titleWordCount)
         var snippet = words.joined(separator: " ")
         while let last = snippet.last, ",.;:!?".contains(last) {
@@ -36,15 +41,16 @@ enum LogEntryWriter {
     }
 
     static func content(for entry: LogEntry, audioFileName: String?, generatedAt: Date) -> String {
-        let time = displayTime(entry.startedAt)
-        let parts = time.split(separator: " ")
+        let day = formatter("yyyy-MM-dd").string(from: entry.startedAt)
+        let clock = formatter("HH:mm").string(from: entry.startedAt)
+        let time = "\(day) \(clock)"
         var sources: [TranscriptFrontmatter.Source] = []
         if let audioFileName {
             sources.append(.init(id: "audio", resource: audioFileName))
         }
         var fm = TranscriptFrontmatter(
-            title: title(for: entry),
-            description: "Log entry recorded with Roger on \(parts[0]) at \(parts[1]).",
+            title: title(for: entry, time: time),
+            description: "Log entry recorded with Roger on \(day) at \(clock).",
             tags: ["log"],
             generatedAt: generatedAt,
             sourceDate: entry.startedAt,
