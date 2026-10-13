@@ -5,14 +5,15 @@ import Testing
 struct MeetingSegmentWriterTests {
     private let start = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func write(_ folder: URL, _ text: String, provisional: Bool) throws -> URL {
+    private func write(_ folder: URL, _ text: String, provisional: Bool, generatedAt: Date = .now) throws -> URL {
         try #require(try MeetingSegmentWriter.write(
             paragraphs: [.init(speaker: "Me", startTime: 0, text: text)],
             sessionStartedAt: start,
             chunkStart: start,
             chunkEnd: start.addingTimeInterval(30),
             folder: folder,
-            provisional: provisional
+            provisional: provisional,
+            generatedAt: generatedAt
         ))
     }
 
@@ -85,5 +86,25 @@ struct MeetingSegmentWriterTests {
         _ = try write(folder, "Live words", provisional: true)
         MeetingSegmentWriter.removeIfExists(chunkStart: start, folder: folder)
         #expect(try names(folder).isEmpty)
+    }
+
+    /// A retry with the same text (written days later) leaves no `.previous` copy.
+    @Test func anUnchangedStableSegmentIsNotMovedAside() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try write(folder, "Final words", provisional: false, generatedAt: start)
+        let first = try read(url)
+        _ = try write(folder, "Final words", provisional: false, generatedAt: start.addingTimeInterval(3 * 86_400))
+        #expect(try names(folder) == [url.lastPathComponent])
+        #expect(try read(url) == first)
+    }
+
+    @Test func aChangedStableSegmentIsStillMovedAside() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try write(folder, "Final words", provisional: false, generatedAt: start)
+        _ = try write(folder, "Other words", provisional: false, generatedAt: start.addingTimeInterval(3 * 86_400))
+        #expect(try read(previous(url)).contains("Final words"))
+        #expect(try read(url).contains("Other words"))
     }
 }
