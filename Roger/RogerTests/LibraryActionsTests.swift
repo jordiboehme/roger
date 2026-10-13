@@ -12,6 +12,14 @@ struct LibraryActionsTests {
         try Data().write(to: url)
     }
 
+    /// A `transcript.md` with the tags Roger writes for a meeting.
+    private func meetingTranscript(in folder: URL) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "---\ntags: [meeting, transcript]\n---\n# Meeting\n".write(
+            to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8
+        )
+    }
+
     @Test func pathsAndFolders() {
         let a = LibraryFixtures.item("a")
         let b = LibraryFixtures.item("b")
@@ -86,12 +94,12 @@ struct LibraryActionsTests {
     @Test func unfinishedMeetingGoesAsFolder() throws {
         let root = try TempFolder.make()
         defer { TempFolder.remove(root) }
-        let session = root.appendingPathComponent("s", isDirectory: true)
+        let session = root.appendingPathComponent("2026-10-13 09-00", isDirectory: true)
         try touch(session.appendingPathComponent("mic-001.caf"))
         var item = LibraryFixtures.item("x", kind: .meeting, folder: session.path, unfinished: true)
         item.url = session
         let plan = LibraryActions.trashPlan(for: [item], layout: layout(root), extraFolders: [root], activeSessionFolder: nil)
-        #expect(plan.urls.map(\.lastPathComponent) == ["s"])
+        #expect(plan.urls.map(\.lastPathComponent) == ["2026-10-13 09-00"])
         #expect(plan.needsConfirmation)
     }
 
@@ -120,7 +128,7 @@ struct LibraryActionsTests {
 
         // A session folder directly in an extra folder that contains the library root.
         let outer = root.appendingPathComponent("outer", isDirectory: true)
-        try touch(outer.appendingPathComponent("transcript.md"))
+        try meetingTranscript(in: outer)
         let library = outer.appendingPathComponent("Roger", isDirectory: true)
         let outerItem = LibraryFixtures.item("transcript", kind: .meeting, folder: outer.path)
         let outerPlan = LibraryActions.trashPlan(
@@ -188,6 +196,88 @@ struct LibraryActionsTests {
         #expect(deepPlan.urls.isEmpty)
     }
 
+    /// A folder in an extra folder that Roger did not write (no session
+    /// name, no meeting tag) is never trashed, even with a transcript.md
+    /// and audio in it.
+    @Test func foreignFolderInExtraFolderIsNotTrashed() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let extra = root.appendingPathComponent("Notes", isDirectory: true)
+        let interview = extra.appendingPathComponent("Interview", isDirectory: true)
+        try touch(interview.appendingPathComponent("transcript.md"))
+        try touch(interview.appendingPathComponent("mic.m4a"))
+        let item = LibraryFixtures.item("transcript", kind: .meeting, folder: interview.path)
+        let plan = LibraryActions.trashPlan(
+            for: [item], layout: layout(root.appendingPathComponent("Roger")), extraFolders: [extra], activeSessionFolder: nil
+        )
+        #expect(plan.urls.isEmpty)
+        #expect(plan.skipped == [item])
+    }
+
+    /// A meeting tag is enough when the folder name is not Roger's.
+    @Test func meetingTaggedFolderInExtraFolderIsTrashed() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let extra = root.appendingPathComponent("Notes", isDirectory: true)
+        let session = extra.appendingPathComponent("Standup", isDirectory: true)
+        try meetingTranscript(in: session)
+        let item = LibraryFixtures.item("transcript", kind: .meeting, folder: session.path)
+        let plan = LibraryActions.trashPlan(
+            for: [item], layout: layout(root.appendingPathComponent("Roger")), extraFolders: [extra], activeSessionFolder: nil
+        )
+        #expect(plan.urls.map(\.lastPathComponent) == ["Standup"])
+    }
+
+    /// An extra folder inside the library's Logs or Transcripts folder
+    /// never gives up its folders, even a session-looking one.
+    @Test func extraFolderInsideKindFolderKeepsItsFolders() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        for kind in ["Logs", "Transcripts"] {
+            let extra = root.appendingPathComponent("\(kind)/2026", isDirectory: true)
+            let session = extra.appendingPathComponent("2026-10-13 09-00", isDirectory: true)
+            try meetingTranscript(in: session)
+            try touch(session.appendingPathComponent("mic.m4a"))
+            let item = LibraryFixtures.item("transcript", kind: .meeting, folder: session.path)
+            let plan = LibraryActions.trashPlan(for: [item], layout: layout(root), extraFolders: [extra], activeSessionFolder: nil)
+            #expect(plan.urls.isEmpty)
+            #expect(plan.skipped == [item])
+        }
+    }
+
+    /// Extra files are listed only for the transcript.md of a session
+    /// folder Roger wrote, never for a stray transcript.md elsewhere.
+    @Test func extraFilesOnlyForSessionTranscripts() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let extra = root.appendingPathComponent("Notes", isDirectory: true)
+
+        let month = library.root.appendingPathComponent("Transcripts/2026/10", isDirectory: true)
+        try meetingTranscript(in: month)
+        try touch(month.appendingPathComponent("foo.previous.md"))
+        let inMonth = LibraryFixtures.item("transcript", kind: .meeting, folder: month.path)
+        #expect(!LibraryActions.listsExtraFiles(inMonth, layout: library, extraFolders: [extra]))
+
+        try meetingTranscript(in: extra)
+        let inExtra = LibraryFixtures.item("transcript", kind: .meeting, folder: extra.path)
+        #expect(!LibraryActions.listsExtraFiles(inExtra, layout: library, extraFolders: [extra]))
+
+        let session = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        try meetingTranscript(in: session)
+        let inSession = LibraryFixtures.item("transcript", kind: .meeting, folder: session.path)
+        #expect(LibraryActions.listsExtraFiles(inSession, layout: library, extraFolders: [extra]))
+
+        let legacy = extra.appendingPathComponent("2025-01-02 10-00", isDirectory: true)
+        try meetingTranscript(in: legacy)
+        let inLegacy = LibraryFixtures.item("transcript", kind: .meeting, folder: legacy.path)
+        #expect(LibraryActions.listsExtraFiles(inLegacy, layout: library, extraFolders: [extra]))
+
+        // A segment file in the session is not the session's transcript.
+        let segment = LibraryFixtures.item("2026-10-13 09-05-00", kind: .meeting, folder: session.path)
+        #expect(!LibraryActions.listsExtraFiles(segment, layout: library, extraFolders: [extra]))
+    }
+
     /// Only a log in the Logs folder has a recording next to it.
     @Test func logOutsideLogsFolderLeavesM4aAlone() throws {
         let root = try TempFolder.make()
@@ -206,7 +296,7 @@ struct LibraryActionsTests {
         let root = try TempFolder.make()
         defer { TempFolder.remove(root) }
         let session = root.appendingPathComponent("s", isDirectory: true)
-        try touch(session.appendingPathComponent("transcript.md"))
+        try meetingTranscript(in: session)
         try touch(session.appendingPathComponent("mic-001.caf"))
         let item = LibraryFixtures.item("transcript", kind: .meeting, folder: session.path)
         let plan = LibraryActions.trashPlan(for: [item], layout: layout(root), extraFolders: [root], activeSessionFolder: session)
@@ -221,8 +311,8 @@ struct LibraryActionsTests {
         defer { TempFolder.remove(root) }
         let a = root.appendingPathComponent("a", isDirectory: true)
         let b = root.appendingPathComponent("b", isDirectory: true)
-        try touch(a.appendingPathComponent("transcript.md"))
-        try touch(b.appendingPathComponent("transcript.md"))
+        try meetingTranscript(in: a)
+        try meetingTranscript(in: b)
         let itemA = LibraryFixtures.item("transcript", kind: .meeting, folder: a.path)
         let itemB = LibraryFixtures.item("transcript", kind: .meeting, folder: b.path)
         let confirmed = LibraryActions.trashPlan(for: [itemA], layout: layout(root), extraFolders: [root], activeSessionFolder: nil)

@@ -65,13 +65,9 @@ enum LibraryActions {
     /// - a file transcript: its `.md` only, never the source media;
     /// - a meeting: its whole session folder, but only when the item is
     ///   that folder's `transcript.md` (or the folder itself when
-    ///   unfinished) and the folder is where Roger writes sessions:
-    ///   exactly `Meetings/YYYY/MM/<session>`, or directly inside an extra
-    ///   folder (sessions from before the library). The folder must also be
-    ///   a session folder without subfolders (Roger writes sessions flat)
-    ///   and must neither be nor contain the library root, a kind folder or
-    ///   an extra folder. Otherwise the meeting stays (a month folder with a
-    ///   stray `transcript.md` holds other entries);
+    ///   unfinished) and `isRogerSessionFolder` says the folder is one Roger
+    ///   wrote. Otherwise the meeting stays (a month folder with a stray
+    ///   `transcript.md` holds other entries);
     /// - nothing inside `activeSessionFolder` (recording or finalising).
     static func trashPlan(
         for items: [LibraryItem],
@@ -79,16 +75,7 @@ enum LibraryActions {
         extraFolders: [URL],
         activeSessionFolder: URL?
     ) -> TrashPlan {
-        let protectedFolders = [layout.root] + LibraryLayout.Kind.allCases.map { layout.kindFolder($0) } + extraFolders
-        let protected = protectedFolders.map { LibraryPath.canonical($0) }
-        let meetings = LibraryPath.canonical(layout.kindFolder(.meetings))
         let logs = LibraryPath.canonical(layout.kindFolder(.logs))
-        let extras = extraFolders.map { LibraryPath.canonical($0) }
-        /// Where Roger writes session folders, by path alone.
-        func isSessionPlace(_ folder: String) -> Bool {
-            LibraryPath.components(of: folder, below: meetings).count == 3
-                || extras.contains { LibraryPath.components(of: folder, below: $0).count == 1 }
-        }
         let active = activeSessionFolder.map { LibraryPath.canonical($0) }
         var plan = TrashPlan()
         var seen = Set<String>()
@@ -105,11 +92,7 @@ enum LibraryActions {
                 continue
             }
             if item.kind == .meeting, ownsSessionFolder(item, folder: folder) {
-                let safe = isSessionPlace(folder)
-                    && MeetingSessionScanner.isSessionFolder(item.folderURL)
-                    && !hasSubfolder(item.folderURL)
-                    && !protected.contains { LibraryPath.isPath($0, inside: folder) }
-                if safe {
+                if isRogerSessionFolder(item.folderURL, layout: layout, extraFolders: extraFolders) {
                     if add(item.folderURL) {
                         plan.itemCount += 1
                         plan.meetingFolderCount += 1
@@ -130,6 +113,52 @@ enum LibraryActions {
             }
         }
         return plan
+    }
+
+    /// True when `folder` is a meeting session folder Roger wrote, so it may
+    /// go to the Trash whole and its extra files may be listed:
+    /// - it is where Roger writes sessions: exactly `Meetings/YYYY/MM/<session>`,
+    ///   or directly inside an extra folder (sessions from before the
+    ///   library). In an extra folder it must also lie outside the library's
+    ///   Logs and Transcripts folders and look like Roger's own: a session
+    ///   folder name (`yyyy-MM-dd HH-mm`) or a `transcript.md` tagged
+    ///   `meeting`;
+    /// - it holds session files and no subfolders (Roger writes sessions flat);
+    /// - it neither is nor contains the library root, a kind folder or an
+    ///   extra folder.
+    /// Anything else is not a session folder, so nothing in it is moved.
+    static func isRogerSessionFolder(_ folderURL: URL, layout: LibraryLayout, extraFolders: [URL]) -> Bool {
+        let folder = LibraryPath.canonical(folderURL)
+        let protectedFolders = [layout.root] + LibraryLayout.Kind.allCases.map { layout.kindFolder($0) } + extraFolders
+        guard !protectedFolders.contains(where: { LibraryPath.isPath(LibraryPath.canonical($0), inside: folder) }) else {
+            return false
+        }
+        let meetings = LibraryPath.canonical(layout.kindFolder(.meetings))
+        let inMeetings = LibraryPath.components(of: folder, below: meetings).count == 3
+        let inExtra = !inMeetings
+            && extraFolders.contains { LibraryPath.components(of: folder, below: LibraryPath.canonical($0)).count == 1 }
+            && ![LibraryLayout.Kind.logs, .transcripts].contains { LibraryPath.isPath(folder, inside: LibraryPath.canonical(layout.kindFolder($0))) }
+            && (LibraryMigration.sessionDate(for: folderURL) != nil || hasMeetingTranscript(folderURL))
+        return (inMeetings || inExtra)
+            && MeetingSessionScanner.isSessionFolder(folderURL)
+            && !hasSubfolder(folderURL)
+    }
+
+    /// True when the extra files of a retry should be looked for: the item
+    /// is the `transcript.md` of a meeting session folder Roger wrote. A
+    /// meeting-tagged file anywhere else (a Transcripts month folder, an
+    /// extra folder) gives nothing, so other files there are never listed.
+    static func listsExtraFiles(_ item: LibraryItem, layout: LibraryLayout, extraFolders: [URL]) -> Bool {
+        guard item.kind == .meeting, item.hasMarkdown else { return false }
+        return ownsSessionFolder(item, folder: LibraryPath.canonical(item.folderURL))
+            && isRogerSessionFolder(item.folderURL, layout: layout, extraFolders: extraFolders)
+    }
+
+    /// True when the folder's `transcript.md` has `meeting` in its tags.
+    private static func hasMeetingTranscript(_ folder: URL) -> Bool {
+        let transcript = folder.appendingPathComponent("transcript.md")
+        guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return false }
+        return LibraryFrontmatterParser.parse(text)?.tags.contains("meeting") ?? false
     }
 
     /// Moves each URL to the Trash and returns the ones that failed. Tries
