@@ -244,8 +244,7 @@ final class AppCoordinator {
             recordingStartTime = Date()
             activeRecordingLanguageOverride = languageOverride
             floatingPanel.show(coordinator: self)
-            showsLogSaved = false
-            logSavedGeneration += 1
+            cancelLogSavedIndicator()
 
             // A mic muted at the device level (often left over from an
             // earlier meeting) records pure silence. Lift the mute for this
@@ -452,6 +451,13 @@ final class AppCoordinator {
         }
     }
 
+    /// Any new panel session (dictation, file job, meeting) cancels the pending
+    /// "Logged" state and its hide timer.
+    private func cancelLogSavedIndicator() {
+        showsLogSaved = false
+        logSavedGeneration += 1
+    }
+
     /// Writes a log entry instead of typing. On failure the text stays in
     /// `lastTranscription` so nothing is lost.
     private func saveLogEntry(
@@ -627,6 +633,7 @@ final class AppCoordinator {
         let job = FileTranscriptionJob(sourceURL: url, displayName: url.lastPathComponent)
         activeFileTranscription = job
         floatingPanel.show(coordinator: self)
+        cancelLogSavedIndicator()
 
         fileTranscriptionTask = Task { [weak self] in
             await self?.runFileTranscription(job: job)
@@ -846,6 +853,7 @@ final class AppCoordinator {
         do {
             try await meetingRecorder.start()
             floatingPanel.show(coordinator: self)
+            cancelLogSavedIndicator()
             // Repurpose the standard hotkey as the mic-mute toggle for the
             // duration of the recording.
             hotkeyManager.meetingRecordingActive = true
@@ -917,6 +925,7 @@ final class AppCoordinator {
     func resumeMeetingFinalisation(_ session: MeetingSession) async {
         meetingOverlayHidden = false
         floatingPanel.show(coordinator: self)
+        cancelLogSavedIndicator()
         await meetingRecorder.finaliseRecovered(session)
         floatingPanel.hide()
         // Surface any error from the pipeline (e.g. encode failed, model
