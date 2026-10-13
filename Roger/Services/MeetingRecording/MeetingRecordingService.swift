@@ -196,20 +196,17 @@ final class MeetingRecordingService {
         state = .idle
     }
 
-    /// Recovery scan: finds session folders that contain CAF chunks but no
-    /// transcript.md, indicating a prior crash mid-recording. Returns the
-    /// list. Caller can prompt the user, then call `finaliseRecovered(_:)`.
+    /// Recovery scan: finds session folders that have no transcript.md but
+    /// still hold audio (CAF chunks after a crash mid-recording, or
+    /// mic.m4a/system.m4a after a finalisation that stopped before the
+    /// transcript). Caller can prompt the user, then call `finaliseRecovered(_:)`.
     func unfinalisedSessions() -> [MeetingSession] {
-        let fm = FileManager.default
         let folders = MeetingSessionScanner.allSessionFolders(
             layout: appState.libraryLayout,
             extraFolders: appState.extraScanFolders
         )
         var result: [MeetingSession] = []
-        for url in folders {
-            let cafs = (try? fm.contentsOfDirectory(atPath: url.path).filter { $0.hasSuffix(".caf") }) ?? []
-            let transcriptExists = fm.fileExists(atPath: url.appendingPathComponent("transcript.md").path)
-            guard !cafs.isEmpty, !transcriptExists else { continue }
+        for url in folders where MeetingSessionScanner.isUnfinished(url) {
             // markers.json (written on every screenshot drop) carries the
             // exact session start; the folder creation date is the fallback.
             let started = MeetingCheckpointStore.load(from: url)?.sessionStartedAt
@@ -222,7 +219,7 @@ final class MeetingRecordingService {
     }
 
     /// Re-runs concatenation + transcription against an existing session
-    /// folder that already contains CAF chunks.
+    /// folder. Tracks without CAF chunks use their existing archive.
     func finaliseRecovered(_ session: MeetingSession) async {
         guard !isActive else {
             logger.warning("Recovery requested while a session is active — ignored")
@@ -469,10 +466,20 @@ final class MeetingRecordingService {
         let micArchive = session.micArchiveURL
         let systemArchive = session.systemArchiveURL
 
-        var micPresent = !micSegments.isEmpty
-        var systemPresent = !systemSegments.isEmpty
+        // Without chunks, a retry after an earlier run that encoded the
+        // archives but stopped before the transcript reuses those archives.
+        // A reused archive is never re-encoded, overwritten or deleted.
+        let micSource = MeetingTrackSource.resolve(chunks: micSegments, archive: micArchive)
+        let systemSource = MeetingTrackSource.resolve(chunks: systemSegments, archive: systemArchive)
+        let micReused = micSource == .existingArchive
+        let systemReused = systemSource == .existingArchive
+        if micReused { logger.notice("No mic chunks, using existing mic.m4a") }
+        if systemReused { logger.notice("No system chunks, using existing system.m4a") }
 
-        if micPresent {
+        var micPresent = !micSegments.isEmpty || micReused
+        var systemPresent = !systemSegments.isEmpty || systemReused
+
+        if !micSegments.isEmpty {
             do {
                 let wrote = try await AudioSegmentConcatenator.concatenate(segments: micSegments, destinationURL: micArchive)
                 micPresent = wrote
@@ -483,7 +490,7 @@ final class MeetingRecordingService {
             }
         }
         state = .finalising(progress: 0.30)
-        if systemPresent {
+        if !systemSegments.isEmpty {
             do {
                 let wrote = try await AudioSegmentConcatenator.concatenate(segments: systemSegments, destinationURL: systemArchive)
                 systemPresent = wrote
@@ -510,7 +517,7 @@ final class MeetingRecordingService {
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
             // an error so the user knows the .md isn't there yet.
-            state = .error(.finalisationFailed("Speech model isn't loaded — audio saved, transcript will be empty."))
+            state = .error(.finalisationFailed("Speech model isn't loaded. Audio saved, try again from the menu bar."))
             lastSession = session
             return
         }
@@ -554,6 +561,10 @@ final class MeetingRecordingService {
         )
 
         let speakerCount = countSpeakers(paragraphs: paragraphs)
+        // A retry that reused an existing archive keeps all audio: that
+        // archive may be the only copy, and the transcript then lists
+        // exactly the files that stay on disk.
+        let audioKept = appState.keepMeetingAudio || micReused || systemReused
         let metadata = MeetingTranscriptWriter.Metadata(
             session: session,
             durationSeconds: durationSeconds,
@@ -561,7 +572,7 @@ final class MeetingRecordingService {
             language: output.language,
             micPresent: micPresent,
             systemPresent: systemPresent,
-            audioKept: appState.keepMeetingAudio,
+            audioKept: audioKept,
             diarized: (micPresent && finalConfig.diarizeMic) || (systemPresent && finalConfig.diarizeSystem),
             diarizationFailed: output.diarizationFailed
         )
@@ -602,7 +613,7 @@ final class MeetingRecordingService {
             return
         }
 
-        if !appState.keepMeetingAudio, !paragraphs.isEmpty {
+        if !audioKept, !paragraphs.isEmpty {
             // Only after the transcript exists: the CAF chunks are already gone,
             // so these archives were the last copy of the audio.
             try? FileManager.default.removeItem(at: micArchive)

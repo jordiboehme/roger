@@ -72,4 +72,37 @@ struct MeetingSessionScannerTests {
         let found = MeetingSessionScanner.allSessionFolders(layout: layout, extraFolders: [month, spelledOtherwise])
         #expect(found.map(\.standardizedFileURL.path) == [month.appendingPathComponent("s").standardizedFileURL.path])
     }
+
+    @Test func unfinishedMeansAudioWithoutTranscript() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let cases: [([String], Bool)] = [
+            (["mic-001.caf"], true),
+            (["mic.m4a"], true),
+            (["system.m4a"], true),
+            (["mic.m4a", "system.m4a", "markers.json"], true),
+            (["transcript.md", "mic-001.caf"], false),
+            (["transcript.md", "mic.m4a"], false),
+            (["markers.json"], false),
+            ([], false),
+        ]
+        for (index, (files, expected)) in cases.enumerated() {
+            let folder = root.appendingPathComponent("s\(index)")
+            try makeSession(folder, files: files)
+            #expect(MeetingSessionScanner.isUnfinished(folder) == expected, "\(files)")
+        }
+    }
+
+    @Test func trackSourcePrefersChunksThenExistingArchive() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let archive = root.appendingPathComponent("mic.m4a")
+        let chunk = root.appendingPathComponent("mic-001.caf")
+        #expect(MeetingTrackSource.resolve(chunks: [], archive: archive) == .absent)
+        try Data("audio".utf8).write(to: archive)
+        #expect(MeetingTrackSource.resolve(chunks: [], archive: archive) == .existingArchive)
+        #expect(MeetingTrackSource.resolve(chunks: [chunk], archive: archive) == .chunks([chunk]))
+        // Resolving never touches the archive.
+        #expect(try Data(contentsOf: archive) == Data("audio".utf8))
+    }
 }
