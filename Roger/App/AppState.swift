@@ -20,6 +20,8 @@ final class AppState {
 
     var dictationState: DictationState = .idle
     var lastTranscription: String?
+    /// The `.md` written by the last log entry, nil after a normal dictation.
+    var lastLogEntryURL: URL?
 
     // MARK: - General Settings
 
@@ -85,6 +87,51 @@ final class AppState {
     }
     var fileTranscriptionDiarize: Bool {
         didSet { defaults.set(fileTranscriptionDiarize, forKey: "fileTranscriptionDiarize") }
+    }
+
+    // MARK: - Library Settings
+
+    /// Root of the library (Logs, Meetings, Transcripts). nil resolves to
+    /// `~/Documents/Roger/`.
+    var libraryRoot: URL? {
+        didSet {
+            if let url = libraryRoot {
+                defaults.set(url.path, forKey: "libraryRoot")
+            } else {
+                defaults.removeObject(forKey: "libraryRoot")
+            }
+        }
+    }
+
+    var libraryLayout: LibraryLayout {
+        LibraryLayout(root: libraryRoot ?? LibraryLayout.defaultRoot)
+    }
+
+    /// Older folders that still hold meetings or transcripts. Scanned for
+    /// unfinished meetings and listed in the Recordings settings.
+    var extraScanFolders: [URL] {
+        didSet { defaults.set(extraScanFolders.map(\.path), forKey: "extraScanFolders") }
+    }
+
+    /// When false, mic.m4a and system.m4a are deleted once the meeting
+    /// transcript is written.
+    var keepMeetingAudio: Bool {
+        didSet { defaults.set(keepMeetingAudio, forKey: "keepMeetingAudio") }
+    }
+
+    /// Set once the one-time move into the library has run (or was declined).
+    var libraryMigrationDone: Bool {
+        didSet { defaults.set(libraryMigrationDone, forKey: "libraryMigrationDone") }
+    }
+
+    /// Pre-library meetings folder setting, read by the migration only.
+    var legacyMeetingRecordingsFolder: URL? {
+        defaults.string(forKey: "meetingRecordingsFolder").map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    /// Pre-library custom folder for file transcripts, read by the migration only.
+    var legacyFileTranscriptFolder: URL? {
+        defaults.string(forKey: "fileTranscriptOutputFolder").map { URL(fileURLWithPath: $0, isDirectory: true) }
     }
 
     // MARK: - Meeting Recording Settings
@@ -324,6 +371,12 @@ final class AppState {
         self.fileTranscriptionPresetID = UUID(uuidString: defaults.string(forKey: "fileTranscriptionPresetID") ?? "")
             ?? DictationPreset.plain.id
         self.fileTranscriptionDiarize = defaults.bool(forKey: "fileTranscriptionDiarize")
+
+        self.libraryRoot = defaults.string(forKey: "libraryRoot").map { URL(fileURLWithPath: $0, isDirectory: true) }
+        self.extraScanFolders = (defaults.stringArray(forKey: "extraScanFolders") ?? [])
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        self.keepMeetingAudio = defaults.object(forKey: "keepMeetingAudio") as? Bool ?? true
+        self.libraryMigrationDone = defaults.bool(forKey: "libraryMigrationDone")
 
         if let path = defaults.string(forKey: "meetingRecordingsFolder") {
             self.meetingRecordingsFolder = URL(fileURLWithPath: path)
