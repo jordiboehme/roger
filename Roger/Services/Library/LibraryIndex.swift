@@ -11,6 +11,8 @@ protocol LibraryIndex: Sendable {
     func items() async -> [LibraryItem]
     func search(_ query: LibraryQuery) async -> [LibraryItem]
     /// Yields after the first build and after every change to the items.
+    /// Single consumer: iterate it from one place only (it is one
+    /// `AsyncStream`, not a broadcast). Finishes when the index is released.
     var changes: AsyncStream<Void> { get }
 }
 
@@ -55,6 +57,9 @@ actor InMemoryLibraryIndex: LibraryIndex {
     private var itemsByID: [String: LibraryItem] = [:]
     private var externalIDs: Set<String> = []
     private var isBuilt = false
+    private let watchesFileSystem: Bool
+    private var watcher: LibraryFolderWatcher?
+    private var eventTask: Task<Void, Never>?
 
     /// `externalFiles` lists transcripts written next to their source
     /// (`ExternalTranscriptRegistry.existingFiles`). `externalListURL` is the
@@ -62,8 +67,10 @@ actor InMemoryLibraryIndex: LibraryIndex {
     init(
         scope: LibraryScanScope,
         externalFiles: @escaping @Sendable () -> [URL],
-        externalListURL: URL? = nil
+        externalListURL: URL? = nil,
+        watchesFileSystem: Bool = false
     ) {
+        self.watchesFileSystem = watchesFileSystem
         self.scope = scope
         let (stream, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
         self.changes = stream
@@ -75,6 +82,10 @@ actor InMemoryLibraryIndex: LibraryIndex {
         self.meetings = LibraryPath.canonical(scope.layout.kindFolder(.meetings))
         self.transcripts = LibraryPath.canonical(scope.layout.kindFolder(.transcripts))
         self.extras = scope.extraFolders.map { LibraryPath.canonical($0) }
+    }
+
+    deinit {
+        continuation.finish()
     }
 
     func items() async -> [LibraryItem] {
@@ -97,6 +108,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let milliseconds = Int(Date().timeIntervalSince(start) * 1000)
         logger.info("Library index built: \(count) items in \(milliseconds) ms")
         continuation.yield()
+        if watchesFileSystem { restartWatcherIfNeeded() }
     }
 
     /// Reads again what `paths` touched. Paths may be spelled as FSEvents
@@ -121,6 +133,8 @@ actor InMemoryLibraryIndex: LibraryIndex {
         if let list = externalListPath, path == list { return .externalList }
         if externalIDs.contains(path) { return .file(path, .transcript) }
         if LibraryPath.isPath(root, inside: path) { return .everything }
+        // Hidden files are not scanned, so their changes do not matter.
+        if (path as NSString).lastPathComponent.hasPrefix(".") { return nil }
         for (folder, kind) in [(logs, LibraryItemKind.log), (transcripts, .transcript)]
         where LibraryPath.isPath(path, inside: folder) {
             let ext = (path as NSString).pathExtension.lowercased()
@@ -146,6 +160,55 @@ actor InMemoryLibraryIndex: LibraryIndex {
             return .session(extra + "/" + first)
         }
         return nil
+    }
+
+    // MARK: - Watching
+
+    /// Stops following file system changes. The items stay.
+    func stopWatching() {
+        watcher?.stop()
+        watcher = nil
+        eventTask?.cancel()
+        eventTask = nil
+    }
+
+    private func restartWatcherIfNeeded() {
+        let paths = watchedPaths()
+        if let watcher, watcher.paths == paths { return }
+        stopWatching()
+        let (events, sink) = AsyncStream.makeStream(of: [String]?.self)
+        let watcher = LibraryFolderWatcher(paths: paths, latency: 0.5) { changed, mustRescan in
+            sink.yield(mustRescan ? nil : changed)
+        }
+        guard watcher.start() else {
+            logger.error("Could not watch the library folders")
+            return
+        }
+        self.watcher = watcher
+        eventTask = Task { [weak self] in
+            for await batch in events {
+                guard let self else { return }
+                if let batch {
+                    await self.apply(changedPaths: batch)
+                } else {
+                    await self.rebuild()
+                }
+            }
+        }
+    }
+
+    /// The library root (or its nearest existing parent, so the root
+    /// appearing is noticed), the extra folders, the folder of the external
+    /// list and the folders of external transcripts. FSEvents watches each
+    /// recursively, so new `YYYY/MM` folders are covered.
+    private func watchedPaths() -> [String] {
+        var urls = [LibraryPath.nearestExisting(scope.layout.root)]
+        urls += scope.extraFolders.filter { FileManager.default.fileExists(atPath: $0.path) }
+        if let list = externalListPath {
+            urls.append(LibraryPath.nearestExisting(URL(fileURLWithPath: list).deletingLastPathComponent()))
+        }
+        urls += externalIDs.map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
+        return Array(Set(urls.map { LibraryPath.canonical($0) })).sorted()
     }
 
     // MARK: - Scanning
@@ -177,6 +240,8 @@ actor InMemoryLibraryIndex: LibraryIndex {
             let previous = externalIDs
             removeAll { previous.contains($0.id) }
             insert(scanExternal())
+            // A new external transcript may live in a folder nobody watches yet.
+            if watchesFileSystem { restartWatcherIfNeeded() }
         case .everything:
             itemsByID = scanAll()
         }
