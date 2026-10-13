@@ -130,9 +130,7 @@ struct LibraryListView: View {
         guard !model.isEditing, !items.isEmpty else { return }
         let plan = commands.trashPlan(for: items)
         if plan.urls.isEmpty {
-            if !plan.skipped.isEmpty {
-                message = "Roger left this where it is. It does not move a meeting that is being recorded or finalised, or a folder the library depends on."
-            }
+            message = LibraryActions.trashSkippedMessage(plan)
             return
         }
         if plan.needsConfirmation {
@@ -153,11 +151,7 @@ struct LibraryListView: View {
             // the Unfinished list now, not after the next recording.
             coordinator.refreshPendingMeetingSessions()
         }
-        if let failure = LibraryActions.trashFailureMessage(failed) {
-            message = failure
-        } else if !plan.skipped.isEmpty {
-            message = "Some items stayed where they are. Roger does not move a meeting that is being recorded or finalised, or a folder the library depends on."
-        }
+        message = LibraryActions.trashFailureMessage(failed) ?? LibraryActions.trashSkippedMessage(plan)
     }
 
     @ViewBuilder private var overlay: some View {

@@ -41,13 +41,10 @@ struct LibraryCommands {
     /// Empty while a body is edited.
     func trashPlan(for items: [LibraryItem]) -> LibraryActions.TrashPlan {
         guard !model.isEditing else { return LibraryActions.TrashPlan() }
-        let layout = coordinator.appState.libraryLayout
-        let protected = [layout.root]
-            + LibraryLayout.Kind.allCases.map { layout.kindFolder($0) }
-            + coordinator.appState.extraScanFolders
         return LibraryActions.trashPlan(
             for: items,
-            protectedFolders: protected,
+            layout: coordinator.appState.libraryLayout,
+            extraFolders: coordinator.appState.extraScanFolders,
             activeSessionFolder: coordinator.meetingRecorder.activeSessionFolder
         )
     }
