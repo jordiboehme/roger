@@ -8,6 +8,9 @@ struct LibraryListView: View {
     @State private var pendingTrash: LibraryActions.TrashPlan?
     @State private var pendingTrashItems: [LibraryItem] = []
     @State private var message: String?
+    @FocusState private var listFocused: Bool
+    /// Focus goes to the list once, after the first load.
+    @State private var focusedOnce = false
 
     private var commands: LibraryCommands {
         LibraryCommands(model: model, coordinator: coordinator)
@@ -30,6 +33,16 @@ struct LibraryListView: View {
         // so their second and third lines were cut off until the next
         // layout. A new list once there are rows measures each row.
         .id(model.results.isEmpty)
+        .focused($listFocused)
+        .onChange(of: model.results.isEmpty) { _, isEmpty in
+            // The rebuilt list is not first responder. Give it the focus
+            // once, on the first load, so the arrow keys, Return and
+            // Cmd-Backspace work without a click. Later rebuilds (after a
+            // search without results) leave the focus where it is.
+            guard !isEmpty, !focusedOnce, model.appliedSearch.isEmpty else { return }
+            focusedOnce = true
+            DispatchQueue.main.async { listFocused = true }
+        }
         .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in
             let items = commands.items(ids)
             if !items.isEmpty {
