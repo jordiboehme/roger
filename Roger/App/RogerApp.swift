@@ -53,6 +53,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        #if DEBUG
+        if let folder = LibrarySnapshotRunner.requestedFolder {
+            startSnapshotRun(into: folder)
+            return
+        }
+        #endif
+
         let coordinator = sharedCoordinator
 
         // Move pre-library meetings before anything lists them.
@@ -297,10 +304,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func openLibrary(selecting url: URL? = nil) {
         popover?.performClose(nil)
         let controller = libraryWindowController
-            ?? LibraryWindowController(coordinator: sharedCoordinator, indexStore: .standard())
+            ?? LibraryWindowController(coordinator: sharedCoordinator, indexStore: makeLibraryIndexStore())
         libraryWindowController = controller
         controller.show(selecting: url)
     }
+
+    private func makeLibraryIndexStore() -> LibraryIndexStore {
+        #if DEBUG
+        if LibrarySnapshotRunner.requestedFolder != nil { return LibrarySnapshotRunner.indexStore() }
+        #endif
+        return .standard()
+    }
+
+    #if DEBUG
+    /// Snapshot mode: only the library window, none of the launch work that
+    /// touches settings, the system or the developer's own files (migration,
+    /// model download, mic, permissions, login item, hotkeys, Services,
+    /// onboarding).
+    private func startSnapshotRun(into folder: URL) {
+        let coordinator = sharedCoordinator
+        coordinator.libraryOpener = { [weak self] url in
+            self?.openLibrary(selecting: url)
+        }
+        coordinator.refreshPendingMeetingSessions()
+        coordinator.openLibrary()
+        guard let controller = libraryWindowController else {
+            appLogger.error("Snapshot run: the library window did not open")
+            exit(1)
+        }
+        Task {
+            await LibrarySnapshotRunner.run(controller: controller, coordinator: coordinator, folder: folder)
+            NSApp.terminate(nil)
+        }
+    }
+    #endif
 
     /// Clicking the Dock icon (only there while the library is open) brings
     /// the library to the front.

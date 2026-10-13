@@ -18,6 +18,12 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
     /// True from `show` until the window closes (also while miniaturised).
     private(set) var isOpen = false
 
+    #if DEBUG
+    /// For `LibrarySnapshotRunner` only.
+    var snapshotWindow: NSWindow? { window }
+    var snapshotModel: LibraryModel? { model }
+    #endif
+
     init(coordinator: AppCoordinator, indexStore: LibraryIndexStore) {
         self.coordinator = coordinator
         self.indexStore = indexStore
