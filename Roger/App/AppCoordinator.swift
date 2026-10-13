@@ -82,6 +82,15 @@ final class AppCoordinator {
     /// drives the drop-target highlight in the floating panel.
     var meetingDropTargetActive: Bool = false
 
+    /// Opens the library window. Set by the AppDelegate, which owns the
+    /// window; nil in unit tests.
+    @ObservationIgnored var libraryOpener: (@MainActor (URL?) -> Void)?
+
+    /// Opens the library window, with the item at `url` selected when given.
+    func openLibrary(selecting url: URL? = nil) {
+        libraryOpener?(url)
+    }
+
     init() {
         // FluidAudio's debug lines include recognised words. Keep transcripts
         // out of the console and the system log, even in Debug builds.

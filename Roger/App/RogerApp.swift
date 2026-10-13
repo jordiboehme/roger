@@ -10,6 +10,10 @@ extension KeyboardShortcuts.Name {
     /// from the Recordings settings tab. Unset by default — Roger only takes
     /// the hotkey if the user explicitly assigns one.
     static let meetingRecordingToggle = Self("meetingRecordingToggle")
+
+    /// Global hotkey to open the library window. Unset by default, set in
+    /// Settings > General.
+    static let openLibrary = Self("openLibrary")
 }
 
 @MainActor
@@ -33,6 +37,7 @@ struct RogerApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
+    private var libraryWindowController: LibraryWindowController?
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var dropView: StatusBarDropView?
@@ -54,6 +59,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.runLibraryMigrationIfNeeded()
 
         installStatusItem(coordinator: coordinator)
+        coordinator.libraryOpener = { [weak self] url in
+            self?.openLibrary(selecting: url)
+        }
 
         // Check permissions
         coordinator.permissionManager.checkPermissions()
@@ -79,6 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyDown(for: .meetingRecordingToggle) {
             Task { @MainActor in
                 await sharedCoordinator.toggleMeetingRecording()
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .openLibrary) {
+            Task { @MainActor in
+                sharedCoordinator.openLibrary()
             }
         }
 
@@ -271,6 +285,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let popover, let button = statusItem?.button, !popover.isShown else { return }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    // MARK: - Library
+
+    func openLibrary(selecting url: URL? = nil) {
+        popover?.performClose(nil)
+        let controller = libraryWindowController
+            ?? LibraryWindowController(coordinator: sharedCoordinator, indexStore: .standard())
+        libraryWindowController = controller
+        controller.show(selecting: url)
+    }
+
+    /// Clicking the Dock icon (only there while the library is open) brings
+    /// the library to the front.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let controller = libraryWindowController, controller.isOpen {
+            controller.show()
+        }
+        return false
     }
 
     // MARK: - Drag & Drop

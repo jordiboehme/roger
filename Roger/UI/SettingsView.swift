@@ -1,4 +1,5 @@
 import ApplicationServices
+import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsTab: String, Hashable {
@@ -122,6 +123,24 @@ struct GeneralSettingsView: View {
                 settingsCard(icon: "power", title: "Startup") {
                     Toggle("Launch Roger at login", isOn: $state.launchAtLogin)
                         .font(.system(size: 12))
+                }
+
+                // Library
+                settingsCard(icon: "books.vertical", title: "Library") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        settingsRow("Open Library") {
+                            KeyboardShortcuts.Recorder(for: .openLibrary)
+                                .shortcutValidation { shortcut in
+                                    if shortcut.key == .f18 {
+                                        return .disallow(reason: "F18 is Roger's dictation hotkey (Caps Lock).")
+                                    }
+                                    return .allow
+                                }
+                        }
+                        Text("Optional. Set a global shortcut to open the library window.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding()

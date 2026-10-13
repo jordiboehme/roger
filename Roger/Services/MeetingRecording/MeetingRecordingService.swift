@@ -79,6 +79,12 @@ final class MeetingRecordingService {
         }
     }
 
+    /// The folder of the session that is being recorded or finalised. The
+    /// library must not trash, rename or edit anything in it.
+    var activeSessionFolder: URL? {
+        isActive ? session?.folder : nil
+    }
+
     /// Starts a new session: creates the folder, opens both writers, hooks up
     /// taps. Throws if anything trips before audio actually flows; on a thrown
     /// error the partial session folder is removed.
