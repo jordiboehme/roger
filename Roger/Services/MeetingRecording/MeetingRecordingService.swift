@@ -486,12 +486,15 @@ final class MeetingRecordingService {
         var systemOutcome: MeetingTrackEncodeOutcome?
         var micEncodedLanded = false
         var systemEncodedLanded = false
+        var micLeftoverKept = false
+        var systemLeftoverKept = false
 
         if !micSegments.isEmpty {
             do {
                 let encoded = try await encodeTrack(micSegments, into: micArchive)
                 micOutcome = .encoded(encoded.result)
                 micEncodedLanded = encoded.landed
+                micLeftoverKept = encoded.leftoverKept
             } catch {
                 logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
                 failFinalisation("Mic encode failed: \(error.localizedDescription)", session: session)
@@ -504,6 +507,7 @@ final class MeetingRecordingService {
                 let encoded = try await encodeTrack(systemSegments, into: systemArchive)
                 systemOutcome = .encoded(encoded.result)
                 systemEncodedLanded = encoded.landed
+                systemLeftoverKept = encoded.leftoverKept
             } catch {
                 // System-side encode failures should NOT block the rest of
                 // the pipeline — the mic transcript is still useful. Log
@@ -527,8 +531,10 @@ final class MeetingRecordingService {
         let systemPresent = FileManager.default.fileExists(atPath: systemArchive.path)
         // Also true when the archive was written without some unreadable
         // chunks: the chunks were kept and the session is offered again.
-        let micAudioFailed = micOutcome?.needsRetry ?? false
-        let systemAudioFailed = systemOutcome?.needsRetry ?? false
+        // A leftover file kept beside the archive also means the transcript
+        // does not cover all audio of that track.
+        let micAudioFailed = (micOutcome?.needsRetry ?? false) || micLeftoverKept
+        let systemAudioFailed = (systemOutcome?.needsRetry ?? false) || systemLeftoverKept
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
@@ -656,23 +662,29 @@ final class MeetingRecordingService {
     /// (chunks left over next to a finished archive), the chunks go to a side
     /// file instead and `MeetingArchiveMerge` keeps the longer of the two as
     /// the archive; neither file is overwritten or deleted. `landed` is true
-    /// when the encoded audio is on disk.
+    /// when the encoded audio is on disk. `leftoverKept` is true when the
+    /// new encode stays beside the archive as a side file, so the archive
+    /// (and the transcript) does not have all of the audio.
     private func encodeTrack(
         _ segments: [URL],
         into archive: URL
-    ) async throws -> (result: AudioSegmentConcatenator.Result, landed: Bool) {
+    ) async throws -> (result: AudioSegmentConcatenator.Result, landed: Bool, leftoverKept: Bool) {
         let fm = FileManager.default
         guard fm.fileExists(atPath: archive.path) else {
             let result = try await AudioSegmentConcatenator.concatenate(segments: segments, destinationURL: archive)
-            return (result, fm.fileExists(atPath: archive.path))
+            return (result, fm.fileExists(atPath: archive.path), false)
         }
         let side = MeetingArchiveMerge.leftoverURL(for: archive)
         let result = try await AudioSegmentConcatenator.concatenate(segments: segments, destinationURL: side)
-        guard result.wrote, fm.fileExists(atPath: side.path) else { return (result, false) }
+        guard result.wrote, fm.fileExists(atPath: side.path) else { return (result, false, false) }
         let keepEncoded = await audioSeconds(side) > audioSeconds(archive)
         try MeetingArchiveMerge.settle(archive: archive, encoded: side, keepEncoded: keepEncoded)
-        logger.notice("Chunks next to \(archive.lastPathComponent, privacy: .public): kept the \(keepEncoded ? "new encode" : "existing archive", privacy: .public), the other file stays beside it")
-        return (result, true)
+        if keepEncoded {
+            logger.warning("Chunks next to \(archive.lastPathComponent, privacy: .public): the new encode is longer and became the archive, the old one was moved aside")
+        } else {
+            logger.warning("Chunks next to \(archive.lastPathComponent, privacy: .public): kept the existing archive, the new encode stays beside it as \(side.lastPathComponent, privacy: .public)")
+        }
+        return (result, true, !keepEncoded)
     }
 
     private func audioSeconds(_ url: URL) async -> Double {
