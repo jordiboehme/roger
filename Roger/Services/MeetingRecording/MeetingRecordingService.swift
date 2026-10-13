@@ -525,8 +525,10 @@ final class MeetingRecordingService {
         // reused from an earlier run, or kept as the longer file.
         let micPresent = FileManager.default.fileExists(atPath: micArchive.path)
         let systemPresent = FileManager.default.fileExists(atPath: systemArchive.path)
-        let micAudioFailed = micOutcome?.isFailure ?? false
-        let systemAudioFailed = systemOutcome?.isFailure ?? false
+        // Also true when the archive was written without some unreadable
+        // chunks: the chunks were kept and the session is offered again.
+        let micAudioFailed = micOutcome?.needsRetry ?? false
+        let systemAudioFailed = systemOutcome?.needsRetry ?? false
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface

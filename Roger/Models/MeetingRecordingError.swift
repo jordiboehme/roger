@@ -42,7 +42,7 @@ enum MeetingRecordingError: LocalizedError, Sendable {
             return "Recording paused because the system went to sleep."
         case .trackAudioFailed(let mic, let system):
             let tracks = mic && system ? "Microphone and system audio" : (mic ? "Microphone audio" : "System audio")
-            return "\(tracks) could not be saved, so the transcript is incomplete. Roger kept the recording. Try again from the menu bar."
+            return "\(tracks) could not be fully saved, so the transcript may be incomplete. Roger kept the recording. Try again from the menu bar."
         }
     }
 }

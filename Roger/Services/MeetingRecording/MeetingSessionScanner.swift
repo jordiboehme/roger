@@ -113,6 +113,16 @@ enum MeetingTrackEncodeOutcome: Equatable, Sendable {
         }
     }
 
+    /// True when some of the track's audio is not in its archive and its
+    /// chunks were kept: a failure, or an archive written without the
+    /// unreadable chunks.
+    var needsRetry: Bool {
+        switch self {
+        case .failed: return true
+        case .encoded(let result): return !result.unreadable.isEmpty
+        }
+    }
+
     /// Chunks that may be deleted now: the ones whose audio is safe in the
     /// archive, and empty ones (no audio to lose). Unreadable chunks always
     /// stay, and after a failure everything stays, so a later recovery can

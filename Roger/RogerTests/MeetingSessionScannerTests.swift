@@ -148,4 +148,14 @@ struct MeetingSessionScannerTests {
         #expect(!MeetingSessionScanner.isUnfinished(failedNoChunks))
         #expect(!MeetingSessionScanner.isUnfinished(chunksNoFlag))
     }
+
+    @Test func unreadableChunksMeanTheTrackNeedsARetry() {
+        let a = URL(fileURLWithPath: "/s/mic-001.caf")
+        let b = URL(fileURLWithPath: "/s/mic-002.caf")
+        typealias R = AudioSegmentConcatenator.Result
+        #expect(MeetingTrackEncodeOutcome.encoded(R(inserted: [a], unreadable: [b])).needsRetry)
+        #expect(MeetingTrackEncodeOutcome.encoded(R(unreadable: [b])).needsRetry)
+        #expect(MeetingTrackEncodeOutcome.failed.needsRetry)
+        #expect(!MeetingTrackEncodeOutcome.encoded(R(inserted: [a], empty: [b])).needsRetry)
+    }
 }
