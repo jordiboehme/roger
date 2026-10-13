@@ -175,6 +175,7 @@ private struct FloatingIndicatorContent: View {
             }
             .frame(width: 27, height: 20)
             .animation(.easeInOut(duration: 0.2), value: isListening)
+            .animation(.easeInOut(duration: 0.2), value: coordinator.showsLogSaved)
 
             if let job = fileJob {
                 VStack(alignment: .leading, spacing: 1) {
