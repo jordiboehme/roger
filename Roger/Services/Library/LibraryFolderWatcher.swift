@@ -28,7 +28,7 @@ final class LibraryFolderWatcher: @unchecked Sendable {
 
     /// False when there is nothing to watch or FSEvents refused the stream.
     @discardableResult
-    func start() -> Bool {
+    func start(sinceEventId: FSEventStreamEventId = FSEventStreamEventId(kFSEventStreamEventIdSinceNow)) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         guard stream == nil else { return true }
@@ -59,7 +59,7 @@ final class LibraryFolderWatcher: @unchecked Sendable {
             },
             &context,
             paths as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            sinceEventId,
             latency,
             flags
         ) else { return false }

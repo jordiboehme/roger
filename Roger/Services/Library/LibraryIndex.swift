@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 import os
 
@@ -60,6 +61,12 @@ actor InMemoryLibraryIndex: LibraryIndex {
     private let watchesFileSystem: Bool
     private var watcher: LibraryFolderWatcher?
     private var eventTask: Task<Void, Never>?
+    private var eventSink: AsyncStream<[String]?>.Continuation?
+    /// Set by `stopWatching()`; a stopped index never watches again.
+    private(set) var watchingStopped = false
+    /// The FSEvents id taken before the latest scan, so a restarted stream
+    /// replays what changed during that scan.
+    private var scanEventId = FSEventStreamEventId(kFSEventStreamEventIdSinceNow)
 
     /// `externalFiles` lists transcripts written next to their source
     /// (`ExternalTranscriptRegistry.existingFiles`). `externalListURL` is the
@@ -85,6 +92,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
     }
 
     deinit {
+        eventTask?.cancel()
         continuation.finish()
     }
 
@@ -101,6 +109,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
     /// Reads everything again.
     func rebuild() {
         let start = Date()
+        scanEventId = FSEventsGetCurrentEventId()
         itemsByID = scanAll()
         isBuilt = true
         // Plain locals: Logger interpolation must not touch actor state.
@@ -122,6 +131,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
             return
         }
         let before = itemsByID
+        scanEventId = FSEventsGetCurrentEventId()
         for unit in units { reload(unit) }
         if itemsByID != before { continuation.yield() }
     }
@@ -134,7 +144,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
         if externalIDs.contains(path) { return .file(path, .transcript) }
         if LibraryPath.isPath(root, inside: path) { return .everything }
         // Hidden files are not scanned, so their changes do not matter.
-        if (path as NSString).lastPathComponent.hasPrefix(".") { return nil }
+        if (path as NSString).lastPathComponent.hasPrefix("."), !extras.contains(path) { return nil }
         for (folder, kind) in [(logs, LibraryItemKind.log), (transcripts, .transcript)]
         where LibraryPath.isPath(path, inside: folder) {
             let ext = (path as NSString).pathExtension.lowercased()
@@ -166,25 +176,34 @@ actor InMemoryLibraryIndex: LibraryIndex {
 
     /// Stops following file system changes. The items stay.
     func stopWatching() {
+        watchingStopped = true
+        tearDownWatcher()
+    }
+
+    private func tearDownWatcher() {
         watcher?.stop()
         watcher = nil
+        eventSink?.finish()
+        eventSink = nil
         eventTask?.cancel()
         eventTask = nil
     }
 
     private func restartWatcherIfNeeded() {
+        guard !watchingStopped else { return }
         let paths = watchedPaths()
         if let watcher, watcher.paths == paths { return }
-        stopWatching()
+        tearDownWatcher()
         let (events, sink) = AsyncStream.makeStream(of: [String]?.self)
         let watcher = LibraryFolderWatcher(paths: paths, latency: 0.5) { changed, mustRescan in
             sink.yield(mustRescan ? nil : changed)
         }
-        guard watcher.start() else {
+        guard watcher.start(sinceEventId: scanEventId) else {
             logger.error("Could not watch the library folders")
             return
         }
         self.watcher = watcher
+        eventSink = sink
         eventTask = Task { [weak self] in
             for await batch in events {
                 guard let self else { return }

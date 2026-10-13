@@ -219,4 +219,16 @@ struct LibraryIndexTests {
         #expect(await index.unit(forChangedPath: base.appendingPathComponent("Other/file.md").path) == nil)
         #expect(await index.unit(forChangedPath: base.appendingPathComponent("Roger").path) == .everything)
     }
+
+    @Test func hiddenFilesAreIgnoredButHiddenExtraFoldersAreNot() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let hiddenExtra = base.appendingPathComponent(".old-meetings", isDirectory: true)
+        let index = makeIndex(layout, extras: [hiddenExtra])
+        let month = layout.monthFolder(.logs, for: date)
+        #expect(await index.unit(forChangedPath: month.appendingPathComponent(".DS_Store").path) == nil)
+        #expect(await index.unit(forChangedPath: hiddenExtra.path) == .extraFolder(LibraryPath.canonical(hiddenExtra)))
+        #expect(await index.unit(forChangedPath: hiddenExtra.appendingPathComponent(".DS_Store").path) == nil)
+    }
 }

@@ -37,4 +37,18 @@ struct LibraryIndexStoreTests {
         let b = store.index(for: scope("/RogerFixtures/A", extras: ["/RogerFixtures/Old"]))
         #expect(a !== b)
     }
+
+    @Test func scopeChangeStopsTheOldIndex() async {
+        let store = store()
+        let a = store.index(for: scope("/RogerFixtures/A"))
+        #expect(await a.watchingStopped == false)
+        _ = store.index(for: scope("/RogerFixtures/B"))
+        // The store stops the old index in a task; wait for it without FSEvents timing.
+        var stopped = false
+        for _ in 0..<100 where !stopped {
+            stopped = await a.watchingStopped
+            if !stopped { await Task.yield() }
+        }
+        #expect(stopped)
+    }
 }
