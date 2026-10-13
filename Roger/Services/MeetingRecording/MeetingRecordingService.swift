@@ -475,21 +475,23 @@ final class MeetingRecordingService {
         // A reused archive is never re-encoded, overwritten or deleted.
         let micSource = MeetingTrackSource.resolve(chunks: micSegments, archive: micArchive)
         let systemSource = MeetingTrackSource.resolve(chunks: systemSegments, archive: systemArchive)
-        let micReused = micSource == .existingArchive
-        let systemReused = systemSource == .existingArchive
-        if micReused { logger.notice("No mic chunks, using existing mic.m4a") }
-        if systemReused { logger.notice("No system chunks, using existing system.m4a") }
+        if micSource == .existingArchive { logger.notice("No mic chunks, using existing mic.m4a") }
+        if systemSource == .existingArchive { logger.notice("No system chunks, using existing system.m4a") }
+        // An archive that existed before this run may be the only copy of
+        // that audio: it is never overwritten (see `encodeTrack`) or deleted.
+        let micPreexisting = FileManager.default.fileExists(atPath: micArchive.path)
+        let systemPreexisting = FileManager.default.fileExists(atPath: systemArchive.path)
 
-        var micPresent = !micSegments.isEmpty || micReused
-        var systemPresent = !systemSegments.isEmpty || systemReused
         var micOutcome: MeetingTrackEncodeOutcome?
         var systemOutcome: MeetingTrackEncodeOutcome?
+        var micEncodedLanded = false
+        var systemEncodedLanded = false
 
         if !micSegments.isEmpty {
             do {
-                let result = try await AudioSegmentConcatenator.concatenate(segments: micSegments, destinationURL: micArchive)
-                micPresent = result.wrote
-                micOutcome = .encoded(result)
+                let encoded = try await encodeTrack(micSegments, into: micArchive)
+                micOutcome = .encoded(encoded.result)
+                micEncodedLanded = encoded.landed
             } catch {
                 logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
                 failFinalisation("Mic encode failed: \(error.localizedDescription)", session: session)
@@ -499,15 +501,14 @@ final class MeetingRecordingService {
         state = .finalising(progress: 0.30)
         if !systemSegments.isEmpty {
             do {
-                let result = try await AudioSegmentConcatenator.concatenate(segments: systemSegments, destinationURL: systemArchive)
-                systemPresent = result.wrote
-                systemOutcome = .encoded(result)
+                let encoded = try await encodeTrack(systemSegments, into: systemArchive)
+                systemOutcome = .encoded(encoded.result)
+                systemEncodedLanded = encoded.landed
             } catch {
                 // System-side encode failures should NOT block the rest of
                 // the pipeline — the mic transcript is still useful. Log
-                // loudly, mark the track absent, and continue.
-                logger.error("System encode failed (continuing without system audio, chunks kept): \(error.localizedDescription, privacy: .public)")
-                systemPresent = false
+                // loudly, keep the chunks, and continue.
+                logger.error("System encode failed (continuing without new system audio, chunks kept): \(error.localizedDescription, privacy: .public)")
                 systemOutcome = .failed
             }
         }
@@ -515,10 +516,15 @@ final class MeetingRecordingService {
         // Delete only chunks whose audio is in the archive, plus empty ones.
         // Unreadable chunks, and all chunks after a failed encode, stay on
         // disk so the audio is not lost.
-        let micDeletable = micOutcome?.deletableChunks(archiveExists: FileManager.default.fileExists(atPath: micArchive.path)) ?? []
+        let micDeletable = micOutcome?.deletableChunks(archiveExists: micEncodedLanded) ?? []
         for url in micDeletable { try? FileManager.default.removeItem(at: url) }
-        let systemDeletable = systemOutcome?.deletableChunks(archiveExists: FileManager.default.fileExists(atPath: systemArchive.path)) ?? []
+        let systemDeletable = systemOutcome?.deletableChunks(archiveExists: systemEncodedLanded) ?? []
         for url in systemDeletable { try? FileManager.default.removeItem(at: url) }
+
+        // A track is present when its archive is on disk: freshly encoded,
+        // reused from an earlier run, or kept as the longer file.
+        let micPresent = FileManager.default.fileExists(atPath: micArchive.path)
+        let systemPresent = FileManager.default.fileExists(atPath: systemArchive.path)
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
@@ -565,10 +571,10 @@ final class MeetingRecordingService {
         )
 
         let speakerCount = countSpeakers(paragraphs: paragraphs)
-        // A retry that reused an existing archive keeps all audio: that
+        // A retry over an archive that existed before this run keeps all audio: that
         // archive may be the only copy, and the transcript then lists
         // exactly the files that stay on disk.
-        let audioKept = appState.keepMeetingAudio || micReused || systemReused
+        let audioKept = appState.keepMeetingAudio || micPreexisting || systemPreexisting
         let metadata = MeetingTranscriptWriter.Metadata(
             session: session,
             durationSeconds: durationSeconds,
@@ -632,6 +638,35 @@ final class MeetingRecordingService {
         self.session = nil
         checkpointStore = nil
         logger.notice("Meeting recording finalised at \(session.folder.path, privacy: .public)")
+    }
+
+    /// Encodes `segments` into `archive`. When `archive` already exists
+    /// (chunks left over next to a finished archive), the chunks go to a side
+    /// file instead and `MeetingArchiveMerge` keeps the longer of the two as
+    /// the archive; neither file is overwritten or deleted. `landed` is true
+    /// when the encoded audio is on disk.
+    private func encodeTrack(
+        _ segments: [URL],
+        into archive: URL
+    ) async throws -> (result: AudioSegmentConcatenator.Result, landed: Bool) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: archive.path) else {
+            let result = try await AudioSegmentConcatenator.concatenate(segments: segments, destinationURL: archive)
+            return (result, fm.fileExists(atPath: archive.path))
+        }
+        let side = MeetingArchiveMerge.leftoverURL(for: archive)
+        let result = try await AudioSegmentConcatenator.concatenate(segments: segments, destinationURL: side)
+        guard result.wrote, fm.fileExists(atPath: side.path) else { return (result, false) }
+        let keepEncoded = await audioSeconds(side) > audioSeconds(archive)
+        try MeetingArchiveMerge.settle(archive: archive, encoded: side, keepEncoded: keepEncoded)
+        logger.notice("Chunks next to \(archive.lastPathComponent, privacy: .public): kept the \(keepEncoded ? "new encode" : "existing archive", privacy: .public), the other file stays beside it")
+        return (result, true)
+    }
+
+    private func audioSeconds(_ url: URL) async -> Double {
+        guard let duration = try? await AVURLAsset(url: url).load(.duration) else { return 0 }
+        let seconds = CMTimeGetSeconds(duration)
+        return seconds.isFinite ? seconds : 0
     }
 
     /// Ends a finalisation run with an error. Drops the live checkpoint
