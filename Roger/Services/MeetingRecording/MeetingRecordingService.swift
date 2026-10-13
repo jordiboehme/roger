@@ -226,6 +226,10 @@ final class MeetingRecordingService {
             return
         }
         self.session = session
+        // A live store left over from an earlier session must not lend its
+        // markers or start time to this one; the pipeline loads the
+        // session's own markers.json instead.
+        checkpointStore = nil
         await runFinalisationPipeline()
     }
 
@@ -488,7 +492,7 @@ final class MeetingRecordingService {
                 micOutcome = wrote ? .wrote : .empty
             } catch {
                 logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
-                state = .error(.finalisationFailed("Mic encode failed: \(error.localizedDescription)"))
+                failFinalisation("Mic encode failed: \(error.localizedDescription)", session: session)
                 return
             }
         }
@@ -521,8 +525,7 @@ final class MeetingRecordingService {
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
             // an error so the user knows the .md isn't there yet.
-            state = .error(.finalisationFailed("Speech model isn't loaded. Audio saved, try again from the menu bar."))
-            lastSession = session
+            failFinalisation("Speech model isn't loaded. Audio saved, try again from the menu bar.", session: session)
             return
         }
 
@@ -550,8 +553,7 @@ final class MeetingRecordingService {
                 }
             )
         } catch {
-            state = .error(.finalisationFailed(error.localizedDescription))
-            lastSession = session
+            failFinalisation(error.localizedDescription, session: session)
             return
         }
 
@@ -612,8 +614,7 @@ final class MeetingRecordingService {
         do {
             _ = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata, markers: markers)
         } catch {
-            state = .error(.finalisationFailed(error.localizedDescription))
-            lastSession = session
+            failFinalisation(error.localizedDescription, session: session)
             return
         }
 
@@ -633,6 +634,15 @@ final class MeetingRecordingService {
         self.session = nil
         checkpointStore = nil
         logger.notice("Meeting recording finalised at \(session.folder.path, privacy: .public)")
+    }
+
+    /// Ends a finalisation run with an error. Drops the live checkpoint
+    /// store so no state leaks into a later retry of another session; the
+    /// markers stay on disk in markers.json.
+    private func failFinalisation(_ reason: String, session: MeetingSession) {
+        state = .error(.finalisationFailed(reason))
+        lastSession = session
+        checkpointStore = nil
     }
 
     private func transcriptionPipeline() -> MeetingTranscriptionPipeline {
