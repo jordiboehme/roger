@@ -57,4 +57,16 @@ struct MeetingArchiveMergeTests {
         #expect(try read(archive) == "old")
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("mic.previous.m4a").path))
     }
+
+    @Test func moveAsidePicksTheNextFreeName() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = folder.appendingPathComponent("transcript.md")
+        try "one".write(to: url, atomically: true, encoding: .utf8)
+        #expect(try MeetingArchiveMerge.moveAside(url).lastPathComponent == "transcript.previous.md")
+        try "two".write(to: url, atomically: true, encoding: .utf8)
+        #expect(try MeetingArchiveMerge.moveAside(url).lastPathComponent == "transcript.previous 1.md")
+        #expect(try String(contentsOf: folder.appendingPathComponent("transcript.previous.md"), encoding: .utf8) == "one")
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
 }

@@ -608,8 +608,10 @@ final class MeetingRecordingService {
         )
 
         // Screenshot checkpoints: rewrite every segment md from this
-        // authoritative full pass (overwriting the provisional live ones)
-        // and weave inline image references into transcript.md.
+        // authoritative full pass (replacing the live drafts; a segment that
+        // is already stable, maybe edited, is moved aside to
+        // <name>.previous.md first) and weave inline image references into
+        // transcript.md.
         if !markers.isEmpty {
             let effectiveStart = checkpointFile?.sessionStartedAt ?? session.startedAt
             for chunk in MeetingCheckpointStore.chunks(sessionStartedAt: effectiveStart, markers: markers) {

@@ -43,8 +43,7 @@ enum MeetingTranscriptWriter {
         let url = metadata.session.transcriptURL
         let content = buildContent(paragraphs: paragraphs, metadata: metadata, markers: markers)
         if FileManager.default.fileExists(atPath: url.path) {
-            let previous = MeetingArchiveMerge.uniqueSibling(of: url, label: "previous")
-            try FileManager.default.moveItem(at: url, to: previous)
+            try MeetingArchiveMerge.moveAside(url)
         }
         try content.write(to: url, atomically: true, encoding: .utf8)
         return url
