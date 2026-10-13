@@ -68,17 +68,6 @@ final class AppState {
     var fileTranscriptOutputLocation: FileTranscriptOutputLocation {
         didSet { defaults.set(fileTranscriptOutputLocation.rawValue, forKey: "fileTranscriptOutputLocation") }
     }
-    /// Destination folder when `fileTranscriptOutputLocation == .customFolder`.
-    /// Stored as a file URL; nil means the user hasn't picked one yet.
-    var fileTranscriptOutputFolder: URL? {
-        didSet {
-            if let url = fileTranscriptOutputFolder {
-                defaults.set(url.path, forKey: "fileTranscriptOutputFolder")
-            } else {
-                defaults.removeObject(forKey: "fileTranscriptOutputFolder")
-            }
-        }
-    }
     /// Preset used to post-process dropped-file transcripts. Constrained to
     /// presets that don't require an LLM — file transcription should never
     /// silently reach out to an AI provider.
@@ -350,12 +339,7 @@ final class AppState {
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
             rawValue: defaults.string(forKey: "fileTranscriptOutputLocation") ?? ""
-        ) ?? .alongsideSource
-        if let path = defaults.string(forKey: "fileTranscriptOutputFolder") {
-            self.fileTranscriptOutputFolder = URL(fileURLWithPath: path)
-        } else {
-            self.fileTranscriptOutputFolder = nil
-        }
+        ) ?? .library
         self.fileTranscriptionPresetID = UUID(uuidString: defaults.string(forKey: "fileTranscriptionPresetID") ?? "")
             ?? DictationPreset.plain.id
         self.fileTranscriptionDiarize = defaults.bool(forKey: "fileTranscriptionDiarize")
@@ -467,15 +451,16 @@ final class AppState {
 }
 
 enum FileTranscriptOutputLocation: String, CaseIterable, Identifiable, Codable {
+    /// `<library>/Transcripts/YYYY/MM/`.
+    case library
     case alongsideSource
-    case customFolder
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .library: return "Roger library"
         case .alongsideSource: return "Next to the source file"
-        case .customFolder: return "Custom folder"
         }
     }
 }

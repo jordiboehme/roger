@@ -569,7 +569,6 @@ struct PermissionsSettingsView: View {
 
 struct FileTranscriptionSettingsView: View {
     @Bindable var state: AppState
-    @State private var showingFolderPicker = false
 
     var body: some View {
         ScrollView {
@@ -577,7 +576,7 @@ struct FileTranscriptionSettingsView: View {
                 // Output destination
                 settingsCard(icon: "doc.text.magnifyingglass", title: "Output") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Drop an audio or video file on Roger's menu bar icon — the transcript lands on disk as a .txt file.")
+                        Text("Drop an audio or video file on Roger's menu bar icon. The transcript is saved as a Markdown file.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -591,20 +590,10 @@ struct FileTranscriptionSettingsView: View {
                             .fixedSize()
                         }
 
-                        if state.fileTranscriptOutputLocation == .customFolder {
-                            settingsRow("Folder") {
-                                HStack(spacing: 6) {
-                                    Text(folderLabel)
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(state.fileTranscriptOutputFolder == nil ? .secondary : .primary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .frame(maxWidth: 220, alignment: .trailing)
-                                    Button("Choose…") { showingFolderPicker = true }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                }
-                            }
+                        if state.fileTranscriptOutputLocation == .library {
+                            Text(state.libraryLayout.kindFolder(.transcripts).path + "/YYYY/MM")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
 
                         Text(filenameRuleText)
@@ -665,23 +654,10 @@ struct FileTranscriptionSettingsView: View {
             }
             .padding()
         }
-        .fileImporter(
-            isPresented: $showingFolderPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                state.fileTranscriptOutputFolder = url
-            }
-        }
-    }
-
-    private var folderLabel: String {
-        state.fileTranscriptOutputFolder?.path ?? "No folder selected"
     }
 
     private var filenameRuleText: String {
-        "Saved as <filename>.txt. Existing files are never overwritten — Roger appends -1, -2, …"
+        "Saved as <filename>.md. Existing files are never overwritten. Roger adds -1, -2 and so on."
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {

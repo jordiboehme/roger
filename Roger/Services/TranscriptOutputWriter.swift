@@ -1,7 +1,7 @@
 import Foundation
 
 /// Writes a dropped file's Markdown transcript next to the source or into
-/// the user's configured folder, with automatic collision handling.
+/// the library's Transcripts folder, with automatic collision handling.
 enum TranscriptOutputWriter {
     enum WriteError: LocalizedError {
         case destinationNotWritable(URL)
@@ -22,15 +22,21 @@ enum TranscriptOutputWriter {
     static func write(
         source: URL,
         location: FileTranscriptOutputLocation,
-        customFolder: URL?,
+        layout: LibraryLayout,
+        now: Date = .now,
         content: (URL) -> String
     ) throws -> URL {
         let baseDir: URL
         switch location {
         case .alongsideSource:
             baseDir = source.deletingLastPathComponent()
-        case .customFolder:
-            baseDir = customFolder ?? source.deletingLastPathComponent()
+        case .library:
+            baseDir = layout.monthFolder(.transcripts, for: now)
+        }
+        do {
+            try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        } catch {
+            throw WriteError.destinationNotWritable(baseDir)
         }
 
         let candidate = baseDir.appendingPathComponent("\(source.lastPathComponent).md")

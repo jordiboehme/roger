@@ -762,7 +762,7 @@ final class AppCoordinator {
             let outputURL = try TranscriptOutputWriter.write(
                 source: job.sourceURL,
                 location: appState.fileTranscriptOutputLocation,
-                customFolder: appState.fileTranscriptOutputFolder
+                layout: appState.libraryLayout
             ) { destination in
                 MediaTranscriptFormatter.content(
                     source: job.sourceURL,
@@ -774,6 +774,13 @@ final class AppCoordinator {
                     diarized: diarized,
                     diarizationFailed: diarizationFailed
                 )
+            }
+            if appState.fileTranscriptOutputLocation == .alongsideSource {
+                do {
+                    try ExternalTranscriptRegistry.standard.add(outputURL)
+                } catch {
+                    logger.warning("Could not remember transcript path: \(error.localizedDescription, privacy: .public)")
+                }
             }
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
