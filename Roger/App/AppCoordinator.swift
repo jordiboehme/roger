@@ -34,6 +34,10 @@ final class AppCoordinator {
     var isModelReady = false
     var lastModelError: String? = nil
     private(set) var activeRecordingPresetID: UUID?
+    /// True for a short moment after a log entry was saved; the floating
+    /// indicator shows "Logged" while it is set.
+    private(set) var showsLogSaved = false
+    private var logSavedGeneration = 0
     /// Language pin resolved at recording start, applied when the buffer is
     /// transcribed on release.
     private var activeRecordingLanguageOverride: String?
@@ -240,6 +244,8 @@ final class AppCoordinator {
             recordingStartTime = Date()
             activeRecordingLanguageOverride = languageOverride
             floatingPanel.show(coordinator: self)
+            showsLogSaved = false
+            logSavedGeneration += 1
 
             // A mic muted at the device level (often left over from an
             // earlier meeting) records pure silence. Lift the mute for this
@@ -285,7 +291,9 @@ final class AppCoordinator {
 
         cancelMaxDurationTask()
 
-        let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        let endedAt = Date()
+        let duration = recordingStartTime.map { endedAt.timeIntervalSince($0) } ?? 0
+        let startedAt = recordingStartTime ?? endedAt.addingTimeInterval(-duration)
         recordingStartTime = nil
 
         let capture = audioCaptureService.stopCapture()
@@ -317,7 +325,7 @@ final class AppCoordinator {
 
         logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
         Task {
-            await self.runPipeline(audioSeconds: duration) {
+            await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt, samples: samples) {
                 guard let samples, !samples.isEmpty else {
                     return TranscriptionEngine.TranscriptionResult(text: "", detectedLanguage: nil)
                 }
@@ -331,6 +339,9 @@ final class AppCoordinator {
 
     private func runPipeline(
         audioSeconds: Double,
+        startedAt: Date,
+        endedAt: Date,
+        samples: [Float]?,
         transcribe: @escaping () async throws -> TranscriptionEngine.TranscriptionResult
     ) async {
         appState.dictationState = .transcribing
@@ -381,6 +392,12 @@ final class AppCoordinator {
                         logger.warning("AI guardrail blocked — falling back to non-AI pipeline, skipping insertion")
                         let fallback = Self.nonAIFallback(from: activePreset)
                         let safeText = (try? await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)) ?? result.text
+                        if activePreset.output == .logEntry {
+                            // A file surprises nobody: save the non-AI text.
+                            await saveLogEntry(safeText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
+                                               language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                            return
+                        }
                         appState.lastTranscription = safeText
                         floatingPanel.hide()
                         audioLevelMeter.reset()
@@ -397,8 +414,15 @@ final class AppCoordinator {
             }
             let llmMs = Date().timeIntervalSince(llmStart) * 1000
 
+            if activePreset.output == .logEntry {
+                await saveLogEntry(processedText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
+                                   language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                return
+            }
+
             appState.dictationState = .inserting
             appState.lastTranscription = processedText
+            appState.lastLogEntryURL = nil
 
             let textToInsert = processedText + activePreset.trailingCharacter.character
             let insertStart = Date()
@@ -425,6 +449,53 @@ final class AppCoordinator {
             floatingPanel.hide()
             audioLevelMeter.reset()
             appState.dictationState = .error(error.localizedDescription)
+        }
+    }
+
+    /// Writes a log entry instead of typing. On failure the text stays in
+    /// `lastTranscription` so nothing is lost.
+    private func saveLogEntry(
+        _ text: String,
+        preset: DictationPreset,
+        startedAt: Date,
+        endedAt: Date,
+        language: String?,
+        samples: [Float]?
+    ) async {
+        appState.lastTranscription = text
+        let entry = LogEntry(text: text, startedAt: startedAt, endedAt: endedAt, presetName: preset.name, language: language)
+        do {
+            let url = try await LogEntryWriter.write(
+                entry,
+                layout: appState.libraryLayout,
+                audioSamples: preset.keepAudio ? samples : nil
+            )
+            appState.lastLogEntryURL = url
+            logger.notice("Log entry saved: \(url.path, privacy: .public)")
+        } catch {
+            logger.error("Log entry write failed: \(error.localizedDescription, privacy: .public)")
+            appState.lastLogEntryURL = nil
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error("Could not save the log entry. Copy the text from the menu bar.")
+            return
+        }
+
+        audioLevelMeter.reset()
+        appState.dictationState = .idle
+        logSavedGeneration += 1
+        let generation = logSavedGeneration
+        showsLogSaved = true
+        // Detached from the pipeline so `runPipeline` returns right away and a
+        // new dictation is not held up (its defer clears the active preset).
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard generation == self.logSavedGeneration else { return }
+            self.showsLogSaved = false
+            // A new dictation may have started meanwhile; it owns the panel then.
+            if self.appState.dictationState == .idle {
+                self.floatingPanel.hide()
+            }
         }
     }
 

@@ -46,7 +46,7 @@ struct MenuBarView: View {
             }
 
             if let text = coordinator.appState.lastTranscription, !text.isEmpty, !isMeetingRecording {
-                LastDictationCard(text: text)
+                LastDictationCard(text: text, logURL: coordinator.appState.lastLogEntryURL)
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
             }
@@ -442,10 +442,27 @@ private struct MeetingMenuElapsed: View {
 
 private struct LastDictationCard: View {
     let text: String
+    let logURL: URL?
     @State private var isHovering = false
     @State private var justCopied = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            card
+            if let logURL {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([logURL])
+                } label: {
+                    Label("Saved to log - Show in Finder", systemImage: "book.closed")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var card: some View {
         Button(action: copy) {
             Text(text)
                 .font(.system(size: 12))
