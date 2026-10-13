@@ -591,9 +591,13 @@ struct FileTranscriptionSettingsView: View {
                         }
 
                         if state.fileTranscriptOutputLocation == .library {
-                            Text(state.libraryLayout.kindFolder(.transcripts).path + "/YYYY/MM")
+                            let transcriptsPath = state.libraryLayout.kindFolder(.transcripts).path + "/YYYY/MM"
+                            Text(transcriptsPath)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(transcriptsPath)
                         }
 
                         Text(filenameRuleText)
