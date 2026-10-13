@@ -62,7 +62,30 @@ struct LibraryDocumentTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["entry.md"])
     }
 
+    @Test func renameSkipsHeadingsInsideCodeFences() {
+        let text = "---\ntitle: \"Old\"\n---\n\n```\n# comment\n```\n\n# Old\n"
+        #expect(LibraryDocumentEditor.renamed(text, to: "New") == "---\ntitle: \"New\"\n---\n\n```\n# comment\n```\n\n# New\n")
+    }
+
+    @Test func renameKeepsCarriageReturnOnHeading() {
+        #expect(LibraryDocumentEditor.renamed("# Old\r\nBody\r\n", to: "New") == "# New\r\nBody\r\n")
+    }
+
     // MARK: Save
+
+    @Test func saveKeepsExtendedAttributes() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try writeLog(in: folder)
+        let name = "com.apple.metadata:_kMDItemUserTags"
+        let value = Array("tag".utf8)
+        #expect(setxattr(url.path, name, value, value.count, 0, 0) == 0)
+        _ = try LibraryDocumentEditor.saveBody("\nNew\n", of: try LibraryDocument.load(url))
+        var buffer = [UInt8](repeating: 0, count: 16)
+        let size = getxattr(url.path, name, &buffer, buffer.count, 0, 0)
+        #expect(size == value.count)
+        #expect(Array(buffer.prefix(max(size, 0))) == value)
+    }
 
     @Test func saveReplacesOnlyTheBody() throws {
         let folder = try TempFolder.make()

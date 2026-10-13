@@ -82,7 +82,10 @@ enum LibraryDocumentEditor {
     /// Saves `body` under the file's current frontmatter. Refuses when the
     /// file changed since `document` was loaded (unless `overwrite`) or no
     /// longer exists. The frontmatter is read from disk at save time, so an
-    /// overwrite never undoes a rename made in the meantime.
+    /// overwrite never undoes a rename made in the meantime. Overwrite writes
+    /// the caller's body as is, so an H1 renamed meanwhile is replaced by the
+    /// body's H1 (the frontmatter title survives). The UI disables rename
+    /// while editing.
     static func saveBody(_ body: String, of document: LibraryDocument, overwrite: Bool = false) throws -> SaveOutcome {
         let url = document.url
         guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
@@ -131,8 +134,18 @@ enum LibraryDocumentEditor {
 
     private static func replacingHeading(in body: String, with title: String) -> (String, Bool) {
         var lines = body.components(separatedBy: "\n")
-        guard let index = lines.firstIndex(where: { $0.hasPrefix("# ") }) else { return (body, false) }
-        lines[index] = "# " + title
+        var fence: Character?
+        var found: Int?
+        for (i, line) in lines.enumerated() {
+            let trimmed = line.drop { $0 == " " }
+            if let marker = trimmed.first, marker == "`" || marker == "~", trimmed.hasPrefix(String(repeating: marker, count: 3)) {
+                if fence == nil { fence = marker } else if fence == marker { fence = nil }
+                continue
+            }
+            if fence == nil, line.hasPrefix("# ") { found = i; break }
+        }
+        guard let index = found else { return (body, false) }
+        lines[index] = "# " + title + (lines[index].hasSuffix("\r") ? "\r" : "")
         return (lines.joined(separator: "\n"), true)
     }
 }
