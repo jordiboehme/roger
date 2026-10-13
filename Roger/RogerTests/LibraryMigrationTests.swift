@@ -30,6 +30,15 @@ struct LibraryMigrationTests {
         #expect(date.map { Calendar.current.component(.month, from: $0) } == 10)
     }
 
+    @Test func detectsFoldersInsideTheLibrary() {
+        let layout = LibraryLayout(root: URL(fileURLWithPath: "/tmp/lib/Roger"))
+        #expect(LibraryMigration.isInsideLibrary(layout.kindFolder(.meetings), layout: layout))
+        #expect(LibraryMigration.isInsideLibrary(URL(fileURLWithPath: "/tmp/lib/Roger/Old/"), layout: layout))
+        #expect(LibraryMigration.isInsideLibrary(layout.root, layout: layout))
+        #expect(!LibraryMigration.isInsideLibrary(URL(fileURLWithPath: "/tmp/lib/Roger Recordings"), layout: layout))
+        #expect(!LibraryMigration.isInsideLibrary(URL(fileURLWithPath: "/tmp/lib"), layout: layout))
+    }
+
     @Test func unparsableNameFallsBackToCreationDate() throws {
         let root = try tempRoot()
         let old = root.appendingPathComponent("Weekly sync")

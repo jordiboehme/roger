@@ -85,7 +85,7 @@ struct PresetsSettingsView: View {
             if preset.wrappedValue.isBuiltIn {
                 Section {
                     HStack {
-                        Text("Built-in presets are read-only — language and output settings can still be customized.")
+                        Text("Built-in presets are read-only. Language and output settings can still be customized.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -202,7 +202,7 @@ struct PresetsSettingsView: View {
 
             if aiUnsupported, let code = pinnedCode {
                 warningRow(
-                    "Apple Intelligence doesn't support \(WhisperLanguage.displayName(for: code)) — the AI step in this preset will fail. Switch AI provider in Settings › AI Provider, or pick a different language."
+                    "Apple Intelligence doesn't support \(WhisperLanguage.displayName(for: code)) - the AI step in this preset will fail. Switch AI provider in Settings › AI Provider, or pick a different language."
                 )
             }
         } header: {

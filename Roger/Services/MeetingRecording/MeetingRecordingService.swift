@@ -213,6 +213,7 @@ final class MeetingRecordingService {
             // markers.json (written on every screenshot drop) carries the
             // exact session start; the folder creation date is the fallback.
             let started = MeetingCheckpointStore.load(from: url)?.sessionStartedAt
+                ?? LibraryMigration.sessionDate(for: url)
                 ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
                 ?? Date()
             result.append(MeetingSession(id: UUID(), folder: url, startedAt: started))
@@ -601,7 +602,7 @@ final class MeetingRecordingService {
             return
         }
 
-        if !appState.keepMeetingAudio {
+        if !appState.keepMeetingAudio, !paragraphs.isEmpty {
             // Only after the transcript exists: the CAF chunks are already gone,
             // so these archives were the last copy of the audio.
             try? FileManager.default.removeItem(at: micArchive)

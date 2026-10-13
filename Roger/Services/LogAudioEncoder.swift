@@ -28,8 +28,6 @@ enum LogAudioEncoder {
             AVNumberOfChannelsKey: 1,
             AVEncoderBitRateKey: 32_000,
         ]
-        // If AVAudioFile rejects these settings at 16 kHz, drop the
-        // AVEncoderBitRateKey line and let the encoder pick the bit rate.
         // The file is closed when `file` goes out of scope at the end of this function.
         let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         try file.write(from: buffer)

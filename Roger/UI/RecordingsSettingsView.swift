@@ -79,9 +79,10 @@ struct RecordingsSettingsView: View {
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Spacer()
-                                        Button("Remove") {
+                                        Button("Forget") {
                                             state.extraScanFolders.removeAll { $0 == folder }
                                         }
+                                        .help("Stop looking for meetings in this folder. No files are deleted.")
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
                                     }
@@ -229,6 +230,7 @@ struct RecordingsSettingsView: View {
         }
         .onAppear { refresh() }
         .onChange(of: state.libraryRoot) { _, _ in refresh() }
+        .onChange(of: state.extraScanFolders) { _, _ in refresh() }
     }
 
     private func revealLibraryFolder() {

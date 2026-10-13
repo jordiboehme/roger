@@ -20,6 +20,14 @@ enum LibraryMigration {
         return MeetingSession.folderNameFormatter.date(from: String(name.prefix(16)))
     }
 
+    /// True when `folder` is the library's Meetings folder or lies inside the library root.
+    static func isInsideLibrary(_ folder: URL, layout: LibraryLayout) -> Bool {
+        let path = folder.standardizedFileURL.path
+        let root = layout.root.standardizedFileURL.path
+        let meetings = layout.kindFolder(.meetings).standardizedFileURL.path
+        return path == meetings || path == root || path.hasPrefix(root + "/")
+    }
+
     static func plan(sessionFolders: [URL], layout: LibraryLayout) -> [Move] {
         sessionFolders.map { folder in
             let date = sessionDate(for: folder)

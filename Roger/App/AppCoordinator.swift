@@ -159,11 +159,11 @@ final class AppCoordinator {
         let layout = appState.libraryLayout
         let oldMeetings = appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
         let sessions = MeetingSessionScanner.sessionFolders(in: oldMeetings, maxDepth: 1)
-        if !sessions.isEmpty {
+        if !sessions.isEmpty, !LibraryMigration.isInsideLibrary(oldMeetings, layout: layout) {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "Move your meetings to the Roger library?"
-            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(sessions.count) meetings from \(oldMeetings.path) there? If you keep them in place, Roger still finds them."
+            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(sessions.count) \(sessions.count == 1 ? "meeting" : "meetings") from \(oldMeetings.path) there? If you keep them in place, Roger still finds them."
             alert.addButton(withTitle: "Move")
             alert.addButton(withTitle: "Keep in Place")
             if alert.runModal() == .alertFirstButtonReturn {
@@ -443,6 +443,7 @@ final class AppCoordinator {
                             return
                         }
                         appState.lastTranscription = safeText
+                        appState.lastLogEntryURL = nil
                         floatingPanel.hide()
                         audioLevelMeter.reset()
                         appState.dictationState = .error("AI declined this dictation — copy the transcript from the menu bar")
@@ -513,6 +514,14 @@ final class AppCoordinator {
         language: String?,
         samples: [Float]?
     ) async {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            logger.info("Log entry skipped: empty text after processing")
+            appState.lastLogEntryURL = nil
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error("No speech detected - try speaking louder or closer to the mic")
+            return
+        }
         appState.lastTranscription = text
         let entry = LogEntry(text: text, startedAt: startedAt, endedAt: endedAt, presetName: preset.name, language: language)
         do {
