@@ -6,7 +6,7 @@
 
 Speak. It types. Anywhere on your Mac.
 
-Roger lives in your menu bar and turns your voice into text — in any app. Hold a hotkey, say what you need and it appears at your cursor. No cloud. No latency. Just your voice and Apple Silicon.
+Roger lives in your menu bar and turns your voice into text - in any app. Hold a hotkey, say what you need and it appears at your cursor. No cloud. No latency. Just your voice and Apple Silicon.
 
 **Your voice stays on your machine.** Speech recognition runs entirely on-device using the Neural Engine. Cloud AI is available for text cleanup but always opt-in.
 
@@ -14,31 +14,31 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 ## Features
 
-- **Near-instant results** — release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
-- **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
+- **Near-instant results** - release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
+- **Works everywhere** - Notes, Warp, VS Code, Slack, browsers - if it has a cursor, Roger can type into it
 - **Drop files to transcribe** - drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a Markdown transcript into the library, or next to the source file if you prefer. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
-- **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
+- **Record meetings** - capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps - ready for your knowledge base. Saved to your library, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Slide checkpoints** - drop a screenshot of a shared slide onto the recording overlay and Roger saves it next to a timestamped transcript segment of the audio since the last drop, while the recording keeps running. The session folder becomes a chronological record of what was said and shown, ready for an AI agent
-- **Mute yourself everywhere** — while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once — no per-app setup, no plugin
-- **Completely private** — Powered by [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), a post-trained [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), via [FluidAudio](https://github.com/FluidInference/FluidAudio) on Apple Silicon. Your audio never leaves your Mac
-- **Speaks your language** — English and German with automatic detection, plus 23 more European languages via Parakeet's multilingual model
-- **Cheat-sheet menu bar** — one glance at the popup tells you which Caps Lock combo maps to which preset
-- **Quick copy** — click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
-- **Modifier-bound presets** — bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
-- **Switch presets mid-sentence** — hold Caps Lock and tap ← / → to swap how Roger will process what you're still dictating. The overlay updates live
+- **Mute yourself everywhere** - while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once - no per-app setup, no plugin
+- **Completely private** - Powered by [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), a post-trained [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), via [FluidAudio](https://github.com/FluidInference/FluidAudio) on Apple Silicon. Your audio never leaves your Mac
+- **Speaks your language** - English and German with automatic detection, plus 23 more European languages via Parakeet's multilingual model
+- **Cheat-sheet menu bar** - one glance at the popup tells you which Caps Lock combo maps to which preset
+- **Quick copy** - click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
+- **Modifier-bound presets** - bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
+- **Switch presets mid-sentence** - hold Caps Lock and tap ← / → to swap how Roger will process what you're still dictating. The overlay updates live
 - **Eight built-in presets** - Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Log saves what you say as a log entry instead of typing it. Or build your own with a custom prompt and dictionary
-- **Bring your own AI** — Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
-- **Auto-submit prompts** — configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
-- **Pick your mic** — dedicated Microphone tab lets you pin a specific input or follow the system default
-- **Caps Lock push-to-talk** — hold to listen, release to transcribe. Toggle mode and configurable minimum duration if you prefer
-- **Session safety** — a configurable recording cap (default two minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
+- **Bring your own AI** - Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
+- **Auto-submit prompts** - configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
+- **Pick your mic** - dedicated Microphone tab lets you pin a specific input or follow the system default
+- **Caps Lock push-to-talk** - hold to listen, release to transcribe. Toggle mode and configurable minimum duration if you prefer
+- **Session safety** - a configurable recording cap (default two minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
 - **Stays out of the way** - menu bar only, no Dock icon except while the library window is open. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
 
 ## Installation
 
 ### Homebrew (recommended)
 
-New to [Homebrew](https://brew.sh/)? It's the standard macOS package manager — install it first, then:
+New to [Homebrew](https://brew.sh/)? It's the standard macOS package manager - install it first, then:
 
 ```bash
 brew tap jordiboehme/tap
@@ -69,7 +69,7 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 
 ## How It Works
 
-Roger captures audio from your chosen input device — system default or a specific mic pinned in Settings — transcribes it on-device using [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) (built on [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
+Roger captures audio from your chosen input device - system default or a specific mic pinned in Settings - transcribes it on-device using [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) (built on [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
 
 ### Transcribing files
 
@@ -131,9 +131,9 @@ For a dropped file, `resource` points at the source file and the recording time 
 | **Caveman** | Drops articles and pleasantries. Short, blunt, fragments OK. |
 | **Yoda** | Rewrites in Yoda's speech pattern. Fun, you will have. |
 | **Emoji** | Sprinkles emojis through the text the way a friend would text. |
-| **Custom** | Your own pipeline — pick which steps run, write your own prompts, add a dictionary. |
+| **Custom** | Your own pipeline - pick which steps run, write your own prompts, add a dictionary. |
 
-Each preset also controls what lands at the cursor: append nothing, a space or a newline, and optionally press Return after insertion — useful for firing dictated prompts directly into a chatbox.
+Each preset also controls what lands at the cursor: append nothing, a space or a newline, and optionally press Return after insertion - useful for firing dictated prompts directly into a chatbox.
 
 ### AI Providers
 
@@ -154,4 +154,4 @@ Roger is built around a simple principle: your voice is yours.
 
 ## License
 
-MIT License — See [LICENSE](LICENSE) for details.
+MIT License - See [LICENSE](LICENSE) for details.
