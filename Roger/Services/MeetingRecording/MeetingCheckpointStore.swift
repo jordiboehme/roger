@@ -72,7 +72,7 @@ final class MeetingCheckpointStore {
         stemFormatter.string(from: date)
     }
 
-    static func markersURL(in folder: URL) -> URL {
+    nonisolated static func markersURL(in folder: URL) -> URL {
         folder.appendingPathComponent("markers.json")
     }
 
@@ -83,17 +83,13 @@ final class MeetingCheckpointStore {
         return e
     }()
 
-    private static let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
-    }()
-
     /// Reads a session folder's markers.json. Nil when absent or corrupt —
     /// finalisation then behaves as if no screenshots were dropped.
-    static func load(from folder: URL) -> MeetingCheckpointFile? {
+    nonisolated static func load(from folder: URL) -> MeetingCheckpointFile? {
         let url = markersURL(in: folder)
         guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         do {
             return try decoder.decode(MeetingCheckpointFile.self, from: data)
         } catch {
