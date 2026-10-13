@@ -327,6 +327,51 @@ struct LibraryActionsTests {
         #expect(spelled.limited(to: other).urls.count == 1)
     }
 
+    @Test func onlyAudioAndVideoAreOpened() throws {
+        func opening(_ name: String) -> LibraryActions.MediaOpening {
+            LibraryActions.mediaOpening(for: URL(fileURLWithPath: "/RogerFixtures/\(name)"))
+        }
+        #expect(opening("mic.m4a") == .open)
+        #expect(opening("talk.mp4") == .open)
+        #expect(opening("run.command") == .reveal)
+        #expect(opening("Tool.app") == .reveal)
+        #expect(opening("run.sh") == .reveal)
+        #expect(opening("noextension") == .reveal)
+
+        // A link named like audio that points at a script is not opened.
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let script = root.appendingPathComponent("x.command")
+        try touch(script)
+        let link = root.appendingPathComponent("mic.m4a")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: script)
+        #expect(LibraryActions.mediaOpening(for: link) == .reveal)
+    }
+
+    @Test func imagesOpenOnlyInsideTheirFolder() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let folder = root.appendingPathComponent("session", isDirectory: true)
+        let image = folder.appendingPathComponent("shot.png")
+        try touch(image)
+        #expect(LibraryActions.mayOpenImage(image, inside: folder))
+
+        let outside = root.appendingPathComponent("other.png")
+        try touch(outside)
+        #expect(!LibraryActions.mayOpenImage(outside, inside: folder))
+
+        let link = folder.appendingPathComponent("link.png")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+        #expect(!LibraryActions.mayOpenImage(link, inside: folder))
+
+        // A link to a file in the same folder is refused too.
+        let inner = folder.appendingPathComponent("inner.png")
+        try FileManager.default.createSymbolicLink(at: inner, withDestinationURL: image)
+        #expect(!LibraryActions.mayOpenImage(inner, inside: folder))
+
+        #expect(!LibraryActions.mayOpenImage(folder.appendingPathComponent("missing.png"), inside: folder))
+    }
+
     @Test func moveToTrashReportsFailuresAndTriesEveryURL() {
         let a = URL(fileURLWithPath: "/RogerFixtures/a.md")
         let b = URL(fileURLWithPath: "/RogerFixtures/b.md")

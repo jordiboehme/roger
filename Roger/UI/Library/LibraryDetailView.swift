@@ -125,19 +125,28 @@ struct LibraryItemDetail: View {
     @ViewBuilder private var audioButton: some View {
         if item.audioFiles.count == 1, let url = item.audioFiles.first {
             Button {
-                NSWorkspace.shared.open(url)
+                Self.openMedia(url)
             } label: {
                 Label("Open Audio", systemImage: "play.circle")
             }
         } else if item.audioFiles.count > 1 {
             Menu {
                 ForEach(item.audioFiles, id: \.self) { url in
-                    Button(url.lastPathComponent) { NSWorkspace.shared.open(url) }
+                    Button(url.lastPathComponent) { Self.openMedia(url) }
                 }
             } label: {
                 Label("Open Audio", systemImage: "play.circle")
             }
             .fixedSize()
+        }
+    }
+
+    /// Opens audio or video; any other file is only shown in the Finder,
+    /// so a `sources` entry can never run a script or an app.
+    private static func openMedia(_ url: URL) {
+        switch LibraryActions.mediaOpening(for: url) {
+        case .open: NSWorkspace.shared.open(url)
+        case .reveal: NSWorkspace.shared.activateFileViewerSelecting([url])
         }
     }
 
@@ -158,9 +167,11 @@ struct LibraryItemDetail: View {
                     if item.kind == .meeting {
                         LibraryExtraFilesSection(item: item)
                     }
+                    let baseURL = item.url.deletingLastPathComponent()
                     LibraryMarkdownView(
-                        blocks: LibraryMarkdown.blocks(from: document.body, baseURL: item.url.deletingLastPathComponent()),
-                        terms: model.searchTerms
+                        blocks: LibraryMarkdown.blocks(from: document.body, baseURL: baseURL),
+                        terms: model.searchTerms,
+                        baseURL: baseURL
                     )
                 }
                 .padding(16)
@@ -249,9 +260,15 @@ struct LibraryItemDetail: View {
         titleFocused = true
     }
 
+    /// Checks the active meeting folder again, like `save`: a recording
+    /// may have started in this folder since the rename began.
     private func commitRename() {
         isRenaming = false
         guard titleDraft != item.title else { return }
+        guard canEdit else {
+            actionError = LibraryModel.EditSaveOutcome.notEditable.failureMessage
+            return
+        }
         do {
             try LibraryDocumentEditor.rename(fileAt: item.url, to: titleDraft)
             reloadNow()
@@ -266,6 +283,8 @@ struct LibraryItemDetail: View {
 struct LibraryMarkdownView: View {
     let blocks: [LibraryMarkdownBlock]
     let terms: [String]
+    /// The folder of the Markdown file; screenshots open only from inside it.
+    let baseURL: URL
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 10) {
@@ -279,7 +298,7 @@ struct LibraryMarkdownView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let alt, let url):
-                    LibraryThumbnail(url: url, alt: alt)
+                    LibraryThumbnail(url: url, alt: alt, folder: baseURL)
                 }
             }
         }
@@ -292,6 +311,8 @@ struct LibraryMarkdownView: View {
 struct LibraryThumbnail: View {
     let url: URL
     let alt: String
+    /// The folder of the Markdown file.
+    let folder: URL
     @State private var image: NSImage?
 
     var body: some View {
@@ -302,7 +323,7 @@ struct LibraryThumbnail: View {
                     .scaledToFit()
                     .frame(maxWidth: 360, maxHeight: 240, alignment: .leading)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .onTapGesture { Self.openInPreview(url) }
+                    .onTapGesture { Self.openInPreview(url, folder: folder) }
                     .help(alt)
             } else {
                 Label(alt.isEmpty ? url.lastPathComponent : alt, systemImage: "photo")
@@ -316,6 +337,8 @@ struct LibraryThumbnail: View {
         let url = url
         image = nil
         let cgImage = await Task.detached { Self.thumbnail(of: url, maxPixelSize: 720) }.value
+        // The view may show another image by now; an old one must not win.
+        guard !Task.isCancelled else { return }
         image = cgImage.map { NSImage(cgImage: $0, size: .zero) }
     }
 
@@ -329,7 +352,11 @@ struct LibraryThumbnail: View {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
-    private static func openInPreview(_ url: URL) {
+    /// Checks the file again right before opening: no symlink, and still
+    /// inside the Markdown file's folder. Otherwise nothing happens.
+    private static func openInPreview(_ url: URL, folder: URL) {
+        guard LibraryActions.mayOpenImage(url, inside: folder) else { return }
+        let url = LibraryPath.canonicalURL(url)
         guard let preview = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Preview") else {
             NSWorkspace.shared.activateFileViewerSelecting([url])
             return

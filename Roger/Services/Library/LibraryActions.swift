@@ -1,5 +1,6 @@
 import Foundation
 import os
+import UniformTypeIdentifiers
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "LibraryActions")
 
@@ -159,6 +160,35 @@ enum LibraryActions {
         let transcript = folder.appendingPathComponent("transcript.md")
         guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return false }
         return LibraryFrontmatterParser.parse(text)?.tags.contains("meeting") ?? false
+    }
+
+    enum MediaOpening: Equatable {
+        /// Open it in the default app.
+        case open
+        /// Only show it in the Finder.
+        case reveal
+    }
+
+    /// How "Open Audio" handles a file: only audio or video is opened, so a
+    /// `sources` entry can never start a script or an app. The file the URL
+    /// points to (after symlinks) must be audio or video too.
+    static func mediaOpening(for url: URL) -> MediaOpening {
+        let target = URL(fileURLWithPath: LibraryPath.canonical(url))
+        let isMedia = [url, target].allSatisfy { candidate in
+            guard let type = UTType(filenameExtension: candidate.pathExtension) else { return false }
+            return type.conforms(to: .audiovisualContent)
+        }
+        return isMedia ? .open : .reveal
+    }
+
+    /// True when a screenshot may be opened in Preview: it is no symlink and
+    /// it still lies inside `folder` (the folder of the Markdown file).
+    /// Checked again right before opening, as the file may have changed.
+    static func mayOpenImage(_ url: URL, inside folder: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]),
+              values.isSymbolicLink != true
+        else { return false }
+        return LibraryPath.isPath(LibraryPath.canonical(url), inside: LibraryPath.canonical(folder))
     }
 
     /// Moves each URL to the Trash and returns the ones that failed. Tries
