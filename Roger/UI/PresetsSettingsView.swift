@@ -37,6 +37,12 @@ struct PresetsSettingsView: View {
                     }
                     Text(preset.name)
                     Spacer()
+                    if preset.output == .logEntry {
+                        Image(systemName: "book.closed")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("Saves to the log")
+                    }
                     if preset.excludedFromRotation {
                         Image(systemName: "eye.slash")
                             .font(.caption2)
@@ -146,16 +152,27 @@ struct PresetsSettingsView: View {
             languageSection(preset: preset)
 
             Section {
-                Picker("Append at end", selection: preset.trailingCharacter) {
-                    ForEach(TrailingCharacter.allCases) { choice in
+                Picker("Output", selection: preset.output) {
+                    ForEach(PresetOutput.allCases) { choice in
                         Text(choice.displayName).tag(choice)
                     }
                 }
-                Toggle("Press Return after insertion", isOn: preset.sendReturnAfterInsert)
+                if preset.wrappedValue.output == .logEntry {
+                    Toggle("Keep audio", isOn: preset.keepAudio)
+                } else {
+                    Picker("Append at end", selection: preset.trailingCharacter) {
+                        ForEach(TrailingCharacter.allCases) { choice in
+                            Text(choice.displayName).tag(choice)
+                        }
+                    }
+                    Toggle("Press Return after insertion", isOn: preset.sendReturnAfterInsert)
+                }
             } header: {
                 Text("Output")
             } footer: {
-                Text("Use Return to submit the text automatically — handy for sending a prompt to a chat box or chat app.")
+                Text(preset.wrappedValue.output == .logEntry
+                     ? "Saves the text as a Markdown file in the Logs folder of your Roger library. Nothing is typed. Keep audio also saves the recording as an .m4a file next to it."
+                     : "Use Return to submit the text automatically. Handy for sending a prompt to a chat box or chat app.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
