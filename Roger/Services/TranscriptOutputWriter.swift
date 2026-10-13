@@ -16,7 +16,8 @@ enum TranscriptOutputWriter {
 
     /// Writes a `.md` file derived from `source`. The file name is
     /// `<sourceLastPathComponent>.md` (e.g. `meeting.m4a.md`). If that file
-    /// already exists, appends `-1`, `-2` … until a free name is found.
+    /// already exists, adds ` 1`, ` 2` … (like the rest of the library)
+    /// until a free name is found.
     /// `content` receives the final destination so it can point back at the
     /// source with a relative path. Returns the URL of the written file.
     static func write(
@@ -50,7 +51,7 @@ enum TranscriptOutputWriter {
         return destination
     }
 
-    /// Walks `base`, `base-1`, `base-2` … until a file doesn't exist.
+    /// Walks `base`, `base 1`, `base 2` … until a file doesn't exist.
     /// Handles multi-dot filenames (`meeting.m4a.md`) by inserting the
     /// suffix before the final extension only.
     private static func uniqueDestination(for url: URL) -> URL {
@@ -59,18 +60,20 @@ enum TranscriptOutputWriter {
 
         let dir = url.deletingLastPathComponent()
         let full = url.lastPathComponent
-        // Split into stem + final extension so we append `-N` to the stem.
+        // Split into stem + final extension so we append ` N` to the stem.
         let ext = (full as NSString).pathExtension
         let stem = (full as NSString).deletingPathExtension
 
         for i in 1..<1000 {
-            let candidateName = ext.isEmpty ? "\(stem)-\(i)" : "\(stem)-\(i).\(ext)"
+            let candidateName = ext.isEmpty ? "\(stem) \(i)" : "\(stem) \(i).\(ext)"
             let candidate = dir.appendingPathComponent(candidateName)
             if !fm.fileExists(atPath: candidate.path) {
                 return candidate
             }
         }
-        // Extreme fallback — if 1000 collisions happen, overwrite the base.
-        return url
+        // Extreme fallback after 1000 collisions: a unique name, never an
+        // overwrite.
+        let unique = "\(stem) \(UUID().uuidString)"
+        return dir.appendingPathComponent(ext.isEmpty ? unique : "\(unique).\(ext)")
     }
 }

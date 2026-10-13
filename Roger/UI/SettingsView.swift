@@ -661,7 +661,7 @@ struct FileTranscriptionSettingsView: View {
     }
 
     private var filenameRuleText: String {
-        "Saved as <filename>.md. Existing files are never overwritten. Roger adds -1, -2 and so on."
+        "Saved as <filename>.md. Existing files are never overwritten. Roger adds a number."
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {

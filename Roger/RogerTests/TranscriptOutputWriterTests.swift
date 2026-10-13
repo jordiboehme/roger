@@ -25,6 +25,18 @@ struct TranscriptOutputWriterTests {
         #expect(url.path == root.appendingPathComponent("talk.mp4.md").path)
     }
 
+    @Test func collisionAddsSpaceAndNumberBeforeMd() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let source = root.appendingPathComponent("talk.mp4")
+        let layout = LibraryLayout(root: root.appendingPathComponent("Lib"))
+        let names = try (0..<3).map { _ in
+            try TranscriptOutputWriter.write(source: source, location: .alongsideSource, layout: layout) { _ in "body" }
+                .lastPathComponent
+        }
+        #expect(names == ["talk.mp4.md", "talk.mp4 1.md", "talk.mp4 2.md"])
+    }
+
     @Test func legacyCustomFolderValueFallsBackToLibrary() {
         #expect(FileTranscriptOutputLocation(rawValue: "customFolder") == nil)
         #expect(FileTranscriptOutputLocation.allCases == [.library, .alongsideSource])
