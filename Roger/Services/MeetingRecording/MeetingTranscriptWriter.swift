@@ -18,6 +18,8 @@ enum MeetingTranscriptWriter {
         let language: String?
         let micPresent: Bool
         let systemPresent: Bool
+        /// False when the audio files are deleted after the transcript is written; `sources` is left out then.
+        let audioKept: Bool
         /// True when at least one track went through speaker diarization.
         let diarized: Bool
         let diarizationFailed: Bool
@@ -44,11 +46,13 @@ enum MeetingTranscriptWriter {
         let session = metadata.session
         let endedAt = session.startedAt.addingTimeInterval(TimeInterval(metadata.durationSeconds))
         var sources: [TranscriptFrontmatter.Source] = []
-        if metadata.micPresent {
-            sources.append(.init(id: "mic", resource: session.micArchiveURL.lastPathComponent))
-        }
-        if metadata.systemPresent {
-            sources.append(.init(id: "system", resource: session.systemArchiveURL.lastPathComponent))
+        if metadata.audioKept {
+            if metadata.micPresent {
+                sources.append(.init(id: "mic", resource: session.micArchiveURL.lastPathComponent))
+            }
+            if metadata.systemPresent {
+                sources.append(.init(id: "system", resource: session.systemArchiveURL.lastPathComponent))
+            }
         }
         var fm = TranscriptFrontmatter(
             title: "Meeting \(displayDate(session))",

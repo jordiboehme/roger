@@ -136,18 +136,6 @@ final class AppState {
 
     // MARK: - Meeting Recording Settings
 
-    /// Folder where meeting-recording session subfolders are written. nil
-    /// resolves to `~/Documents/Roger Recordings/` (the recommended default
-    /// — the Recordings settings tab lets the user pick another).
-    var meetingRecordingsFolder: URL? {
-        didSet {
-            if let url = meetingRecordingsFolder {
-                defaults.set(url.path, forKey: "meetingRecordingsFolder")
-            } else {
-                defaults.removeObject(forKey: "meetingRecordingsFolder")
-            }
-        }
-    }
     /// How often the per-track CAF chunk file is rolled. Caps long-meeting
     /// memory growth and bounds blast radius from a mid-recording crash.
     var meetingMaxSegmentMinutes: Int {
@@ -378,11 +366,6 @@ final class AppState {
         self.keepMeetingAudio = defaults.object(forKey: "keepMeetingAudio") as? Bool ?? true
         self.libraryMigrationDone = defaults.bool(forKey: "libraryMigrationDone")
 
-        if let path = defaults.string(forKey: "meetingRecordingsFolder") {
-            self.meetingRecordingsFolder = URL(fileURLWithPath: path)
-        } else {
-            self.meetingRecordingsFolder = nil
-        }
         let storedSegmentMinutes = defaults.object(forKey: "meetingMaxSegmentMinutes") as? Int
         self.meetingMaxSegmentMinutes = storedSegmentMinutes ?? 30
         let storedDiarizeSystem = defaults.object(forKey: "meetingDiarizeSystem") as? Bool

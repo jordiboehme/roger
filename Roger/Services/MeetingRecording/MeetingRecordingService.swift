@@ -89,10 +89,11 @@ final class MeetingRecordingService {
 
         state = .starting
 
-        let parent = resolvedRecordingsFolder()
+        let startedAt = Date()
+        let parent = appState.libraryLayout.monthFolder(.meetings, for: startedAt)
         let session: MeetingSession
         do {
-            session = try MeetingSession.create(in: parent)
+            session = try MeetingSession.create(in: parent, startedAt: startedAt)
         } catch {
             state = .error(.audioWriterFailed(error.localizedDescription))
             throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)
@@ -199,12 +200,13 @@ final class MeetingRecordingService {
     /// transcript.md, indicating a prior crash mid-recording. Returns the
     /// list. Caller can prompt the user, then call `finaliseRecovered(_:)`.
     func unfinalisedSessions() -> [MeetingSession] {
-        let parent = resolvedRecordingsFolder()
         let fm = FileManager.default
-        guard fm.fileExists(atPath: parent.path) else { return [] }
-        let contents = (try? fm.contentsOfDirectory(at: parent, includingPropertiesForKeys: [.creationDateKey])) ?? []
+        let folders = MeetingSessionScanner.allSessionFolders(
+            layout: appState.libraryLayout,
+            extraFolders: appState.extraScanFolders
+        )
         var result: [MeetingSession] = []
-        for url in contents where (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+        for url in folders {
             let cafs = (try? fm.contentsOfDirectory(atPath: url.path).filter { $0.hasSuffix(".caf") }) ?? []
             let transcriptExists = fm.fileExists(atPath: url.appendingPathComponent("transcript.md").path)
             guard !cafs.isEmpty, !transcriptExists else { continue }
@@ -401,15 +403,6 @@ final class MeetingRecordingService {
 
     // MARK: - Internals
 
-    private func resolvedRecordingsFolder() -> URL {
-        if let url = appState.meetingRecordingsFolder {
-            return url
-        }
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents")
-        return documents.appendingPathComponent("Roger Recordings", isDirectory: true)
-    }
-
     private func consume(
         stream: AsyncStream<SendableAudioBuffer>,
         into writer: SegmentedAudioFileWriter
@@ -567,6 +560,7 @@ final class MeetingRecordingService {
             language: output.language,
             micPresent: micPresent,
             systemPresent: systemPresent,
+            audioKept: appState.keepMeetingAudio,
             diarized: (micPresent && finalConfig.diarizeMic) || (systemPresent && finalConfig.diarizeSystem),
             diarizationFailed: output.diarizationFailed
         )
@@ -605,6 +599,13 @@ final class MeetingRecordingService {
             state = .error(.finalisationFailed(error.localizedDescription))
             lastSession = session
             return
+        }
+
+        if !appState.keepMeetingAudio {
+            // Only after the transcript exists: the CAF chunks are already gone,
+            // so these archives were the last copy of the audio.
+            try? FileManager.default.removeItem(at: micArchive)
+            try? FileManager.default.removeItem(at: systemArchive)
         }
 
         if sleepInterrupted {
