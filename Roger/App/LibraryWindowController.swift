@@ -98,8 +98,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         isOpen = false
-        // No reloads while nobody looks at the list.
-        model?.pause()
+        // Ends an edit without changes (so the list is not locked on the
+        // next opening), then no reloads while nobody looks at the list.
+        model?.windowClosed()
         NSApp.setActivationPolicy(.accessory)
     }
 

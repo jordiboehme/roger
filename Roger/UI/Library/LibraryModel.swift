@@ -131,6 +131,16 @@ final class LibraryModel {
         searchTask?.cancel()
     }
 
+    /// The window closed. An edit without changes ends, so the list is not
+    /// locked when the window opens again; unsaved text was already saved
+    /// or dropped by the close question. Then `pause()`.
+    func windowClosed() {
+        if isEditing, !hasUnsavedChanges {
+            editingItem = nil
+        }
+        pause()
+    }
+
     /// The window opens again: follow changes and load once.
     func resume() {
         guard isPaused else { return }

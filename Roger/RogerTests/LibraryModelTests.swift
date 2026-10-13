@@ -226,6 +226,28 @@ struct LibraryModelTests {
         model.stop()
     }
 
+    /// Closing the window ends an edit without changes; unsaved text stays.
+    @Test func windowClosedEndsAnUnchangedEdit() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let file = folder.appendingPathComponent("note.md")
+        try "---\ntitle: \"note\"\n---\n# note\nold\n".write(to: file, atomically: true, encoding: .utf8)
+        let item = LibraryFixtures.item("note", folder: folder.path)
+        let model = LibraryModel(index: FakeLibraryIndex([item]))
+
+        model.beginEditing(item, document: try LibraryDocument.load(file))
+        model.windowClosed()
+        #expect(!model.isEditing)
+
+        model.resume()
+        model.beginEditing(item, document: try LibraryDocument.load(file))
+        model.draft = "# note\nnew\n"
+        model.windowClosed()
+        #expect(model.isEditing)
+        #expect(model.hasUnsavedChanges)
+        model.stop()
+    }
+
     /// A meeting that started recording or finalising in the folder after
     /// editing began must not be written to.
     @Test func saveEditRefusesAnActiveSessionFolder() throws {
