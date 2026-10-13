@@ -8,7 +8,31 @@ permissions:
   contents: write
 
 jobs:
+  notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check release notes file
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          f="release-notes/${TAG}.md"
+          if [ ! -s "$f" ]; then
+            echo "::error::$f is missing or empty. Write the release notes before tagging."
+            exit 1
+          fi
+          if ! head -n1 "$f" | grep -q '^# '; then
+            echo "::error::$f must start with a '# ' heading (the release motto)."
+            exit 1
+          fi
+
   release:
+    needs: notes
     runs-on: macos-26
     env:
       KEYCHAIN: build.keychain-db
@@ -117,10 +141,12 @@ jobs:
           echo "SHA256: $SHA"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          files: ${{ env.DMG_PATH }}
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$DMG_PATH" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "release-notes/$GITHUB_REF_NAME.md"
 
       - name: Update Homebrew tap
         env:
