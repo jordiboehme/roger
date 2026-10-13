@@ -1009,13 +1009,8 @@ final class AppCoordinator {
         cancelLogSavedIndicator()
         await meetingRecorder.finaliseRecovered(session)
         floatingPanel.hide()
-        // Surface any error from the pipeline (e.g. encode failed, model
-        // unavailable) so the user sees why the banner didn't clear. If
-        // finalisation succeeded the state is .idle and we don't touch the
-        // dictation state.
-        if case .error(let recordingError) = meetingRecorder.state {
-            appState.dictationState = .error(recordingError.errorDescription ?? "Couldn't finalise meeting")
-        }
+        // Errors from the pipeline (e.g. encode failed, model unavailable)
+        // reach the menu bar through `observeRecorderState`.
         refreshPendingMeetingSessions()
     }
 
