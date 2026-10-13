@@ -99,13 +99,14 @@ struct LibraryQuery: Equatable, Sendable {
                 return a.date != b.date ? a.date < b.date : a.id < b.id
             case .title:
                 let order = a.title.localizedStandardCompare(b.title)
-                return order != .orderedSame ? order == .orderedAscending : a.date > b.date
+                if order != .orderedSame { return order == .orderedAscending }
+                return a.date != b.date ? a.date > b.date : a.id < b.id
             case .duration:
                 switch (a.durationSeconds, b.durationSeconds) {
                 case let (x?, y?) where x != y: return x > y
                 case (nil, _?): return false
                 case (_?, nil): return true
-                default: return a.date > b.date
+                default: return a.date != b.date ? a.date > b.date : a.id < b.id
                 }
             }
         }

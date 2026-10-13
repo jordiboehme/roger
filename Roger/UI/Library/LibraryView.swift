@@ -5,6 +5,7 @@ struct LibraryView: View {
     @Bindable var model: LibraryModel
     /// Called when the library folder or the extra folders change.
     let onScopeChange: () -> Void
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationSplitView {
@@ -15,22 +16,31 @@ struct LibraryView: View {
                 if model.sidebar == .unfinished {
                     LibraryUnfinishedListView()
                 } else {
-                    List(model.results, selection: $model.selection) { item in
-                        Text(item.title).lineLimit(1)
-                    }
+                    LibraryListView(model: model)
                 }
             }
             .navigationSplitViewColumnWidth(min: 300, ideal: 380)
-            .overlay {
-                if model.isLoading {
-                    ProgressView("Reading the library")
-                }
-            }
         } detail: {
             Text(model.selection.isEmpty ? "No selection" : "\(model.selection.count) selected")
                 .foregroundStyle(.secondary)
         }
         .navigationTitle("Roger Library")
+        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search titles and text")
+        .searchFocused($searchFocused)
+        .toolbar {
+            ToolbarItemGroup {
+                LibraryDateFilterMenu(model: model)
+                LibrarySortMenu(model: model)
+            }
+        }
+        .background {
+            // Cmd-F focuses the search field. The default Find menu item is
+            // not wired to `.searchable` in an AppKit-hosted window.
+            Button("Find") { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
         .frame(minWidth: 900, minHeight: 520)
         .onChange(of: coordinator.appState.libraryRoot) { _, _ in onScopeChange() }
         .onChange(of: coordinator.appState.extraScanFolders) { _, _ in onScopeChange() }

@@ -84,12 +84,36 @@ enum LibraryFormat {
         return parts.joined(separator: " · ")
     }
 
+    private struct FormatterKey: Hashable {
+        let format: String
+        let calendar: Calendar.Identifier
+        let timeZone: String
+    }
+
+    /// Formatters are costly to build and now run per row, so each format is
+    /// built once per calendar and time zone. Callers only read from them.
+    private final class FormatterCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var formatters: [FormatterKey: DateFormatter] = [:]
+
+        func formatter(_ format: String, calendar: Calendar) -> DateFormatter {
+            let key = FormatterKey(format: format, calendar: calendar.identifier, timeZone: calendar.timeZone.identifier)
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = formatters[key] { return cached }
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.calendar = calendar
+            f.timeZone = calendar.timeZone
+            f.dateFormat = format
+            formatters[key] = f
+            return f
+        }
+    }
+
+    private static let cache = FormatterCache()
+
     static func formatter(_ format: String, calendar: Calendar) -> DateFormatter {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.calendar = calendar
-        f.timeZone = calendar.timeZone
-        f.dateFormat = format
-        return f
+        cache.formatter(format, calendar: calendar)
     }
 }
