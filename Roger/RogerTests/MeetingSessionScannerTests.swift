@@ -3,13 +3,6 @@ import Testing
 @testable import Roger
 
 struct MeetingSessionScannerTests {
-    private func tempRoot() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RogerTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
     private func makeSession(_ folder: URL, files: [String]) throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for name in files {
@@ -18,7 +11,8 @@ struct MeetingSessionScannerTests {
     }
 
     @Test func recognisesSessionFolders() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         try makeSession(root.appendingPathComponent("a"), files: ["mic-001.caf"])
         try makeSession(root.appendingPathComponent("b"), files: ["transcript.md"])
         try makeSession(root.appendingPathComponent("c"), files: ["notes.txt"])
@@ -28,7 +22,8 @@ struct MeetingSessionScannerTests {
     }
 
     @Test func findsNestedSessionsInLibrary() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let layout = LibraryLayout(root: root)
         let meetings = layout.kindFolder(.meetings)
         try makeSession(meetings.appendingPathComponent("2026/10/2026-10-13 09-00"), files: ["mic-001.caf"])
@@ -38,7 +33,8 @@ struct MeetingSessionScannerTests {
     }
 
     @Test func doesNotDescendIntoSessions() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let session = root.appendingPathComponent("2026-10-13 09-00")
         try makeSession(session, files: ["transcript.md"])
         try makeSession(session.appendingPathComponent("nested"), files: ["mic-001.caf"])
@@ -46,14 +42,16 @@ struct MeetingSessionScannerTests {
     }
 
     @Test func respectsMaxDepth() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         try makeSession(root.appendingPathComponent("x/y/z/s"), files: ["mic-001.caf"])
         #expect(MeetingSessionScanner.sessionFolders(in: root, maxDepth: 3).isEmpty)
         #expect(MeetingSessionScanner.sessionFolders(in: root, maxDepth: 4).count == 1)
     }
 
     @Test func combinesLibraryAndLegacyFolders() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let layout = LibraryLayout(root: root.appendingPathComponent("Roger"))
         try makeSession(layout.kindFolder(.meetings).appendingPathComponent("2026/10/new"), files: ["mic-001.caf"])
         let legacy = root.appendingPathComponent("Roger Recordings")
@@ -62,4 +60,5 @@ struct MeetingSessionScannerTests {
             .map(\.lastPathComponent).sorted()
         #expect(names == ["new", "old"])
     }
+
 }

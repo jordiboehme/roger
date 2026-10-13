@@ -3,15 +3,9 @@ import Testing
 @testable import Roger
 
 struct ExternalTranscriptRegistryTests {
-    private func tempRoot() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RogerTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
     @Test func addsAndListsWithoutDuplicates() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let registry = ExternalTranscriptRegistry(fileURL: root.appendingPathComponent("sub/external-transcripts.json"))
         let file = root.appendingPathComponent("talk.mp4.md")
         try Data("x".utf8).write(to: file)
@@ -21,7 +15,8 @@ struct ExternalTranscriptRegistryTests {
     }
 
     @Test func prunesMissingFiles() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let registry = ExternalTranscriptRegistry(fileURL: root.appendingPathComponent("external-transcripts.json"))
         let kept = root.appendingPathComponent("a.md")
         let gone = root.appendingPathComponent("b.md")
@@ -37,7 +32,8 @@ struct ExternalTranscriptRegistryTests {
     }
 
     @Test func missingRegistryIsEmpty() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         #expect(ExternalTranscriptRegistry(fileURL: root.appendingPathComponent("none.json")).existingFiles().isEmpty)
     }
 }

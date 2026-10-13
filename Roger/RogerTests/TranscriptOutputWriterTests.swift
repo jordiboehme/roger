@@ -3,15 +3,9 @@ import Testing
 @testable import Roger
 
 struct TranscriptOutputWriterTests {
-    private func tempRoot() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RogerTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
     @Test func libraryLocationUsesTranscriptsMonthFolder() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let source = root.appendingPathComponent("talk.mp4")
         var c = DateComponents(); c.year = 2026; c.month = 10; c.day = 13; c.hour = 12
         let now = Calendar.current.date(from: c)!
@@ -22,7 +16,8 @@ struct TranscriptOutputWriterTests {
     }
 
     @Test func alongsideSourceWritesNextToSource() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let source = root.appendingPathComponent("talk.mp4")
         let url = try TranscriptOutputWriter.write(
             source: source, location: .alongsideSource, layout: LibraryLayout(root: root.appendingPathComponent("Lib"))

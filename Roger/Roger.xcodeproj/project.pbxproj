@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		03CA8086269DC0AA5D5E24E7 /* DiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31817525D64A7EC3D0642B02 /* DiarizationService.swift */; };
 		052616721F819EF9794D879F /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F3487B8EF5F5008F213858 /* LLMService.swift */; };
+		065B93FE7A30FEEE02F2A248 /* TempFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */; };
 		08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BEFEB2CF66FA6DC5DAC61B /* SettingsView.swift */; };
 		0E414CB4083527AA29288B99 /* MeetingRecordingError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */; };
 		1038DD2220D3268A9CCA4830 /* CapsModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC35482E3E7EAD95223FB31C /* CapsModifier.swift */; };
@@ -95,6 +96,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempFolder.swift; sourceTree = "<group>"; };
 		0609432308A2B9928260FDB7 /* MeetingSegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSegmentWriter.swift; sourceTree = "<group>"; };
 		0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingError.swift; sourceTree = "<group>"; };
 		0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMicMute.swift; sourceTree = "<group>"; };
@@ -316,6 +318,7 @@
 				7537C29BAFB36147CD1A87DE /* LibraryMigrationTests.swift */,
 				5A30F7C94DC4E26D9241B863 /* LogEntryWriterTests.swift */,
 				EB955ABE53B4D393CB7A5F42 /* MeetingSessionScannerTests.swift */,
+				02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */,
 				851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */,
 				6ACC9C36B2DA1F2D731176F9 /* TranscriptOutputWriterTests.swift */,
 			);
@@ -528,6 +531,7 @@
 				A28BD7CDC88DC89908AD59A8 /* LibraryMigrationTests.swift in Sources */,
 				3DC61A2BFB150E7588739A01 /* LogEntryWriterTests.swift in Sources */,
 				C493692E71EADFFD5FFC8AFF /* MeetingSessionScannerTests.swift in Sources */,
+				065B93FE7A30FEEE02F2A248 /* TempFolder.swift in Sources */,
 				2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */,
 				72802E9233C7491CA0DD6F42 /* TranscriptOutputWriterTests.swift in Sources */,
 			);

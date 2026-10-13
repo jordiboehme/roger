@@ -14,13 +14,6 @@ struct LogEntryWriterTests {
         LogEntry(text: text, startedAt: date(14, 32, 5), endedAt: date(14, 32, 38), presetName: "Log", language: "de")
     }
 
-    private func tempRoot() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RogerTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
     @Test func baseNameUsesSeconds() {
         #expect(LogEntryWriter.baseName(for: date(14, 32, 5)) == "2026-10-13 14-32-05")
     }
@@ -61,7 +54,8 @@ struct LogEntryWriterTests {
     }
 
     @Test func uniqueBaseNameSkipsTakenMdAndM4a() throws {
-        let folder = try tempRoot()
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
         let base = "2026-10-13 14-32-05"
         #expect(LogEntryWriter.uniqueBaseName(base, in: folder) == base)
         try Data().write(to: folder.appendingPathComponent("\(base).md"))
@@ -71,7 +65,8 @@ struct LogEntryWriterTests {
     }
 
     @Test func writePutsEntryInMonthFolder() async throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let url = try await LogEntryWriter.write(entry(), layout: LibraryLayout(root: root), audioSamples: nil)
         #expect(url.path == root.appendingPathComponent("Logs/2026/10/2026-10-13 14-32-05.md").path)
         let text = try String(contentsOf: url, encoding: .utf8)
@@ -79,7 +74,8 @@ struct LogEntryWriterTests {
     }
 
     @Test func writeDoesNotOverwriteSameSecond() async throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let layout = LibraryLayout(root: root)
         let first = try await LogEntryWriter.write(entry(), layout: layout, audioSamples: nil)
         let second = try await LogEntryWriter.write(entry(), layout: layout, audioSamples: nil)
@@ -88,7 +84,8 @@ struct LogEntryWriterTests {
     }
 
     @Test func writeKeepsAudio() async throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let samples = (0..<16000).map { Float(sin(Double($0) * 2 * .pi * 440 / 16000)) * 0.3 }
         let url = try await LogEntryWriter.write(entry(), layout: LibraryLayout(root: root), audioSamples: samples)
         let audio = url.deletingPathExtension().appendingPathExtension("m4a")
@@ -101,7 +98,8 @@ struct LogEntryWriterTests {
 
     @Test func failedAudioStillWritesEntryWithoutSources() async throws {
         struct Boom: Error {}
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let url = try await LogEntryWriter.write(
             entry(), layout: LibraryLayout(root: root), audioSamples: [0, 0.1, 0.2],
             encodeAudio: { _, target in
@@ -116,7 +114,8 @@ struct LogEntryWriterTests {
     }
 
     @Test func unwritableRootThrows() async throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let blocker = root.appendingPathComponent("file")
         try Data().write(to: blocker)
         // A regular file where the root folder should be: folder creation fails.

@@ -3,20 +3,14 @@ import Testing
 @testable import Roger
 
 struct LibraryMigrationTests {
-    private func tempRoot() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RogerTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
     private func makeSession(_ folder: URL) throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data("t".utf8).write(to: folder.appendingPathComponent("transcript.md"))
     }
 
     @Test func monthComesFromFolderName() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let old = root.appendingPathComponent("Roger Recordings/2026-03-05 09-30")
         try makeSession(old)
         let layout = LibraryLayout(root: root.appendingPathComponent("Roger"))
@@ -40,7 +34,8 @@ struct LibraryMigrationTests {
     }
 
     @Test func unparsableNameFallsBackToCreationDate() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let old = root.appendingPathComponent("Weekly sync")
         try makeSession(old)
         let layout = LibraryLayout(root: root.appendingPathComponent("Roger"))
@@ -50,7 +45,8 @@ struct LibraryMigrationTests {
     }
 
     @Test func executeMovesAndAvoidsCollisions() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let layout = LibraryLayout(root: root.appendingPathComponent("Roger"))
         let old = root.appendingPathComponent("Roger Recordings/2026-10-13 09-00")
         try makeSession(old)
@@ -65,7 +61,8 @@ struct LibraryMigrationTests {
     }
 
     @Test func executeReportsFailures() throws {
-        let root = try tempRoot()
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
         let missing = root.appendingPathComponent("gone")
         let move = LibraryMigration.Move(source: missing, destinationFolder: root.appendingPathComponent("dest"))
         let result = LibraryMigration.execute([move])
