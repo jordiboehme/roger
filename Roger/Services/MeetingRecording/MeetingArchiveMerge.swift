@@ -5,7 +5,7 @@ import Foundation
 /// are encoded to a side file and neither file is ever overwritten or
 /// deleted: the longer one becomes the archive, the other stays next to it.
 enum MeetingArchiveMerge {
-    /// `<stem>.<label>.m4a`, then `<stem>.<label> 1.m4a` … until free.
+    /// `<stem>.<label>.<ext>`, then `<stem>.<label> 1.<ext>` … until free.
     static func uniqueSibling(of archive: URL, label: String) -> URL {
         let folder = archive.deletingLastPathComponent()
         let stem = archive.deletingPathExtension().lastPathComponent

@@ -31,6 +31,10 @@ enum MeetingTranscriptWriter {
 
     /// `markers` are screenshot checkpoints to weave into the body as inline
     /// image references at their chronological position between paragraphs.
+    /// An existing transcript.md (a retry of a flagged session, possibly
+    /// edited by the user) is first moved aside to `transcript.previous.md`
+    /// (`transcript.previous 1.md` … if taken); if that move fails, nothing
+    /// is written.
     static func write(
         paragraphs: [MeetingTranscriptMerger.Paragraph],
         metadata: Metadata,
@@ -38,6 +42,10 @@ enum MeetingTranscriptWriter {
     ) throws -> URL {
         let url = metadata.session.transcriptURL
         let content = buildContent(paragraphs: paragraphs, metadata: metadata, markers: markers)
+        if FileManager.default.fileExists(atPath: url.path) {
+            let previous = MeetingArchiveMerge.uniqueSibling(of: url, label: "previous")
+            try FileManager.default.moveItem(at: url, to: previous)
+        }
         try content.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
