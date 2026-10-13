@@ -47,15 +47,25 @@ enum LibraryMarkdown {
         return .heading(level: hashes, text: line.dropFirst(hashes + 1).trimmingCharacters(in: .whitespaces))
     }
 
-    /// `![alt](target)` alone on a line with a local target. Roger writes
-    /// targets percent-encoded (spaces as `%20`).
+    /// Image types the preview shows as thumbnails.
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "tif", "tiff", "webp", "bmp"]
+
+    /// `![alt](target)` alone on a line. Roger writes targets
+    /// percent-encoded (spaces as `%20`). A click opens the image, so only
+    /// a relative path to an image file that stays inside `baseURL` (also
+    /// after resolving symlinks) counts; anything else stays text.
     static func image(_ line: String, baseURL: URL) -> LibraryMarkdownBlock? {
         guard line.hasPrefix("!["), line.hasSuffix(")"), let close = line.range(of: "](") else { return nil }
         let alt = String(line[line.index(line.startIndex, offsetBy: 2)..<close.lowerBound])
         let target = String(line[close.upperBound..<line.index(before: line.endIndex)])
-        guard !target.contains("://"), let decoded = target.removingPercentEncoding, !decoded.isEmpty else { return nil }
-        let url = decoded.hasPrefix("/") ? URL(fileURLWithPath: decoded) : baseURL.appendingPathComponent(decoded)
-        return .image(alt: alt, url: url.standardizedFileURL)
+        // No scheme (`file:`, `http:`, `mailto:` ...), no absolute path.
+        guard !target.contains(":"), let decoded = target.removingPercentEncoding, !decoded.isEmpty,
+              !decoded.hasPrefix("/"), !decoded.hasPrefix("~") else { return nil }
+        let url = baseURL.appendingPathComponent(decoded).standardizedFileURL
+        guard imageExtensions.contains(url.pathExtension.lowercased()),
+              LibraryPath.isPath(LibraryPath.canonical(url), inside: LibraryPath.canonical(baseURL))
+        else { return nil }
+        return .image(alt: alt, url: url)
     }
 
     /// Every case-insensitive occurrence of each term, in text order.
@@ -73,11 +83,16 @@ enum LibraryMarkdown {
     }
 
     /// Inline Markdown (bold, italics, code) with search matches highlighted.
+    /// Only `http` and `https` links stay clickable.
     static func attributed(_ text: String, highlighting terms: [String]) -> AttributedString {
         var result = (try? AttributedString(
             markdown: text,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         )) ?? AttributedString(text)
+        for (link, range) in result.runs[\.link] {
+            guard let link, !["http", "https"].contains(link.scheme?.lowercased() ?? "") else { continue }
+            result[range].link = nil
+        }
         let plain = String(result.characters)
         for range in highlightRanges(of: terms, in: plain) {
             let offset = plain.distance(from: plain.startIndex, to: range.lowerBound)

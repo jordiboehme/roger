@@ -48,6 +48,55 @@ struct LibraryMarkdownTests {
         #expect(images == [folder.appendingPathComponent("2026-09-21 16-13-25.png").standardizedFileURL])
     }
 
+    /// A click on a preview image opens it, so only image files inside the
+    /// item's folder may become images. Everything else stays text.
+    @Test func imagesOutsideTheItemFolderStayText() {
+        let lines = [
+            "![x](/tmp/a.png)",
+            "![x](/Applications/Calculator.app)",
+            "![x](../../run.command)",
+            "![x](../a.png)",
+            "![x](shots/../../a.png)",
+            "![x](%2E%2E/a.png)",
+            "![x](file:///tmp/a.png)",
+            "![x](http://example.com/a.png)",
+            "![x](mailto:a.png)",
+            "![x](notes.md)",
+        ]
+        for line in lines {
+            #expect(LibraryMarkdown.blocks(from: line, baseURL: base) == [.paragraph(line)], "\(line)")
+        }
+    }
+
+    @Test func relativeImageInsideTheFolderIsAnImage() {
+        #expect(LibraryMarkdown.blocks(from: "![Shot](shots/a%20b.PNG)", baseURL: base) == [
+            .image(alt: "Shot", url: base.appendingPathComponent("shots/a b.PNG").standardizedFileURL),
+        ])
+    }
+
+    @Test func symlinkOutOfTheFolderStaysText() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let folder = root.appendingPathComponent("item", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let outside = root.appendingPathComponent("outside.png")
+        try Data([0]).write(to: outside)
+        try FileManager.default.createSymbolicLink(
+            at: folder.appendingPathComponent("link.png"), withDestinationURL: outside
+        )
+        #expect(LibraryMarkdown.blocks(from: "![x](link.png)", baseURL: folder) == [.paragraph("![x](link.png)")])
+    }
+
+    /// Only web links stay clickable; `file:` and app schemes become text.
+    @Test func onlyWebLinksStayClickable() {
+        let result = LibraryMarkdown.attributed(
+            "[web](https://example.com) [file](file:///Applications/Calculator.app) [app](x-apple.systempreferences:a) [plain](http://example.org)",
+            highlighting: []
+        )
+        #expect(result.runs.compactMap(\.link) == [URL(string: "https://example.com")!, URL(string: "http://example.org")!])
+        #expect(String(result.characters) == "web file app plain")
+    }
+
     @Test func highlightRangesIgnoreCase() {
         let text = "Supplier called. The supplier said yes."
         let found = LibraryMarkdown.highlightRanges(of: ["supplier"], in: text).map { String(text[$0]) }

@@ -106,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
     }
 
+    /// An unsaved edit in the library window is asked about first.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        (libraryWindowController?.confirmUnsavedEdit() ?? true) ? .terminateNow : .terminateCancel
+    }
+
     // MARK: - Open With / Services
 
     /// Finder "Open With > Roger" and `open -a Roger <file>`. Can arrive

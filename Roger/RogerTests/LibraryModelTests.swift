@@ -205,6 +205,61 @@ struct LibraryModelTests {
         model.stop()
     }
 
+    @Test func unsavedChangesAndSaveEdit() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let file = folder.appendingPathComponent("note.md")
+        try "---\ntitle: \"note\"\n---\n# note\nold\n".write(to: file, atomically: true, encoding: .utf8)
+        let item = LibraryFixtures.item("note", folder: folder.path)
+        let model = LibraryModel(index: FakeLibraryIndex([item]))
+
+        model.beginEditing(item, document: try LibraryDocument.load(file))
+        #expect(model.isEditing)
+        #expect(!model.hasUnsavedChanges)
+        model.draft = "# note\nnew\n"
+        #expect(model.hasUnsavedChanges)
+
+        #expect(try model.saveEdit(overwrite: false, activeSessionFolder: nil) == .saved)
+        #expect(!model.isEditing)
+        #expect(!model.hasUnsavedChanges)
+        #expect(try String(contentsOf: file, encoding: .utf8) == "---\ntitle: \"note\"\n---\n# note\nnew\n")
+        model.stop()
+    }
+
+    /// A meeting that started recording or finalising in the folder after
+    /// editing began must not be written to.
+    @Test func saveEditRefusesAnActiveSessionFolder() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let file = folder.appendingPathComponent("transcript.md")
+        try "# t\nold\n".write(to: file, atomically: true, encoding: .utf8)
+        let item = LibraryFixtures.item("transcript", kind: .meeting, folder: folder.path)
+        let model = LibraryModel(index: FakeLibraryIndex([item]))
+
+        model.beginEditing(item, document: try LibraryDocument.load(file))
+        model.draft = "# t\nnew\n"
+        #expect(try model.saveEdit(overwrite: true, activeSessionFolder: folder) == .notEditable)
+        #expect(model.isEditing)
+        #expect(model.hasUnsavedChanges)
+        #expect(try String(contentsOf: file, encoding: .utf8) == "# t\nold\n")
+        model.stop()
+    }
+
+    @Test func endingEditingDropsTheDraft() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let file = folder.appendingPathComponent("note.md")
+        try "# note\n".write(to: file, atomically: true, encoding: .utf8)
+        let item = LibraryFixtures.item("note", folder: folder.path)
+        let model = LibraryModel(index: FakeLibraryIndex([item]))
+        model.beginEditing(item, document: try LibraryDocument.load(file))
+        model.draft = "changed"
+        model.editingItem = nil
+        #expect(!model.hasUnsavedChanges)
+        #expect(model.draft == "")
+        model.stop()
+    }
+
     @Test func reloadOnAReplacedIndexIsDropped() async {
         let old = GatedLibraryIndex(items)
         let model = LibraryModel(index: old)

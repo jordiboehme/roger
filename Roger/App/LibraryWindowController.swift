@@ -48,6 +48,48 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
         model?.replaceIndex(indexStore.index(for: current))
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        confirmUnsavedEdit()
+    }
+
+    /// Asks what to do with an unsaved body edit before the window closes
+    /// or Roger quits. True when it may go ahead.
+    func confirmUnsavedEdit() -> Bool {
+        guard let model, model.hasUnsavedChanges, let item = model.editingItem else { return true }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Save changes to \"\(item.title)\"?"
+        alert.informativeText = "Your changes are lost if you don't save them."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            let message: String?
+            do {
+                let outcome = try model.saveEdit(
+                    overwrite: false,
+                    activeSessionFolder: coordinator.meetingRecorder.activeSessionFolder
+                )
+                message = outcome.failureMessage
+            } catch {
+                message = error.localizedDescription
+            }
+            guard let message else { return true }
+            let failed = NSAlert()
+            failed.messageText = "Roger could not save your changes"
+            failed.informativeText = message
+            failed.runModal()
+            return false
+        case .alertSecondButtonReturn:
+            model.editingItem = nil
+            return true
+        default:
+            return false
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
         isOpen = false
         // No reloads while nobody looks at the list.

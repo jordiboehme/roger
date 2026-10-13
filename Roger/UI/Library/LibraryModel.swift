@@ -37,6 +37,8 @@ final class LibraryModel {
     var editingItem: LibraryItem? {
         didSet {
             guard oldValue != nil, editingItem == nil else { return }
+            editBase = nil
+            draft = ""
             if let url = deferredSelectionURL {
                 deferredSelectionURL = nil
                 select(url: url)
@@ -46,6 +48,16 @@ final class LibraryModel {
         }
     }
     var isEditing: Bool { editingItem != nil }
+    /// The file as read when editing started; `saveEdit` checks it for
+    /// changes by other apps.
+    private(set) var editBase: LibraryDocument?
+    /// The body text in the editor.
+    var draft = ""
+    /// True when the editor holds text that differs from the file.
+    var hasUnsavedChanges: Bool {
+        guard let editBase else { return false }
+        return draft != editBase.body
+    }
     /// Set by the Rename menu item. The detail pane of that item starts
     /// renaming and clears it.
     var renameRequest: LibraryItem.ID?
@@ -138,6 +150,56 @@ final class LibraryModel {
         if !isEditing { selection = [] }
         start()
     }
+
+    // MARK: Editing
+
+    enum EditSaveOutcome: Equatable, Sendable {
+        case saved
+        /// Another app changed the file. Nothing was written.
+        case changedOnDisk
+        /// The file is gone. Nothing was written.
+        case missing
+        /// A meeting is being recorded or finalised in the file's folder. Nothing was written.
+        case notEditable
+
+        /// What to tell the user when the text was not saved. The view
+        /// asks about `changedOnDisk` with an alert of its own.
+        var failureMessage: String? {
+            switch self {
+            case .saved: return nil
+            case .changedOnDisk:
+                return "Another app changed this file after you started editing, so your text was not saved. Save it in the library window to choose what to keep."
+            case .missing:
+                return "The file was moved or deleted, so your text was not saved. Copy it before you cancel."
+            case .notEditable:
+                return "A meeting is being recorded or finalised in this folder, so your text was not saved. Save again when it is done."
+            }
+        }
+    }
+
+    func beginEditing(_ item: LibraryItem, document: LibraryDocument) {
+        editingItem = item
+        editBase = document
+        draft = document.body
+    }
+
+    /// Writes the draft. Editing ends only when it was saved; otherwise the
+    /// draft stays so nothing is lost.
+    func saveEdit(overwrite: Bool, activeSessionFolder: URL?) throws -> EditSaveOutcome {
+        guard let item = editingItem, let base = editBase else { return .missing }
+        guard LibraryDocumentEditor.canEdit(item, activeSessionFolder: activeSessionFolder) else { return .notEditable }
+        switch try LibraryDocumentEditor.saveBody(draft, of: base, overwrite: overwrite) {
+        case .saved:
+            editingItem = nil
+            return .saved
+        case .changedOnDisk:
+            return .changedOnDisk
+        case .missing:
+            return .missing
+        }
+    }
+
+    // MARK: Selection
 
     /// Shows everything and selects the item at `url` as soon as the index
     /// has it (a log entry written a moment ago may not be indexed yet).

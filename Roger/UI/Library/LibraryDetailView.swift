@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 /// The right column: one item's detail, or a summary of a multi-selection.
@@ -40,8 +41,6 @@ struct LibraryItemDetail: View {
     @State private var loadError: String?
     @State private var isRenaming = false
     @State private var titleDraft = ""
-    @State private var draft = ""
-    @State private var editBase: LibraryDocument?
     @State private var showsConflict = false
     @State private var actionError: String?
     @FocusState private var titleFocused: Bool
@@ -56,7 +55,7 @@ struct LibraryItemDetail: View {
                 .padding(16)
             Divider()
             if model.isEditing {
-                TextEditor(text: $draft)
+                TextEditor(text: $model.draft)
                     .font(.system(.body, design: .monospaced))
                     .padding(8)
             } else {
@@ -72,6 +71,7 @@ struct LibraryItemDetail: View {
                 cancelEditing()
                 reloadNow()
             }
+            Button("Keep Editing", role: .cancel) {}
         } message: {
             Text("Another app changed it after you started editing. Overwrite it with your text, or discard your changes?")
         }
@@ -202,30 +202,31 @@ struct LibraryItemDetail: View {
         isRenaming = false
         reloadNow()
         guard let document else { return }
-        editBase = document
-        draft = document.body
-        model.editingItem = item
+        model.beginEditing(item, document: document)
     }
 
     private func cancelEditing() {
         model.editingItem = nil
-        editBase = nil
     }
 
+    /// Checks the active meeting folder again: a recording may have started
+    /// in this folder since editing began.
     private func save(overwrite: Bool) {
-        guard let base = editBase else { return }
         do {
-            switch try LibraryDocumentEditor.saveBody(draft, of: base, overwrite: overwrite) {
+            let outcome = try model.saveEdit(
+                overwrite: overwrite,
+                activeSessionFolder: coordinator.meetingRecorder.activeSessionFolder
+            )
+            switch outcome {
             case .saved:
-                cancelEditing()
                 // The new modification date, or the next save sees this
                 // write as a change by another app.
                 reloadNow()
             case .changedOnDisk:
                 showsConflict = true
-            case .missing:
-                // Stay in edit mode so the text can still be copied.
-                actionError = "The file was moved or deleted, so your text was not saved. Copy it before you cancel."
+            case .missing, .notEditable:
+                // Edit mode stays, so the text can still be copied.
+                actionError = outcome.failureMessage
             }
         } catch {
             actionError = error.localizedDescription
@@ -282,6 +283,9 @@ struct LibraryMarkdownView: View {
     }
 }
 
+/// A screenshot in the preview. Decoded off the main actor as a small
+/// thumbnail. A click opens it in Preview, never in the file's default app,
+/// and only when it really is an image.
 struct LibraryThumbnail: View {
     let url: URL
     let alt: String
@@ -295,13 +299,38 @@ struct LibraryThumbnail: View {
                     .scaledToFit()
                     .frame(maxWidth: 360, maxHeight: 240, alignment: .leading)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .onTapGesture { Self.openInPreview(url) }
+                    .help(alt)
             } else {
                 Label(alt.isEmpty ? url.lastPathComponent : alt, systemImage: "photo")
                     .foregroundStyle(.secondary)
             }
         }
-        .onTapGesture { NSWorkspace.shared.open(url) }
-        .help(alt)
-        .task(id: url) { image = NSImage(contentsOf: url) }
+        .task(id: url) { await load() }
+    }
+
+    private func load() async {
+        let url = url
+        image = nil
+        let cgImage = await Task.detached { Self.thumbnail(of: url, maxPixelSize: 720) }.value
+        image = cgImage.map { NSImage(cgImage: $0, size: .zero) }
+    }
+
+    nonisolated private static func thumbnail(of url: URL, maxPixelSize: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    private static func openInPreview(_ url: URL) {
+        guard let preview = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Preview") else {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return
+        }
+        NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
     }
 }
