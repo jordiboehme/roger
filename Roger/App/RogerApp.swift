@@ -50,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let coordinator = sharedCoordinator
 
+        // Move pre-library meetings before anything lists them.
+        coordinator.runLibraryMigrationIfNeeded()
+
         installStatusItem(coordinator: coordinator)
 
         // Check permissions

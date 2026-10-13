@@ -134,6 +134,51 @@ final class AppCoordinator {
         }
     }
 
+    // MARK: - Library Migration
+
+    /// One-time move of pre-library meetings into `<library>/Meetings/`.
+    /// Asks first. Folders that stay in place become extra scan folders, so
+    /// their meetings are still found.
+    func runLibraryMigrationIfNeeded() {
+        guard !appState.libraryMigrationDone, !meetingRecorder.isActive else { return }
+        defer {
+            appState.libraryMigrationDone = true
+            pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+        }
+
+        var extras = appState.extraScanFolders
+        func addExtra(_ url: URL) {
+            if !extras.contains(where: { $0.standardizedFileURL == url.standardizedFileURL }) {
+                extras.append(url)
+            }
+        }
+        if let transcripts = appState.legacyFileTranscriptFolder {
+            addExtra(transcripts)
+        }
+
+        let layout = appState.libraryLayout
+        let oldMeetings = appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
+        let sessions = MeetingSessionScanner.sessionFolders(in: oldMeetings, maxDepth: 1)
+        if !sessions.isEmpty {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "Move your meetings to the Roger library?"
+            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(sessions.count) meetings from \(oldMeetings.path) there? If you keep them in place, Roger still finds them."
+            alert.addButton(withTitle: "Move")
+            alert.addButton(withTitle: "Keep in Place")
+            if alert.runModal() == .alertFirstButtonReturn {
+                let result = LibraryMigration.execute(LibraryMigration.plan(sessionFolders: sessions, layout: layout))
+                logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failed.count) failed")
+                if !result.failed.isEmpty {
+                    addExtra(oldMeetings)
+                }
+            } else {
+                addExtra(oldMeetings)
+            }
+        }
+        appState.extraScanFolders = extras
+    }
+
     private func setupPermissionCallbacks() {
         permissionManager.onAccessibilityGranted = { [weak self] in
             guard let self, !self.hotkeyActive else { return }
