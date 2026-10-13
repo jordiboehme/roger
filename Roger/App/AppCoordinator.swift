@@ -66,10 +66,15 @@ final class AppCoordinator {
     /// (macOS 14.4+, below the macOS 15 deployment floor).
     let meetingRecorder: MeetingRecordingService
 
-    /// Recovered sessions from a prior crash (CAF chunks but no transcript).
-    /// Populated on launch and surfaced in MenuBarView so the user can
-    /// decide whether to finalise.
+    /// Unfinished sessions (see `MeetingSessionScanner.isUnfinished`).
+    /// Populated on launch and after every finalisation, surfaced in
+    /// MenuBarView so the user can decide whether to finalise.
     private(set) var pendingMeetingSessions: [MeetingSession] = []
+
+    /// Sessions the user dismissed from the recovery banner in this app
+    /// run. Session ids are derived from the folder, so they stay stable
+    /// across rescans. Not persisted: dismissed sessions return on relaunch.
+    private var dismissedPendingMeetingIDs: Set<UUID> = []
 
     /// Session-scoped flag: true when the user has dismissed the floating
     /// overlay during an active recording. The status-bar item compensates
@@ -98,7 +103,7 @@ final class AppCoordinator {
         audioCaptureService.onLevelUpdate = { [weak self] raw in
             Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
         }
-        self.pendingMeetingSessions = self.meetingRecorder.unfinalisedSessions()
+        refreshPendingMeetingSessions()
         observeRecorderState()
         // HAL mute persists after our process exits, so always restore on quit.
         NotificationCenter.default.addObserver(
@@ -116,7 +121,9 @@ final class AppCoordinator {
     /// Keeps the hotkey's mute-toggle mode and the system mute in sync with the
     /// recorder's real state. Covers stops we don't drive directly (e.g. a
     /// sleep-interrupted auto-finalise): when the recorder leaves `.recording`,
-    /// disengage the hotkey repurpose and restore the mic.
+    /// disengage the hotkey repurpose and restore the mic. When a run ends
+    /// (idle or error) the recovery list is refreshed, and an error is shown
+    /// in the menu bar unless dictation is busy.
     private func observeRecorderState() {
         withObservationTracking {
             _ = meetingRecorder.state
@@ -128,6 +135,17 @@ final class AppCoordinator {
                 } else if self.hotkeyManager.meetingRecordingActive {
                     self.hotkeyManager.meetingRecordingActive = false
                     self.systemMicMute.restoreIfNeeded()
+                }
+                switch self.meetingRecorder.state {
+                case .idle:
+                    self.refreshPendingMeetingSessions()
+                case .error(let recordingError):
+                    self.refreshPendingMeetingSessions()
+                    if self.appState.dictationState == .idle || self.appState.dictationState.isErrorState {
+                        self.appState.dictationState = .error(recordingError.errorDescription ?? "Couldn't finalise meeting")
+                    }
+                default:
+                    break
                 }
                 self.observeRecorderState()
             }
@@ -143,7 +161,7 @@ final class AppCoordinator {
         guard !appState.libraryMigrationDone, !meetingRecorder.isActive else { return }
         defer {
             appState.libraryMigrationDone = true
-            pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+            refreshPendingMeetingSessions()
         }
 
         var extras = appState.extraScanFolders
@@ -889,7 +907,9 @@ final class AppCoordinator {
     /// preconditions fail. UI calls this from the menu bar Start row and
     /// from the global hotkey.
     func startMeetingRecording() async {
-        guard meetingRecorder.state == .idle else {
+        // `.error` from an earlier run is not active and must not block a
+        // new recording.
+        guard !meetingRecorder.isActive else {
             appState.dictationState = .error(MeetingRecordingError.alreadyRecording.errorDescription ?? "")
             return
         }
@@ -944,9 +964,9 @@ final class AppCoordinator {
         systemMicMute.restoreIfNeeded()
         await meetingRecorder.stop()
         floatingPanel.hide()
-        // Refresh recovery list — a freshly finalised session won't be in
-        // it, but a sleep-interrupted one might.
-        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+        // Refresh recovery list: a freshly finalised session won't be in
+        // it, but a failed one will.
+        refreshPendingMeetingSessions()
     }
 
     /// Toggle visibility of the floating overlay during active capture. No-op
@@ -996,13 +1016,19 @@ final class AppCoordinator {
         if case .error(let recordingError) = meetingRecorder.state {
             appState.dictationState = .error(recordingError.errorDescription ?? "Couldn't finalise meeting")
         }
-        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+        refreshPendingMeetingSessions()
     }
 
     /// Drops a recovered session from the pending list without finalising
     /// (the user opted to discard or handle it manually).
     func dismissPendingMeeting(_ session: MeetingSession) {
+        dismissedPendingMeetingIDs.insert(session.id)
         pendingMeetingSessions.removeAll { $0.id == session.id }
+    }
+
+    private func refreshPendingMeetingSessions() {
+        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+            .filter { !dismissedPendingMeetingIDs.contains($0.id) }
     }
 
     // MARK: - Error Management
