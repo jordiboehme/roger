@@ -155,6 +155,9 @@ struct LibraryItemDetail: View {
         } else if let document {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if item.kind == .meeting {
+                        LibraryExtraFilesSection(item: item)
+                    }
                     LibraryMarkdownView(
                         blocks: LibraryMarkdown.blocks(from: document.body, baseURL: item.url.deletingLastPathComponent()),
                         terms: model.searchTerms

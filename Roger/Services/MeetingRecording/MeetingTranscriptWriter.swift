@@ -65,6 +65,9 @@ enum MeetingTranscriptWriter {
                 sources.append(.init(id: "system", resource: session.systemArchiveURL.lastPathComponent))
             }
         }
+        // Leftover and previous archives stay on disk whatever `audioKept`
+        // says; list them so agents see all the audio.
+        sources += MeetingExtraFiles.audioSources(in: session.folder)
         var fm = TranscriptFrontmatter(
             title: "Meeting \(displayDate(session))",
             description: description(metadata, screenshots: markers.count),
