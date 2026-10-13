@@ -331,23 +331,10 @@ struct PresetsSettingsView: View {
     }
 
     private func duplicatePreset(_ source: DictationPreset) {
-        let newPreset = DictationPreset(
-            id: UUID(),
-            name: "\(source.name) Copy",
-            isBuiltIn: false,
-            enableFillerRemoval: source.enableFillerRemoval,
-            enableDedup: source.enableDedup,
-            enableAIFormatting: source.enableAIFormatting,
-            enableCustomDictionary: source.enableCustomDictionary,
-            enableRewrite: source.enableRewrite,
-            aiPrompt: source.aiPrompt,
-            rewritePrompt: source.rewritePrompt,
-            dictionaryEntries: source.dictionaryEntries,
-            trailingCharacter: source.trailingCharacter,
-            sendReturnAfterInsert: source.sendReturnAfterInsert,
-            excludedFromRotation: source.excludedFromRotation,
-            language: source.language
-        )
+        var newPreset = source
+        newPreset.id = UUID()
+        newPreset.name = "\(source.name) Copy"
+        newPreset.isBuiltIn = false
         coordinator.appState.presets.append(newPreset)
         selectedPresetID = newPreset.id
     }

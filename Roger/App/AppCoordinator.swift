@@ -431,16 +431,7 @@ final class AppCoordinator {
     /// Returns a copy of `preset` with every AI step disabled — used when the
     /// configured LLM provider is unavailable or refuses to process the text.
     private static func nonAIFallback(from preset: DictationPreset) -> DictationPreset {
-        DictationPreset(
-            id: preset.id, name: preset.name, isBuiltIn: preset.isBuiltIn,
-            enableFillerRemoval: preset.enableFillerRemoval,
-            enableDedup: preset.enableDedup,
-            enableAIFormatting: false,
-            enableCustomDictionary: preset.enableCustomDictionary,
-            enableRewrite: false,
-            aiPrompt: "", rewritePrompt: "",
-            dictionaryEntries: preset.dictionaryEntries
-        )
+        preset.withoutAI
     }
 
     // MARK: - Model Setup

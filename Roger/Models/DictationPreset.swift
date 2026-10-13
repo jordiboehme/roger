@@ -29,6 +29,23 @@ enum TrailingCharacter: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Where a preset's text goes after post-processing.
+enum PresetOutput: String, Codable, CaseIterable, Identifiable {
+    /// Typed at the cursor (Accessibility API, clipboard fallback).
+    case insertAtCursor
+    /// Saved as a Markdown log entry in the library; nothing is typed.
+    case logEntry
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .insertAtCursor: return "Insert at cursor"
+        case .logEntry: return "Save as log entry"
+        }
+    }
+}
+
 struct DictationPreset: Identifiable, Codable, Equatable {
     var id: UUID
     var name: String
@@ -47,6 +64,9 @@ struct DictationPreset: Identifiable, Codable, Equatable {
     /// ISO-639-1 language code passed to WhisperKit, or nil for auto-detect.
     /// Ignored when the active model is English-only (see AppState.resolvedLanguage).
     var language: String?
+    var output: PresetOutput
+    /// Log presets only: also save the recording as `.m4a` next to the entry.
+    var keepAudio: Bool
 
     var requiresAI: Bool {
         enableAIFormatting || enableRewrite
@@ -67,7 +87,9 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         trailingCharacter: TrailingCharacter = .none,
         sendReturnAfterInsert: Bool = false,
         excludedFromRotation: Bool = false,
-        language: String? = nil
+        language: String? = nil,
+        output: PresetOutput = .insertAtCursor,
+        keepAudio: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -84,6 +106,8 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         self.sendReturnAfterInsert = sendReturnAfterInsert
         self.excludedFromRotation = excludedFromRotation
         self.language = language
+        self.output = output
+        self.keepAudio = keepAudio
     }
 
     init(from decoder: Decoder) throws {
@@ -103,6 +127,8 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         sendReturnAfterInsert = try c.decodeIfPresent(Bool.self, forKey: .sendReturnAfterInsert) ?? false
         excludedFromRotation = try c.decodeIfPresent(Bool.self, forKey: .excludedFromRotation) ?? false
         language = try c.decodeIfPresent(String.self, forKey: .language)
+        output = try c.decodeIfPresent(PresetOutput.self, forKey: .output) ?? .insertAtCursor
+        keepAudio = try c.decodeIfPresent(Bool.self, forKey: .keepAudio) ?? false
     }
 }
 
@@ -127,6 +153,17 @@ extension DictationPreset {
     private static let cavemanID = UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
     private static let yodaID = UUID(uuidString: "00000000-0000-0000-0000-000000000006")!
     private static let emojiID = UUID(uuidString: "00000000-0000-0000-0000-000000000007")!
+    private static let logID = UUID(uuidString: "00000000-0000-0000-0000-000000000008")!
+
+    /// Copy with every AI step off. Used when the LLM is unavailable or
+    /// refuses the text. Keeps every other field, including `output`, so a
+    /// log preset never falls back to typing at the cursor.
+    var withoutAI: DictationPreset {
+        var copy = self
+        copy.enableAIFormatting = false
+        copy.enableRewrite = false
+        return copy
+    }
 
     static let plain = DictationPreset(
         id: plainID,
@@ -226,7 +263,23 @@ extension DictationPreset {
         dictionaryEntries: []
     )
 
-    static let builtInPresets: [DictationPreset] = [plain, polished, professional, code, caveman, yoda, emoji]
+    static let log = DictationPreset(
+        id: logID,
+        name: "Log",
+        isBuiltIn: true,
+        enableFillerRemoval: true,
+        enableDedup: true,
+        enableAIFormatting: false,
+        enableCustomDictionary: false,
+        enableRewrite: false,
+        aiPrompt: "",
+        rewritePrompt: "",
+        dictionaryEntries: [],
+        excludedFromRotation: true,
+        output: .logEntry
+    )
+
+    static let builtInPresets: [DictationPreset] = [plain, polished, professional, code, caveman, yoda, emoji, log]
 
     static let defaultPresetID = polishedID
 }
