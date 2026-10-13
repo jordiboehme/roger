@@ -21,8 +21,7 @@ struct LibraryView: View {
             }
             .navigationSplitViewColumnWidth(min: 300, ideal: 380)
         } detail: {
-            Text(model.selection.isEmpty ? "No selection" : "\(model.selection.count) selected")
-                .foregroundStyle(.secondary)
+            LibraryDetailView(model: model)
         }
         .navigationTitle("Roger Library")
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search titles and text")

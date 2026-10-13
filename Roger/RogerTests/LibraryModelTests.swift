@@ -160,6 +160,51 @@ struct LibraryModelTests {
         #expect(model.selection == [items[0].id])
     }
 
+    /// "Show in Library" while a body is edited must not change the
+    /// filters or the selection. It applies once editing ends.
+    @Test func selectWhileEditingWaitsUntilEditingEnds() async throws {
+        let fake = FakeLibraryIndex(items)
+        let model = LibraryModel(index: fake)
+        model.sidebar = .kind(.log)
+        model.searchText = "supplier"
+        await model.commitSearch()
+        model.selection = [items[0].id]
+        model.editingItem = items[0]
+
+        model.select(url: URL(fileURLWithPath: items[2].id))
+        await model.reload()
+        #expect(model.sidebar == .kind(.log))
+        #expect(model.searchText == "supplier")
+        #expect(model.appliedSearch == "supplier")
+        #expect(model.selection == [items[0].id])
+
+        model.editingItem = nil
+        try await waitUntil { model.selection == [items[2].id] }
+        #expect(model.sidebar == .all)
+        #expect(model.searchText == "")
+        model.stop()
+    }
+
+    /// A new library folder while a body is edited keeps the selection.
+    @Test func replaceIndexWhileEditingKeepsTheSelection() async {
+        let model = LibraryModel(index: FakeLibraryIndex(items))
+        await model.reload()
+        model.selection = [items[0].id]
+        model.editingItem = items[0]
+
+        model.replaceIndex(FakeLibraryIndex([items[2]]))
+        await model.reload()
+        #expect(model.selection == [items[0].id])
+        #expect(model.editingItem == items[0])
+        #expect(model.results.map(\.title) == ["meeting"])
+
+        // Once editing ends, the selection follows the new index again.
+        model.editingItem = nil
+        await model.reload()
+        #expect(model.selection.isEmpty)
+        model.stop()
+    }
+
     @Test func reloadOnAReplacedIndexIsDropped() async {
         let old = GatedLibraryIndex(items)
         let model = LibraryModel(index: old)

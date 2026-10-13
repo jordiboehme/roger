@@ -33,7 +33,18 @@ final class LibraryModel {
     /// The item whose body the detail pane is editing. The list is locked
     /// meanwhile, and the detail pane keeps showing this item even when a
     /// filter or a refresh hides it, so unsaved text is never dropped.
-    var editingItem: LibraryItem?
+    /// "Show in Library" and a new index wait until editing ends.
+    var editingItem: LibraryItem? {
+        didSet {
+            guard oldValue != nil, editingItem == nil else { return }
+            if let url = deferredSelectionURL {
+                deferredSelectionURL = nil
+                select(url: url)
+            } else {
+                scheduleReload()
+            }
+        }
+    }
     var isEditing: Bool { editingItem != nil }
     /// Set by the Rename menu item. The detail pane of that item starts
     /// renaming and clears it.
@@ -47,6 +58,8 @@ final class LibraryModel {
     private(set) var appliedSearch = ""
 
     @ObservationIgnored private var pendingSelectionID: String?
+    /// A `select(url:)` that arrived while a body was edited.
+    @ObservationIgnored private var deferredSelectionURL: URL?
     @ObservationIgnored private var changeTask: Task<Void, Never>?
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -120,13 +133,20 @@ final class LibraryModel {
         index = newIndex
         isLoading = true
         results = []
-        selection = []
+        // While editing, the selection stays; the reload after editing
+        // ends drops what the new index does not have.
+        if !isEditing { selection = [] }
         start()
     }
 
     /// Shows everything and selects the item at `url` as soon as the index
     /// has it (a log entry written a moment ago may not be indexed yet).
+    /// While a body is edited, nothing changes until editing ends.
     func select(url: URL) {
+        if isEditing {
+            deferredSelectionURL = url
+            return
+        }
         pendingSelectionID = LibraryPath.canonical(url)
         sidebar = .all
         dateFilter = .any
@@ -156,10 +176,12 @@ final class LibraryModel {
         results = found
         isLoading = false
         let ids = Set(found.map(\.id))
+        // While editing, the selection and any pending one stay as they are.
+        guard !isEditing else { return }
         if let pending = pendingSelectionID, ids.contains(pending) {
             selection = [pending]
             pendingSelectionID = nil
-        } else if !isEditing {
+        } else {
             let kept = selection.intersection(ids)
             if kept != selection { selection = kept }
         }
