@@ -63,7 +63,7 @@ recorded_at: 2026-10-13
 source_date: 2026-10-13
 temporal_confidence: explicit
 sources:
-  - { id: audio, path: "2026-10-13 14-32-05.m4a" }
+  - { id: audio, resource: "2026-10-13 14-32-05.m4a" }
 status: stable
 started_at: 2026-10-13T14:32:05+02:00
 ended_at: 2026-10-13T14:32:38+02:00
