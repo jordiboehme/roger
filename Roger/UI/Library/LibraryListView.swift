@@ -26,6 +26,10 @@ struct LibraryListView: View {
             }
         }
         .listStyle(.inset)
+        // Rows added to an empty list keep the table's first row height,
+        // so their second and third lines were cut off until the next
+        // layout. A new list once there are rows measures each row.
+        .id(model.results.isEmpty)
         .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in
             let items = commands.items(ids)
             if !items.isEmpty {
