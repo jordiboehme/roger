@@ -26,7 +26,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 - **Quick copy** — click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
 - **Modifier-bound presets** — bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
 - **Switch presets mid-sentence** — hold Caps Lock and tap ← / → to swap how Roger will process what you're still dictating. The overlay updates live
-- **Seven built-in presets** — Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Or build your own with a custom prompt and dictionary
+- **Eight built-in presets** - Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Log saves what you say as a log entry instead of typing it. Or build your own with a custom prompt and dictionary
 - **Bring your own AI** — Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
 - **Auto-submit prompts** — configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
 - **Pick your mic** — dedicated Microphone tab lets you pin a specific input or follow the system default
