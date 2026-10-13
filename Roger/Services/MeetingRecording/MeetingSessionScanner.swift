@@ -21,12 +21,30 @@ enum MeetingSessionScanner {
     /// has audio to transcribe: CAF chunks, or the mic.m4a/system.m4a
     /// archives left behind when an earlier finalisation encoded the chunks
     /// and then stopped (model not loaded, transcription failed).
+    ///
+    /// A session with a transcript is also unfinished when that transcript
+    /// says a track's audio failed (`mic_audio_failed` or
+    /// `system_audio_failed`) and CAF chunks are still there to retry.
     static func isUnfinished(_ url: URL) -> Bool {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
-        guard !names.contains("transcript.md") else { return false }
-        return names.contains { name in
-            name.hasSuffix(".caf") || name == "mic.m4a" || name == "system.m4a"
+        let hasChunks = names.contains { $0.hasSuffix(".caf") }
+        guard names.contains("transcript.md") else {
+            return hasChunks || names.contains("mic.m4a") || names.contains("system.m4a")
         }
+        return hasChunks && transcriptReportsFailedAudio(url.appendingPathComponent("transcript.md"))
+    }
+
+    /// True when the transcript's frontmatter has `mic_audio_failed: true`
+    /// or `system_audio_failed: true`.
+    static func transcriptReportsFailedAudio(_ transcript: URL) -> Bool {
+        guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return false }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.first == "---" else { return false }
+        for line in lines.dropFirst() {
+            if line == "---" { break }
+            if line == "mic_audio_failed: true" || line == "system_audio_failed: true" { return true }
+        }
+        return false
     }
 
     /// Session folders at most `maxDepth` levels below `folder`. Does not

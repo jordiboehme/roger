@@ -15,6 +15,8 @@ enum MeetingRecordingError: LocalizedError, Sendable {
     case finalisationFailed(String)
     case noAudioCaptured
     case sleepInterrupted
+    /// The transcript was written, but a track's audio could not be saved.
+    case trackAudioFailed(mic: Bool, system: Bool)
 
     var errorDescription: String? {
         switch self {
@@ -38,6 +40,9 @@ enum MeetingRecordingError: LocalizedError, Sendable {
             return "No audio captured. The recording is too short to transcribe."
         case .sleepInterrupted:
             return "Recording paused because the system went to sleep."
+        case .trackAudioFailed(let mic, let system):
+            let tracks = mic && system ? "Microphone and system audio" : (mic ? "Microphone audio" : "System audio")
+            return "\(tracks) could not be saved, so the transcript is incomplete. Roger kept the recording. Try again from the menu bar."
         }
     }
 }

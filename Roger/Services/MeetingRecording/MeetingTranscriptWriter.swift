@@ -23,6 +23,10 @@ enum MeetingTranscriptWriter {
         /// True when at least one track went through speaker diarization.
         let diarized: Bool
         let diarizationFailed: Bool
+        /// A track's audio could not be saved (encode failed or its chunks
+        /// were unreadable); its chunks were kept for a retry.
+        var micAudioFailed = false
+        var systemAudioFailed = false
     }
 
     /// `markers` are screenshot checkpoints to weave into the body as inline
@@ -78,6 +82,12 @@ enum MeetingTranscriptWriter {
         }
         if metadata.diarizationFailed {
             fm.add("diarization_failed", true)
+        }
+        if metadata.micAudioFailed {
+            fm.add("mic_audio_failed", true)
+        }
+        if metadata.systemAudioFailed {
+            fm.add("system_audio_failed", true)
         }
 
         var out = fm.render()

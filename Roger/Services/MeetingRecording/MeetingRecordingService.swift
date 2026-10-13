@@ -525,6 +525,8 @@ final class MeetingRecordingService {
         // reused from an earlier run, or kept as the longer file.
         let micPresent = FileManager.default.fileExists(atPath: micArchive.path)
         let systemPresent = FileManager.default.fileExists(atPath: systemArchive.path)
+        let micAudioFailed = micOutcome?.isFailure ?? false
+        let systemAudioFailed = systemOutcome?.isFailure ?? false
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
@@ -571,10 +573,12 @@ final class MeetingRecordingService {
         )
 
         let speakerCount = countSpeakers(paragraphs: paragraphs)
-        // A retry over an archive that existed before this run keeps all audio: that
-        // archive may be the only copy, and the transcript then lists
-        // exactly the files that stay on disk.
+        // Keep all audio when an archive existed before this run (it may be
+        // the only copy) or when a track failed (a retry needs the other
+        // track's archive). The transcript then lists exactly the files that
+        // stay on disk.
         let audioKept = appState.keepMeetingAudio || micPreexisting || systemPreexisting
+            || micAudioFailed || systemAudioFailed
         let metadata = MeetingTranscriptWriter.Metadata(
             session: session,
             durationSeconds: durationSeconds,
@@ -584,7 +588,9 @@ final class MeetingRecordingService {
             systemPresent: systemPresent,
             audioKept: audioKept,
             diarized: (micPresent && finalConfig.diarizeMic) || (systemPresent && finalConfig.diarizeSystem),
-            diarizationFailed: output.diarizationFailed
+            diarizationFailed: output.diarizationFailed,
+            micAudioFailed: micAudioFailed,
+            systemAudioFailed: systemAudioFailed
         )
 
         // Screenshot checkpoints: rewrite every segment md from this
@@ -629,7 +635,11 @@ final class MeetingRecordingService {
             try? FileManager.default.removeItem(at: systemArchive)
         }
 
-        if sleepInterrupted {
+        if micAudioFailed || systemAudioFailed {
+            // The transcript lacks a track; its chunks were kept and the
+            // session shows up again for a retry.
+            state = .error(.trackAudioFailed(mic: micAudioFailed, system: systemAudioFailed))
+        } else if sleepInterrupted {
             state = .error(.sleepInterrupted)
         } else {
             state = .idle

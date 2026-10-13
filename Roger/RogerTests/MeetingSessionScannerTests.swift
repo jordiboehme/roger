@@ -128,4 +128,24 @@ struct MeetingSessionScannerTests {
         #expect(broken.deletableChunks(archiveExists: false).isEmpty)
         #expect(broken.isFailure)
     }
+
+    @Test func transcriptWithFailedAudioAndLeftoverChunksIsUnfinished() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        func session(_ name: String, frontmatter: String, files: [String]) throws -> URL {
+            let folder = root.appendingPathComponent(name)
+            try makeSession(folder, files: files)
+            try Data("---\ntype: source\n\(frontmatter)---\n\n# Meeting\n".utf8)
+                .write(to: folder.appendingPathComponent("transcript.md"))
+            return folder
+        }
+        let failedWithChunks = try session("a", frontmatter: "system_audio_failed: true\n", files: ["mic.m4a", "system-001.caf"])
+        let micFailed = try session("b", frontmatter: "mic_audio_failed: true\n", files: ["mic-001.caf"])
+        let failedNoChunks = try session("c", frontmatter: "system_audio_failed: true\n", files: ["mic.m4a"])
+        let chunksNoFlag = try session("d", frontmatter: "", files: ["system-001.caf"])
+        #expect(MeetingSessionScanner.isUnfinished(failedWithChunks))
+        #expect(MeetingSessionScanner.isUnfinished(micFailed))
+        #expect(!MeetingSessionScanner.isUnfinished(failedNoChunks))
+        #expect(!MeetingSessionScanner.isUnfinished(chunksNoFlag))
+    }
 }
