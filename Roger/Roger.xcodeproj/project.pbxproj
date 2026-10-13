@@ -20,6 +20,7 @@
 		25391159CBA64CA491757CA1 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346522528C8F2F9999EF7C4F /* AppCoordinator.swift */; };
 		28AA4B0BEC83F311740FB918 /* MeetingSegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0609432308A2B9928260FDB7 /* MeetingSegmentWriter.swift */; };
 		2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
+		2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */; };
 		37232077938661382D5F2A41 /* TranscriptOutputWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */; };
 		3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60172AF22E507A9E6C7B0C69 /* ClaudeService.swift */; };
 		413E2531054DF95877A29FB9 /* MicrophoneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F3DA0700AC3E3A517D32E0 /* MicrophoneSettingsView.swift */; };
@@ -70,6 +71,16 @@
 		F36323F5B0CAEB1CF8BCDF11 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 944D8CE8CCBD95F3346AB9C2 /* AppState.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		31FC7F823BC168A492DD4046 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97F2F4B5CA56899840CD6D90 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 054312BBF9105CECDB65E4C2;
+			remoteInfo = Roger;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		0609432308A2B9928260FDB7 /* MeetingSegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSegmentWriter.swift; sourceTree = "<group>"; };
 		0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingError.swift; sourceTree = "<group>"; };
@@ -106,6 +117,7 @@
 		76126D47E61F9F1ABC8F3D3F /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
 		7AA4CCFBDFBF4E9354263F5C /* SpeakerSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerSegment.swift; sourceTree = "<group>"; };
 		83E66D0A924C57BD54A258ED /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
+		851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptFrontmatterTests.swift; sourceTree = "<group>"; };
 		8AFDEF1504DA0C2369C5A71B /* MeetingCheckpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCheckpointStore.swift; sourceTree = "<group>"; };
 		93F3DA0700AC3E3A517D32E0 /* MicrophoneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneSettingsView.swift; sourceTree = "<group>"; };
 		944D8CE8CCBD95F3346AB9C2 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -118,6 +130,7 @@
 		ACF49F8F0C439EFF6AB3AF92 /* Roger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Roger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD0401FF3C26D3570A4B9327 /* PostProcessingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostProcessingError.swift; sourceTree = "<group>"; };
 		B1DD315528221EF6AD7053DA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B3286A8F17D9B364E583E173 /* RogerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RogerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B4533F0DE111CF2997F1DF34 /* AIProviderSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderSettingsView.swift; sourceTree = "<group>"; };
 		B6DCE169264032BC365088F8 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		B7D33F4EEC653AD13A176CAB /* SystemAudioTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioTap.swift; sourceTree = "<group>"; };
@@ -178,6 +191,7 @@
 			isa = PBXGroup;
 			children = (
 				ACF49F8F0C439EFF6AB3AF92 /* Roger.app */,
+				B3286A8F17D9B364E583E173 /* RogerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -201,6 +215,7 @@
 				6CD4525A80DD9C283BD65EDC /* LLM */,
 				2AA3C8946DEF851B04CD1F1B /* Models */,
 				9ECC3AFF09CF0433DDD9A394 /* Resources */,
+				D27197BFF6767B5DA4B9734C /* RogerTests */,
 				F7ABCA9C2361B331D3BD5505 /* Services */,
 				C3635B55A7D535D8EEDFDD43 /* UI */,
 				614DDFA0F1566C6E5BDD3FBB /* Products */,
@@ -264,6 +279,14 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
+		D27197BFF6767B5DA4B9734C /* RogerTests */ = {
+			isa = PBXGroup;
+			children = (
+				851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */,
+			);
+			path = RogerTests;
+			sourceTree = "<group>";
+		};
 		F7ABCA9C2361B331D3BD5505 /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -312,6 +335,24 @@
 			productReference = ACF49F8F0C439EFF6AB3AF92 /* Roger.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FDF3F831DD3A6D30202C6073 /* RogerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC9C1B42F989598C375B5FDB /* Build configuration list for PBXNativeTarget "RogerTests" */;
+			buildPhases = (
+				FF93718C12E166D9970794DB /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7DB2617091672E1428B8A4AA /* PBXTargetDependency */,
+			);
+			name = RogerTests;
+			packageProductDependencies = (
+			);
+			productName = RogerTests;
+			productReference = B3286A8F17D9B364E583E173 /* RogerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -322,6 +363,10 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					054312BBF9105CECDB65E4C2 = {
+						DevelopmentTeam = 77PA95K95V;
+						ProvisioningStyle = Automatic;
+					};
+					FDF3F831DD3A6D30202C6073 = {
 						DevelopmentTeam = 77PA95K95V;
 						ProvisioningStyle = Automatic;
 					};
@@ -346,6 +391,7 @@
 			projectRoot = "";
 			targets = (
 				054312BBF9105CECDB65E4C2 /* Roger */,
+				FDF3F831DD3A6D30202C6073 /* RogerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -427,7 +473,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FF93718C12E166D9970794DB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7DB2617091672E1428B8A4AA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 054312BBF9105CECDB65E4C2 /* Roger */;
+			targetProxy = 31FC7F823BC168A492DD4046 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		4ECBF2CEA9E5955B4AE42A15 /* Debug */ = {
@@ -492,6 +554,48 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
+		};
+		55C7A799C85B6005A626CBD3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 77PA95K95V;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jordiboehme.roger.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Roger.app/Contents/MacOS/Roger";
+			};
+			name = Debug;
+		};
+		57A80183B13ACF20BFE05853 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 77PA95K95V;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jordiboehme.roger.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Roger.app/Contents/MacOS/Roger";
+			};
+			name = Release;
 		};
 		AD96B9B42D5B889EB3E02335 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -614,6 +718,15 @@
 			buildConfigurations = (
 				C7AEDA68D0AA93DFD040B97A /* Debug */,
 				AD96B9B42D5B889EB3E02335 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CC9C1B42F989598C375B5FDB /* Build configuration list for PBXNativeTarget "RogerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				55C7A799C85B6005A626CBD3 /* Debug */,
+				57A80183B13ACF20BFE05853 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

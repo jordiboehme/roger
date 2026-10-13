@@ -42,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetingTickTimer: DispatchSourceTimer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Unit tests run inside Roger.app. Skip the event tap, model
+        // download, mic warm-up and onboarding there.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return
+        }
+
         let coordinator = sharedCoordinator
 
         installStatusItem(coordinator: coordinator)

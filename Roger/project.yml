@@ -45,8 +45,27 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         PRODUCT_NAME: Roger
+    scheme:
+      testTargets:
+        - RogerTests
     dependencies:
       - package: FluidAudio
         product: FluidAudio
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
+
+  RogerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: RogerTests
+    dependencies:
+      - target: Roger
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+        PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.tests
