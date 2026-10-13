@@ -71,6 +71,22 @@ enum LibraryFormat {
         formatter("EEE, d MMM yyyy", calendar: calendar).string(from: date)
     }
 
+    /// The two text lines of a list row. Log entries show only the text:
+    /// their title ("Log 2026-10-13 14:32 - First words") repeats the time
+    /// the row already shows, so the full title stays in the detail pane.
+    struct RowText: Equatable {
+        let title: String
+        /// Second line; nil when there is none.
+        let preview: String?
+    }
+
+    static func rowText(for item: LibraryItem) -> RowText {
+        if item.kind == .log {
+            return RowText(title: item.firstLine.isEmpty ? "Empty log entry" : item.firstLine, preview: nil)
+        }
+        return RowText(title: item.title, preview: item.firstLine.isEmpty ? nil : item.firstLine)
+    }
+
     /// "Tue, 13 Oct 2026 · 14:32 · 33 s · de · Log · 2 speakers". Parts
     /// that are unknown are left out. Meetings always show the speaker count.
     static func metadataLine(for item: LibraryItem, calendar: Calendar = .current) -> String {

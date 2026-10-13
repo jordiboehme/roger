@@ -54,4 +54,15 @@ struct LibraryDayGroupingTests {
         )
         #expect(LibraryFormat.metadataLine(for: item, calendar: calendar) == "Tue, 13 Oct 2026 · 09:00 · 1 h 5 min · 1 speaker")
     }
+
+    @Test func logRowsShowOnlyTheText() {
+        let log = LibraryFixtures.item("2026-10-13 14-32-00", title: "Log 2026-10-13 14:32 - Buy milk", body: "Buy milk and bread.")
+        #expect(LibraryFormat.rowText(for: log) == .init(title: "Buy milk and bread.", preview: nil))
+        let empty = LibraryFixtures.item("2026-10-13 14-33-00", title: "Log 2026-10-13 14:33")
+        #expect(LibraryFormat.rowText(for: empty) == .init(title: "Empty log entry", preview: nil))
+        let meeting = LibraryFixtures.item("transcript", kind: .meeting, title: "Meeting", body: "Hello all.")
+        #expect(LibraryFormat.rowText(for: meeting) == .init(title: "Meeting", preview: "Hello all."))
+        let transcript = LibraryFixtures.item("talk", kind: .transcript, title: "Talk")
+        #expect(LibraryFormat.rowText(for: transcript) == .init(title: "Talk", preview: nil))
+    }
 }

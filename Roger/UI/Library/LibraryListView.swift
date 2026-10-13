@@ -168,7 +168,8 @@ struct LibraryListView: View {
 }
 
 /// Type icon, title, first line, time, duration and markers for audio,
-/// screenshots and speakers.
+/// screenshots and speakers. Log entries show their text in place of the
+/// title (`LibraryFormat.rowText`).
 struct LibraryItemRow: View {
     let item: LibraryItem
     /// Title and duration sorts have no day headers, so rows show the date.
@@ -179,12 +180,13 @@ struct LibraryItemRow: View {
             Image(systemName: item.kind.systemImage)
                 .foregroundStyle(item.isUnfinished ? Color.orange : Color.secondary)
                 .frame(width: 18)
+            let text = LibraryFormat.rowText(for: item)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
+                Text(text.title)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
-                if !item.firstLine.isEmpty {
-                    Text(item.firstLine)
+                if let preview = text.preview {
+                    Text(preview)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
