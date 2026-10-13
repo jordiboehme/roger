@@ -79,6 +79,12 @@ final class MeetingRecordingService {
         }
     }
 
+    /// The folder of the session that is being recorded or finalised. The
+    /// library must not trash, rename or edit anything in it.
+    var activeSessionFolder: URL? {
+        isActive ? session?.folder : nil
+    }
+
     /// Starts a new session: creates the folder, opens both writers, hooks up
     /// taps. Throws if anything trips before audio actually flows; on a thrown
     /// error the partial session folder is removed.
@@ -486,15 +492,15 @@ final class MeetingRecordingService {
         var systemOutcome: MeetingTrackEncodeOutcome?
         var micEncodedLanded = false
         var systemEncodedLanded = false
-        var micLeftoverKept = false
-        var systemLeftoverKept = false
+        var micLeftover: URL?
+        var systemLeftover: URL?
 
         if !micSegments.isEmpty {
             do {
                 let encoded = try await encodeTrack(micSegments, into: micArchive)
                 micOutcome = .encoded(encoded.result)
                 micEncodedLanded = encoded.landed
-                micLeftoverKept = encoded.leftoverKept
+                micLeftover = encoded.leftover
             } catch {
                 logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
                 failFinalisation("Mic encode failed: \(error.localizedDescription)", session: session)
@@ -507,7 +513,7 @@ final class MeetingRecordingService {
                 let encoded = try await encodeTrack(systemSegments, into: systemArchive)
                 systemOutcome = .encoded(encoded.result)
                 systemEncodedLanded = encoded.landed
-                systemLeftoverKept = encoded.leftoverKept
+                systemLeftover = encoded.leftover
             } catch {
                 // System-side encode failures should NOT block the rest of
                 // the pipeline — the mic transcript is still useful. Log
@@ -533,8 +539,8 @@ final class MeetingRecordingService {
         // chunks: the chunks were kept and the session is offered again.
         // A leftover file kept beside the archive also means the transcript
         // does not cover all audio of that track.
-        let micAudioFailed = (micOutcome?.needsRetry ?? false) || micLeftoverKept
-        let systemAudioFailed = (systemOutcome?.needsRetry ?? false) || systemLeftoverKept
+        let micAudioFailed = (micOutcome?.needsRetry ?? false) || micLeftover != nil
+        let systemAudioFailed = (systemOutcome?.needsRetry ?? false) || systemLeftover != nil
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
@@ -602,8 +608,10 @@ final class MeetingRecordingService {
         )
 
         // Screenshot checkpoints: rewrite every segment md from this
-        // authoritative full pass (overwriting the provisional live ones)
-        // and weave inline image references into transcript.md.
+        // authoritative full pass (replacing the live drafts; a segment that
+        // is already stable, maybe edited, is moved aside to
+        // <name>.previous.md first) and weave inline image references into
+        // transcript.md.
         if !markers.isEmpty {
             let effectiveStart = checkpointFile?.sessionStartedAt ?? session.startedAt
             for chunk in MeetingCheckpointStore.chunks(sessionStartedAt: effectiveStart, markers: markers) {
@@ -643,10 +651,14 @@ final class MeetingRecordingService {
             try? FileManager.default.removeItem(at: systemArchive)
         }
 
-        if micAudioFailed || systemAudioFailed {
-            // The transcript lacks a track; its chunks were kept and the
-            // session shows up again for a retry.
-            state = .error(.trackAudioFailed(mic: micAudioFailed, system: systemAudioFailed))
+        if let error = MeetingRecordingError.afterFinalisation(
+            micNeedsRetry: micOutcome?.needsRetry ?? false,
+            systemNeedsRetry: systemOutcome?.needsRetry ?? false,
+            setAside: [micLeftover, systemLeftover].compactMap { $0?.lastPathComponent }
+        ) {
+            // Kept chunks: the session shows up again for a retry. A
+            // leftover file only: the audio is safe there, nothing to retry.
+            state = .error(error)
         } else if sleepInterrupted {
             state = .error(.sleepInterrupted)
         } else {
@@ -662,21 +674,21 @@ final class MeetingRecordingService {
     /// (chunks left over next to a finished archive), the chunks go to a side
     /// file instead and `MeetingArchiveMerge` keeps the longer of the two as
     /// the archive; neither file is overwritten or deleted. `landed` is true
-    /// when the encoded audio is on disk. `leftoverKept` is true when the
-    /// new encode stays beside the archive as a side file, so the archive
-    /// (and the transcript) does not have all of the audio.
+    /// when the encoded audio is on disk. `leftover` is the side file when
+    /// the new encode stays beside the archive, so the archive (and the
+    /// transcript) does not have all of the audio.
     private func encodeTrack(
         _ segments: [URL],
         into archive: URL
-    ) async throws -> (result: AudioSegmentConcatenator.Result, landed: Bool, leftoverKept: Bool) {
+    ) async throws -> (result: AudioSegmentConcatenator.Result, landed: Bool, leftover: URL?) {
         let fm = FileManager.default
         guard fm.fileExists(atPath: archive.path) else {
             let result = try await AudioSegmentConcatenator.concatenate(segments: segments, destinationURL: archive)
-            return (result, fm.fileExists(atPath: archive.path), false)
+            return (result, fm.fileExists(atPath: archive.path), nil)
         }
         let side = MeetingArchiveMerge.leftoverURL(for: archive)
         let result = try await AudioSegmentConcatenator.concatenate(segments: segments, destinationURL: side)
-        guard result.wrote, fm.fileExists(atPath: side.path) else { return (result, false, false) }
+        guard result.wrote, fm.fileExists(atPath: side.path) else { return (result, false, nil) }
         let keepEncoded = await audioSeconds(side) > audioSeconds(archive)
         try MeetingArchiveMerge.settle(archive: archive, encoded: side, keepEncoded: keepEncoded)
         if keepEncoded {
@@ -684,7 +696,7 @@ final class MeetingRecordingService {
         } else {
             logger.warning("Chunks next to \(archive.lastPathComponent, privacy: .public): kept the existing archive, the new encode stays beside it as \(side.lastPathComponent, privacy: .public)")
         }
-        return (result, true, !keepEncoded)
+        return (result, true, keepEncoded ? nil : side)
     }
 
     private func audioSeconds(_ url: URL) async -> Double {

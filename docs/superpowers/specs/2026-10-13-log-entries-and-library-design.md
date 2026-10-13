@@ -1,7 +1,7 @@
 # Log Entries and Library - Design
 
 Date: 2026-10-13
-Status: approved in brainstorming, awaiting spec review
+Status: phase 1 released in 0.23.0; phase 2 (0.24.0) approved 2026-10-13
 
 ## Goal
 
@@ -270,3 +270,26 @@ One spec, two implementation phases, each with its own plan:
 
 1. **Foundation and log entries:** library root, migration, extra scan folders, external-paths list, `PresetOutput`, `keepAudio`, Log preset, `LogEntryWriter`, indicator, settings changes, meeting "Keep audio", test target. Usable on its own: entries land in `Logs/` and can be found in Finder.
 2. **Library:** `LibraryWindowController`, activation policy, `openLibrary` shortcut, `LibraryIndex` and parser, `LibraryView` with all actions, removal of the Past Recordings card.
+
+Phase 1 shipped in 0.23.0. Phase 2 ships in 0.24.0 together with the issues in section 9.
+
+## 9. Additions for 0.24.0
+
+### Carried over from 0.23.0
+
+- The library lists meetings from the extra scan folders and transcripts from the external list (`ExternalTranscriptRegistry.existingFiles()`), next to everything under the library root.
+- "Unfinished" in the sidebar shows exactly `AppCoordinator.pendingMeetingSessions` (unfinished per `MeetingSessionScanner.isUnfinished`, minus dismissed sessions). "Finalise" calls the existing retry. Dismissing there uses the existing persisted dismissal.
+- The "Past Recordings" card in Recordings settings is removed. Library folder, extra folders and "Keep audio after transcription" stay.
+
+### #8: a retry keeps edited segment files
+
+- During finalisation, a segment file whose frontmatter says `status: stable` is moved aside as `<name>.previous.md` (`<name>.previous 1.md` and so on if taken) before the new version is written. An existing previous file is never overwritten.
+- Draft segments (`status: draft`, written live during the meeting) are overwritten as before.
+- The move-aside logic is one shared helper, also used for `transcript.previous.md`.
+
+### #9: extra files after a retry
+
+- Extra files of a meeting: `mic.leftover*.m4a`, `system.leftover*.m4a`, `mic.previous*.m4a`, `system.previous*.m4a`, `transcript.previous*.md` and segment `*.previous*.md`.
+- `transcript.md` lists the extra audio files in `sources` with ids `mic-leftover`, `system-leftover`, `mic-previous`, `system-previous` (numbered suffix `-2`, `-3` when there are several), so agents see them.
+- The meeting detail pane has an "Extra files" section: each file with Reveal in Finder and Move to Trash, plus "Clean up" that moves all extra files to the Trash after a confirmation. Never a permanent delete.
+- When the audio is already safe in a leftover file and there is nothing to retry, the error says "Some audio could not be merged. It is saved as <file> in the meeting folder." and does not say "Try again".

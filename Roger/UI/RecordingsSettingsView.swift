@@ -2,13 +2,12 @@ import AppKit
 import KeyboardShortcuts
 import SwiftUI
 
-/// Settings tab for the meeting-recording feature. Owns the three knobs the
-/// feature needs (output folder, segment rotation interval, system-track
-/// diarization) plus a list of past sessions in the configured folder.
+/// Settings tab for meeting recording and the library folder: where files
+/// go, extra folders, Keep audio, hotkey, speakers, cleanup and chunk length.
+/// Browsing past recordings happens in the library window.
 struct RecordingsSettingsView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var showingFolderPicker = false
-    @State private var sessions: [SessionRow] = []
 
     var body: some View {
         @Bindable var state = coordinator.appState
@@ -48,6 +47,9 @@ struct RecordingsSettingsView: View {
                         }
 
                         HStack(spacing: 8) {
+                            Button("Open Library") { coordinator.openLibrary() }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
                             Button("Reveal in Finder") { revealLibraryFolder() }
                                 .buttonStyle(.borderless)
                                 .controlSize(.small)
@@ -200,21 +202,6 @@ struct RecordingsSettingsView: View {
                         }
                     }
                 }
-
-                // Library
-                settingsCard(icon: "list.bullet.rectangle", title: "Past Recordings") {
-                    if sessions.isEmpty {
-                        Text("No recordings yet. Start one from the menu bar or your hotkey.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(sessions) { row in
-                                pastSessionRow(row)
-                            }
-                        }
-                    }
-                }
             }
             .padding()
         }
@@ -225,75 +212,14 @@ struct RecordingsSettingsView: View {
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
                 state.libraryRoot = url
-                refresh()
             }
         }
-        .onAppear { refresh() }
-        .onChange(of: state.libraryRoot) { _, _ in refresh() }
-        .onChange(of: state.extraScanFolders) { _, _ in refresh() }
     }
 
     private func revealLibraryFolder() {
         let folder = coordinator.appState.libraryLayout.root
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         NSWorkspace.shared.activateFileViewerSelecting([folder])
-    }
-
-    private func refresh() {
-        let appState = coordinator.appState
-        let fm = FileManager.default
-        let folders = MeetingSessionScanner.allSessionFolders(
-            layout: appState.libraryLayout,
-            extraFolders: appState.extraScanFolders
-        )
-        let rows: [SessionRow] = folders.map { url in
-            let name = url.lastPathComponent
-            let date = MeetingSession.folderNameFormatter.date(from: String(name.prefix(16)))
-                ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
-                ?? .distantPast
-            return SessionRow(
-                id: url.path,
-                folder: url,
-                name: name,
-                date: date,
-                hasTranscript: fm.fileExists(atPath: url.appendingPathComponent("transcript.md").path),
-                hasMic: fm.fileExists(atPath: url.appendingPathComponent("mic.m4a").path),
-                hasSystem: fm.fileExists(atPath: url.appendingPathComponent("system.m4a").path)
-            )
-        }
-        sessions = rows.sorted { $0.date > $1.date }
-    }
-
-    private func pastSessionRow(_ row: SessionRow) -> some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(row.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary)
-                HStack(spacing: 6) {
-                    if row.hasTranscript { Tag("Transcript", color: .green) }
-                    if row.hasMic { Tag("Mic", color: .blue) }
-                    if row.hasSystem { Tag("System", color: .purple) }
-                }
-            }
-            Spacer()
-            if row.hasTranscript {
-                Button("Open") {
-                    NSWorkspace.shared.open(row.folder.appendingPathComponent("transcript.md"))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([row.folder])
-            } label: {
-                Image(systemName: "folder")
-                    .font(.caption)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(.vertical, 4)
     }
 
     private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -311,34 +237,5 @@ struct RecordingsSettingsView: View {
         .padding(14)
         .background(.quaternary.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-}
-
-private struct SessionRow: Identifiable {
-    let id: String
-    let folder: URL
-    let name: String
-    let date: Date
-    let hasTranscript: Bool
-    let hasMic: Bool
-    let hasSystem: Bool
-}
-
-private struct Tag: View {
-    let text: String
-    let color: Color
-
-    init(_ text: String, color: Color) {
-        self.text = text
-        self.color = color
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.18), in: Capsule())
-            .foregroundStyle(color)
     }
 }

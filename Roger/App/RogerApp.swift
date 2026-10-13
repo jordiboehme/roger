@@ -10,6 +10,10 @@ extension KeyboardShortcuts.Name {
     /// from the Recordings settings tab. Unset by default — Roger only takes
     /// the hotkey if the user explicitly assigns one.
     static let meetingRecordingToggle = Self("meetingRecordingToggle")
+
+    /// Global hotkey to open the library window. Unset by default, set in
+    /// Settings > General.
+    static let openLibrary = Self("openLibrary")
 }
 
 @MainActor
@@ -33,6 +37,7 @@ struct RogerApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
+    private var libraryWindowController: LibraryWindowController?
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var dropView: StatusBarDropView?
@@ -48,12 +53,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        #if DEBUG
+        if let folder = LibrarySnapshotRunner.requestedFolder {
+            startSnapshotRun(into: folder)
+            return
+        }
+        #endif
+
         let coordinator = sharedCoordinator
 
         // Move pre-library meetings before anything lists them.
         coordinator.runLibraryMigrationIfNeeded()
 
         installStatusItem(coordinator: coordinator)
+        coordinator.libraryOpener = { [weak self] url in
+            self?.openLibrary(selecting: url)
+        }
 
         // Check permissions
         coordinator.permissionManager.checkPermissions()
@@ -82,6 +97,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        KeyboardShortcuts.onKeyDown(for: .openLibrary) {
+            Task { @MainActor in
+                sharedCoordinator.openLibrary()
+            }
+        }
+
         // Show onboarding on first launch
         if !coordinator.appState.hasCompletedOnboarding {
             showOnboarding(coordinator: coordinator)
@@ -90,6 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Finder > Services > "Transcribe with Roger" (declared in Info.plist).
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+    }
+
+    /// An unsaved edit in the library window is asked about first.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        (libraryWindowController?.confirmUnsavedEdit() ?? true) ? .terminateNow : .terminateCancel
     }
 
     // MARK: - Open With / Services
@@ -271,6 +297,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let popover, let button = statusItem?.button, !popover.isShown else { return }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    // MARK: - Library
+
+    func openLibrary(selecting url: URL? = nil) {
+        popover?.performClose(nil)
+        let controller = libraryWindowController
+            ?? LibraryWindowController(coordinator: sharedCoordinator, indexStore: makeLibraryIndexStore())
+        libraryWindowController = controller
+        controller.show(selecting: url)
+    }
+
+    private func makeLibraryIndexStore() -> LibraryIndexStore {
+        #if DEBUG
+        if LibrarySnapshotRunner.requestedFolder != nil { return LibrarySnapshotRunner.indexStore() }
+        #endif
+        return .standard()
+    }
+
+    #if DEBUG
+    /// Snapshot mode: only the library window, none of the launch work that
+    /// touches settings, the system or the developer's own files (migration,
+    /// model download, mic, permissions, login item, hotkeys, Services,
+    /// onboarding).
+    private func startSnapshotRun(into folder: URL) {
+        let coordinator = sharedCoordinator
+        coordinator.libraryOpener = { [weak self] url in
+            self?.openLibrary(selecting: url)
+        }
+        coordinator.refreshPendingMeetingSessions()
+        coordinator.openLibrary()
+        guard let controller = libraryWindowController else {
+            appLogger.error("Snapshot run: the library window did not open")
+            exit(1)
+        }
+        Task {
+            await LibrarySnapshotRunner.run(controller: controller, coordinator: coordinator, folder: folder)
+            NSApp.terminate(nil)
+        }
+    }
+    #endif
+
+    /// Clicking the Dock icon (only there while the library is open) brings
+    /// the library to the front.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let controller = libraryWindowController, controller.isOpen {
+            controller.show()
+        }
+        return false
     }
 
     // MARK: - Drag & Drop

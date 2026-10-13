@@ -46,7 +46,11 @@ struct MenuBarView: View {
             }
 
             if let text = coordinator.appState.lastTranscription, !text.isEmpty, !isMeetingRecording {
-                LastDictationCard(text: text, logURL: coordinator.appState.lastLogEntryURL)
+                LastDictationCard(
+                    text: text,
+                    logURL: coordinator.appState.lastLogEntryURL,
+                    onShowInLibrary: { coordinator.openLibrary(selecting: $0) }
+                )
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
             }
@@ -68,6 +72,23 @@ struct MenuBarView: View {
             Divider().padding(.horizontal, 10)
 
             VStack(spacing: 0) {
+                Button {
+                    coordinator.openLibrary()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "books.vertical")
+                            .frame(width: 16)
+                            .foregroundStyle(.secondary)
+                        Text("Open Library")
+                            .font(.system(size: 13))
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 5)
+                }
+                .buttonStyle(.plain)
+
                 SettingsLink {
                     HStack(spacing: 8) {
                         Image(systemName: "gear")
@@ -443,6 +464,7 @@ private struct MeetingMenuElapsed: View {
 private struct LastDictationCard: View {
     let text: String
     let logURL: URL?
+    let onShowInLibrary: (URL) -> Void
     @State private var isHovering = false
     @State private var justCopied = false
 
@@ -451,9 +473,9 @@ private struct LastDictationCard: View {
             card
             if let logURL {
                 Button {
-                    NSWorkspace.shared.activateFileViewerSelecting([logURL])
+                    onShowInLibrary(logURL)
                 } label: {
-                    Label("Saved to log - Show in Finder", systemImage: "book.closed")
+                    Label("Saved to log - Show in Library", systemImage: "book.closed")
                         .font(.caption)
                 }
                 .buttonStyle(.borderless)

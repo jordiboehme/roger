@@ -19,6 +19,18 @@ enum MeetingArchiveMerge {
         return candidate
     }
 
+    /// Moves `url` to its first free `<stem>.<label>.<ext>` sibling
+    /// (`<stem>.<label> 1.<ext>` …) and returns where it went. Never
+    /// overwrites: `moveItem` fails rather than replace an existing file.
+    /// The one helper for `transcript.previous.md`, segment
+    /// `<name>.previous.md` files and `mic.previous.m4a` style archives.
+    @discardableResult
+    static func moveAside(_ url: URL, label: String = "previous") throws -> URL {
+        let target = uniqueSibling(of: url, label: label)
+        try FileManager.default.moveItem(at: url, to: target)
+        return target
+    }
+
     /// Where the chunks are encoded when `archive` already exists.
     static func leftoverURL(for archive: URL) -> URL {
         uniqueSibling(of: archive, label: "leftover")
@@ -31,8 +43,7 @@ enum MeetingArchiveMerge {
     static func settle(archive: URL, encoded: URL, keepEncoded: Bool) throws {
         guard keepEncoded else { return }
         let fm = FileManager.default
-        let previous = uniqueSibling(of: archive, label: "previous")
-        try fm.moveItem(at: archive, to: previous)
+        let previous = try moveAside(archive)
         do {
             try fm.moveItem(at: encoded, to: archive)
         } catch {
