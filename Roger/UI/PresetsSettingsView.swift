@@ -39,7 +39,7 @@ struct PresetsSettingsView: View {
                     Spacer()
                     if preset.output == .logEntry {
                         Image(systemName: "book.closed")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                             .help("Saves to the log")
                     }
