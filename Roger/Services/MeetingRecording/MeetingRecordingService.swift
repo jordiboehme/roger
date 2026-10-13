@@ -213,7 +213,7 @@ final class MeetingRecordingService {
                 ?? LibraryMigration.sessionDate(for: url)
                 ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
                 ?? Date()
-            result.append(MeetingSession(id: UUID(), folder: url, startedAt: started))
+            result.append(MeetingSession(id: MeetingSession.stableID(for: url), folder: url, startedAt: started))
         }
         return result
     }

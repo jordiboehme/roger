@@ -85,6 +85,7 @@
 		EABF66A0BAD65C7763DCA198 /* MediaAudioExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B68B6A4253D5A3D581849D /* MediaAudioExtractor.swift */; };
 		EB9A06A78E3ED35002F9E301 /* MeetingTranscriptWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B617F6E9777D296E85E273 /* MeetingTranscriptWriterTests.swift */; };
 		EC0F951EE4CF6470CCF8EFB6 /* MeetingTranscriptionPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF6405D1966845C33DBAE03 /* MeetingTranscriptionPipeline.swift */; };
+		EEE0C023AF75202D7F76C789 /* MeetingSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32D90E0AE7F50FF3C75927DF /* MeetingSessionTests.swift */; };
 		F36323F5B0CAEB1CF8BCDF11 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 944D8CE8CCBD95F3346AB9C2 /* AppState.swift */; };
 /* End PBXBuildFile section */
 
@@ -112,6 +113,7 @@
 		26B68B6A4253D5A3D581849D /* MediaAudioExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAudioExtractor.swift; sourceTree = "<group>"; };
 		31817525D64A7EC3D0642B02 /* DiarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationService.swift; sourceTree = "<group>"; };
 		31F3487B8EF5F5008F213858 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
+		32D90E0AE7F50FF3C75927DF /* MeetingSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSessionTests.swift; sourceTree = "<group>"; };
 		346522528C8F2F9999EF7C4F /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
 		363FE7FFAB640D4E02028622 /* PostProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostProcessor.swift; sourceTree = "<group>"; };
 		3743725D72D2E40A31B42614 /* AppleIntelligenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligenceService.swift; sourceTree = "<group>"; };
@@ -326,6 +328,7 @@
 				5A30F7C94DC4E26D9241B863 /* LogEntryWriterTests.swift */,
 				5433709BD5C83EE1CB42A6C3 /* MeetingArchiveMergeTests.swift */,
 				EB955ABE53B4D393CB7A5F42 /* MeetingSessionScannerTests.swift */,
+				32D90E0AE7F50FF3C75927DF /* MeetingSessionTests.swift */,
 				A0B617F6E9777D296E85E273 /* MeetingTranscriptWriterTests.swift */,
 				02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */,
 				851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */,
@@ -542,6 +545,7 @@
 				3DC61A2BFB150E7588739A01 /* LogEntryWriterTests.swift in Sources */,
 				4C5958B71EE549B3EC8FF10F /* MeetingArchiveMergeTests.swift in Sources */,
 				C493692E71EADFFD5FFC8AFF /* MeetingSessionScannerTests.swift in Sources */,
+				EEE0C023AF75202D7F76C789 /* MeetingSessionTests.swift in Sources */,
 				EB9A06A78E3ED35002F9E301 /* MeetingTranscriptWriterTests.swift in Sources */,
 				065B93FE7A30FEEE02F2A248 /* TempFolder.swift in Sources */,
 				2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */,

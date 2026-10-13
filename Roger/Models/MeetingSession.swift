@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Persistent record of a single meeting recording session. The directory at
@@ -38,6 +39,18 @@ struct MeetingSession: Sendable, Equatable, Identifiable {
             suffix += 1
         }
         return candidate
+    }
+
+    /// Same UUID for the same folder on every scan, so a recovery entry
+    /// keeps its identity (and a dismissal sticks) across rescans.
+    static func stableID(for folder: URL) -> UUID {
+        var bytes = Array(SHA256.hash(data: Data(folder.standardizedFileURL.path.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50 // version 5 style (name-based)
+        bytes[8] = (bytes[8] & 0x3F) | 0x80 // RFC 4122 variant
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
     }
 
     var micArchiveURL: URL { folder.appendingPathComponent("mic.m4a") }
