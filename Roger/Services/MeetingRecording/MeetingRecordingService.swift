@@ -478,11 +478,14 @@ final class MeetingRecordingService {
 
         var micPresent = !micSegments.isEmpty || micReused
         var systemPresent = !systemSegments.isEmpty || systemReused
+        var micOutcome: MeetingTrackEncodeOutcome?
+        var systemOutcome: MeetingTrackEncodeOutcome?
 
         if !micSegments.isEmpty {
             do {
                 let wrote = try await AudioSegmentConcatenator.concatenate(segments: micSegments, destinationURL: micArchive)
                 micPresent = wrote
+                micOutcome = wrote ? .wrote : .empty
             } catch {
                 logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
                 state = .error(.finalisationFailed("Mic encode failed: \(error.localizedDescription)"))
@@ -494,23 +497,24 @@ final class MeetingRecordingService {
             do {
                 let wrote = try await AudioSegmentConcatenator.concatenate(segments: systemSegments, destinationURL: systemArchive)
                 systemPresent = wrote
+                systemOutcome = wrote ? .wrote : .empty
             } catch {
                 // System-side encode failures should NOT block the rest of
                 // the pipeline — the mic transcript is still useful. Log
                 // loudly, mark the track absent, and continue.
-                logger.error("System encode failed (continuing without system audio): \(error.localizedDescription, privacy: .public)")
+                logger.error("System encode failed (continuing without system audio, chunks kept): \(error.localizedDescription, privacy: .public)")
                 systemPresent = false
+                systemOutcome = .failed
             }
         }
 
         // Delete CAF chunks once their target encode either landed or was
-        // confirmed empty. We don't keep dead chunks around — re-running the
-        // recovery pipeline against an empty CAF folder produces the same
-        // result anyway.
-        if FileManager.default.fileExists(atPath: micArchive.path) || !micPresent {
+        // confirmed empty. After a failed encode they stay on disk, so the
+        // audio is not lost.
+        if micOutcome?.allowsDeletingChunks(archiveExists: FileManager.default.fileExists(atPath: micArchive.path)) == true {
             for url in micSegments { try? FileManager.default.removeItem(at: url) }
         }
-        if FileManager.default.fileExists(atPath: systemArchive.path) || !systemPresent {
+        if systemOutcome?.allowsDeletingChunks(archiveExists: FileManager.default.fileExists(atPath: systemArchive.path)) == true {
             for url in systemSegments { try? FileManager.default.removeItem(at: url) }
         }
 

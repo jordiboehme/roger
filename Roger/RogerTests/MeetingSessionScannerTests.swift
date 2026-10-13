@@ -105,4 +105,13 @@ struct MeetingSessionScannerTests {
         // Resolving never touches the archive.
         #expect(try Data(contentsOf: archive) == Data("audio".utf8))
     }
+
+    @Test func chunksAreKeptWhenTheEncodeFails() {
+        #expect(MeetingTrackEncodeOutcome.wrote.allowsDeletingChunks(archiveExists: true))
+        #expect(!MeetingTrackEncodeOutcome.wrote.allowsDeletingChunks(archiveExists: false))
+        #expect(MeetingTrackEncodeOutcome.empty.allowsDeletingChunks(archiveExists: false))
+        // A failed encode keeps the chunks, even when an older archive exists.
+        #expect(!MeetingTrackEncodeOutcome.failed.allowsDeletingChunks(archiveExists: false))
+        #expect(!MeetingTrackEncodeOutcome.failed.allowsDeletingChunks(archiveExists: true))
+    }
 }
