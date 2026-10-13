@@ -1034,7 +1034,9 @@ final class AppCoordinator {
         pendingMeetingSessions.removeAll { $0.id == session.id }
     }
 
-    private func refreshPendingMeetingSessions() {
+    /// Also called by the library after it moved a meeting to the Trash, so
+    /// the popover banner and the Unfinished list drop it right away.
+    func refreshPendingMeetingSessions() {
         let dismissed = Set(appState.dismissedMeetingSessions)
         pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
             .filter { !dismissed.contains($0.folder.standardizedFileURL.path) }
