@@ -127,7 +127,7 @@ enum MicrophoneTapError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Microphone access denied — grant permission in System Settings › Privacy & Security."
+            return "Microphone access denied. Grant permission in System Settings › Privacy & Security."
         case .noInputDevice:
             return "No audio input device available."
         case .converterUnavailable:

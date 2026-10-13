@@ -85,11 +85,12 @@ private struct FloatingIndicatorContent: View {
     @State private var showCheckpointSaved = false
 
     // Neon accent: hot pink while listening, electric cyan while thinking / file-transcribing,
-    // amber while a meeting is being recorded.
+    // amber while a meeting is being recorded, electric green for log entries.
     // Drives the stroke, drop shadow and countdown warning tint.
     private static let listeningAccent = Color(red: 1.0, green: 0.2, blue: 0.48)
     private static let thinkingAccent = Color(red: 0.2, green: 0.87, blue: 1.0)
     private static let meetingAccent = Color(red: 1.0, green: 0.55, blue: 0.0)
+    private static let logAccent = Color(red: 0.2, green: 1.0, blue: 0.45)
 
     private var fileJob: AppCoordinator.FileTranscriptionJob? {
         coordinator.activeFileTranscription
@@ -110,8 +111,20 @@ private struct FloatingIndicatorContent: View {
         fileJob == nil && !isMeetingRecording && coordinator.appState.dictationState == .listening
     }
 
+    /// Log presets save to a file instead of typing; shown in green.
+    private var isLogMode: Bool {
+        coordinator.showsLogSaved || activePreset?.output == .logEntry
+    }
+
+    private var statusLabel: String {
+        if coordinator.showsLogSaved { return "Logged" }
+        if isLogMode { return isListening ? "Logging" : "Saving" }
+        return isListening ? "Listening" : "Thinking"
+    }
+
     private var accent: Color {
         if isMeetingRecording { return Self.meetingAccent }
+        if isLogMode { return Self.logAccent }
         return isListening ? Self.listeningAccent : Self.thinkingAccent
     }
 
@@ -147,7 +160,12 @@ private struct FloatingIndicatorContent: View {
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
-                if isListening {
+                if coordinator.showsLogSaved {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(accent)
+                        .transition(.opacity)
+                } else if isListening {
                     PanelWaveform()
                         .transition(.opacity)
                 } else {
@@ -157,6 +175,7 @@ private struct FloatingIndicatorContent: View {
             }
             .frame(width: 27, height: 20)
             .animation(.easeInOut(duration: 0.2), value: isListening)
+            .animation(.easeInOut(duration: 0.2), value: coordinator.showsLogSaved)
 
             if let job = fileJob {
                 VStack(alignment: .leading, spacing: 1) {
@@ -224,7 +243,7 @@ private struct FloatingIndicatorContent: View {
                         .symbolRenderingMode(.hierarchical)
                 }
                 .buttonStyle(.plain)
-                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide — click to unmute" : "Mute mic system-wide (also mutes the meeting app)")
+                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide. Click to unmute." : "Mute mic system-wide (also mutes the meeting app)")
 
                 Button {
                     coordinator.setMeetingOverlayHidden(true)
@@ -249,7 +268,7 @@ private struct FloatingIndicatorContent: View {
                 .help("Stop meeting recording")
             } else {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(isListening ? "Listening" : "Thinking")
+                    Text(statusLabel)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                         .contentTransition(.opacity)

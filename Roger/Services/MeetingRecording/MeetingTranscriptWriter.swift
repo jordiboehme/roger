@@ -18,13 +18,23 @@ enum MeetingTranscriptWriter {
         let language: String?
         let micPresent: Bool
         let systemPresent: Bool
+        /// False when the audio files are deleted after the transcript is written; `sources` is left out then.
+        let audioKept: Bool
         /// True when at least one track went through speaker diarization.
         let diarized: Bool
         let diarizationFailed: Bool
+        /// A track's audio could not be saved (encode failed or its chunks
+        /// were unreadable); its chunks were kept for a retry.
+        var micAudioFailed = false
+        var systemAudioFailed = false
     }
 
     /// `markers` are screenshot checkpoints to weave into the body as inline
     /// image references at their chronological position between paragraphs.
+    /// An existing transcript.md (a retry of a flagged session, possibly
+    /// edited by the user) is first moved aside to `transcript.previous.md`
+    /// (`transcript.previous 1.md` … if taken); if that move fails, nothing
+    /// is written.
     static func write(
         paragraphs: [MeetingTranscriptMerger.Paragraph],
         metadata: Metadata,
@@ -32,6 +42,10 @@ enum MeetingTranscriptWriter {
     ) throws -> URL {
         let url = metadata.session.transcriptURL
         let content = buildContent(paragraphs: paragraphs, metadata: metadata, markers: markers)
+        if FileManager.default.fileExists(atPath: url.path) {
+            let previous = MeetingArchiveMerge.uniqueSibling(of: url, label: "previous")
+            try FileManager.default.moveItem(at: url, to: previous)
+        }
         try content.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
@@ -44,11 +58,13 @@ enum MeetingTranscriptWriter {
         let session = metadata.session
         let endedAt = session.startedAt.addingTimeInterval(TimeInterval(metadata.durationSeconds))
         var sources: [TranscriptFrontmatter.Source] = []
-        if metadata.micPresent {
-            sources.append(.init(id: "mic", resource: session.micArchiveURL.lastPathComponent))
-        }
-        if metadata.systemPresent {
-            sources.append(.init(id: "system", resource: session.systemArchiveURL.lastPathComponent))
+        if metadata.audioKept {
+            if metadata.micPresent {
+                sources.append(.init(id: "mic", resource: session.micArchiveURL.lastPathComponent))
+            }
+            if metadata.systemPresent {
+                sources.append(.init(id: "system", resource: session.systemArchiveURL.lastPathComponent))
+            }
         }
         var fm = TranscriptFrontmatter(
             title: "Meeting \(displayDate(session))",
@@ -74,6 +90,12 @@ enum MeetingTranscriptWriter {
         }
         if metadata.diarizationFailed {
             fm.add("diarization_failed", true)
+        }
+        if metadata.micAudioFailed {
+            fm.add("mic_audio_failed", true)
+        }
+        if metadata.systemAudioFailed {
+            fm.add("system_audio_failed", true)
         }
 
         var out = fm.render()

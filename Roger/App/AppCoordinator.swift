@@ -34,6 +34,10 @@ final class AppCoordinator {
     var isModelReady = false
     var lastModelError: String? = nil
     private(set) var activeRecordingPresetID: UUID?
+    /// True for a short moment after a log entry was saved; the floating
+    /// indicator shows "Logged" while it is set.
+    private(set) var showsLogSaved = false
+    private var logSavedGeneration = 0
     /// Language pin resolved at recording start, applied when the buffer is
     /// transcribed on release.
     private var activeRecordingLanguageOverride: String?
@@ -62,10 +66,11 @@ final class AppCoordinator {
     /// (macOS 14.4+, below the macOS 15 deployment floor).
     let meetingRecorder: MeetingRecordingService
 
-    /// Recovered sessions from a prior crash (CAF chunks but no transcript).
-    /// Populated on launch and surfaced in MenuBarView so the user can
-    /// decide whether to finalise.
+    /// Unfinished sessions (see `MeetingSessionScanner.isUnfinished`).
+    /// Populated on launch and after every finalisation, surfaced in
+    /// MenuBarView so the user can decide whether to finalise.
     private(set) var pendingMeetingSessions: [MeetingSession] = []
+
 
     /// Session-scoped flag: true when the user has dismissed the floating
     /// overlay during an active recording. The status-bar item compensates
@@ -94,7 +99,11 @@ final class AppCoordinator {
         audioCaptureService.onLevelUpdate = { [weak self] raw in
             Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
         }
-        self.pendingMeetingSessions = self.meetingRecorder.unfinalisedSessions()
+        // Forget dismissals of folders that no longer exist.
+        let dismissed = appState.dismissedMeetingSessions
+        let stillThere = MeetingSessionScanner.existingFolderPaths(dismissed)
+        if stillThere != dismissed { appState.dismissedMeetingSessions = stillThere }
+        refreshPendingMeetingSessions()
         observeRecorderState()
         // HAL mute persists after our process exits, so always restore on quit.
         NotificationCenter.default.addObserver(
@@ -112,7 +121,9 @@ final class AppCoordinator {
     /// Keeps the hotkey's mute-toggle mode and the system mute in sync with the
     /// recorder's real state. Covers stops we don't drive directly (e.g. a
     /// sleep-interrupted auto-finalise): when the recorder leaves `.recording`,
-    /// disengage the hotkey repurpose and restore the mic.
+    /// disengage the hotkey repurpose and restore the mic. When a run ends
+    /// (idle or error) the recovery list is refreshed, and an error is shown
+    /// in the menu bar unless dictation is busy.
     private func observeRecorderState() {
         withObservationTracking {
             _ = meetingRecorder.state
@@ -125,9 +136,65 @@ final class AppCoordinator {
                     self.hotkeyManager.meetingRecordingActive = false
                     self.systemMicMute.restoreIfNeeded()
                 }
+                switch self.meetingRecorder.state {
+                case .idle:
+                    self.refreshPendingMeetingSessions()
+                case .error(let recordingError):
+                    self.refreshPendingMeetingSessions()
+                    if self.appState.dictationState == .idle || self.appState.dictationState.isErrorState {
+                        self.appState.dictationState = .error(recordingError.errorDescription ?? "Couldn't finalise meeting")
+                    }
+                default:
+                    break
+                }
                 self.observeRecorderState()
             }
         }
+    }
+
+    // MARK: - Library Migration
+
+    /// One-time move of pre-library meetings into `<library>/Meetings/`.
+    /// Asks first. Folders that stay in place become extra scan folders, so
+    /// their meetings are still found.
+    func runLibraryMigrationIfNeeded() {
+        guard !appState.libraryMigrationDone, !meetingRecorder.isActive else { return }
+        defer {
+            appState.libraryMigrationDone = true
+            refreshPendingMeetingSessions()
+        }
+
+        var extras = appState.extraScanFolders
+        func addExtra(_ url: URL) {
+            if !extras.contains(where: { $0.standardizedFileURL == url.standardizedFileURL }) {
+                extras.append(url)
+            }
+        }
+        if let transcripts = appState.legacyFileTranscriptFolder {
+            addExtra(transcripts)
+        }
+
+        let layout = appState.libraryLayout
+        let oldMeetings = appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
+        let sessions = MeetingSessionScanner.sessionFolders(in: oldMeetings, maxDepth: 1)
+        if !sessions.isEmpty, !LibraryMigration.isInsideLibrary(oldMeetings, layout: layout) {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "Move your meetings to the Roger library?"
+            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(sessions.count) \(sessions.count == 1 ? "meeting" : "meetings") from \(oldMeetings.path) there? If you keep them in place, Roger still finds them."
+            alert.addButton(withTitle: "Move")
+            alert.addButton(withTitle: "Keep in Place")
+            if alert.runModal() == .alertFirstButtonReturn {
+                let result = LibraryMigration.execute(LibraryMigration.plan(sessionFolders: sessions, layout: layout))
+                logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failed.count) failed")
+                if !result.failed.isEmpty {
+                    addExtra(oldMeetings)
+                }
+            } else {
+                addExtra(oldMeetings)
+            }
+        }
+        appState.extraScanFolders = extras
     }
 
     private func setupPermissionCallbacks() {
@@ -214,12 +281,12 @@ final class AppCoordinator {
         }
 
         guard permissionManager.microphoneAuthorized else {
-            appState.dictationState = .error("Microphone access required — open Settings > Permissions")
+            appState.dictationState = .error("Microphone access required. Open Settings > Permissions.")
             return
         }
 
         guard transcriptionEngine.isReady else {
-            appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+            appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
             return
         }
 
@@ -240,6 +307,7 @@ final class AppCoordinator {
             recordingStartTime = Date()
             activeRecordingLanguageOverride = languageOverride
             floatingPanel.show(coordinator: self)
+            cancelLogSavedIndicator()
 
             // A mic muted at the device level (often left over from an
             // earlier meeting) records pure silence. Lift the mute for this
@@ -285,7 +353,9 @@ final class AppCoordinator {
 
         cancelMaxDurationTask()
 
-        let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        let endedAt = Date()
+        let duration = recordingStartTime.map { endedAt.timeIntervalSince($0) } ?? 0
+        let startedAt = recordingStartTime ?? endedAt.addingTimeInterval(-duration)
         recordingStartTime = nil
 
         let capture = audioCaptureService.stopCapture()
@@ -317,7 +387,7 @@ final class AppCoordinator {
 
         logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
         Task {
-            await self.runPipeline(audioSeconds: duration) {
+            await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt, samples: samples) {
                 guard let samples, !samples.isEmpty else {
                     return TranscriptionEngine.TranscriptionResult(text: "", detectedLanguage: nil)
                 }
@@ -331,6 +401,9 @@ final class AppCoordinator {
 
     private func runPipeline(
         audioSeconds: Double,
+        startedAt: Date,
+        endedAt: Date,
+        samples: [Float]?,
         transcribe: @escaping () async throws -> TranscriptionEngine.TranscriptionResult
     ) async {
         appState.dictationState = .transcribing
@@ -349,7 +422,7 @@ final class AppCoordinator {
                 logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 audioLevelMeter.reset()
-                appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
+                appState.dictationState = .error("No speech detected. Try speaking louder or closer to the mic.")
                 return
             }
 
@@ -381,10 +454,17 @@ final class AppCoordinator {
                         logger.warning("AI guardrail blocked — falling back to non-AI pipeline, skipping insertion")
                         let fallback = Self.nonAIFallback(from: activePreset)
                         let safeText = (try? await postProcessor.process(result.text, preset: fallback, language: languageName, llmService: nil)) ?? result.text
+                        if activePreset.output == .logEntry {
+                            // A file surprises nobody: save the non-AI text.
+                            await saveLogEntry(safeText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
+                                               language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                            return
+                        }
                         appState.lastTranscription = safeText
+                        appState.lastLogEntryURL = nil
                         floatingPanel.hide()
                         audioLevelMeter.reset()
-                        appState.dictationState = .error("AI declined this dictation — copy the transcript from the menu bar")
+                        appState.dictationState = .error("AI declined this dictation. Copy the transcript from the menu bar.")
                         return
                     }
                 } else {
@@ -397,8 +477,15 @@ final class AppCoordinator {
             }
             let llmMs = Date().timeIntervalSince(llmStart) * 1000
 
+            if activePreset.output == .logEntry {
+                await saveLogEntry(processedText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
+                                   language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                return
+            }
+
             appState.dictationState = .inserting
             appState.lastTranscription = processedText
+            appState.lastLogEntryURL = nil
 
             let textToInsert = processedText + activePreset.trailingCharacter.character
             let insertStart = Date()
@@ -428,19 +515,72 @@ final class AppCoordinator {
         }
     }
 
+    /// Any new panel session (dictation, file job, meeting) cancels the pending
+    /// "Logged" state and its hide timer.
+    private func cancelLogSavedIndicator() {
+        showsLogSaved = false
+        logSavedGeneration += 1
+    }
+
+    /// Writes a log entry instead of typing. On failure the text stays in
+    /// `lastTranscription` so nothing is lost.
+    private func saveLogEntry(
+        _ text: String,
+        preset: DictationPreset,
+        startedAt: Date,
+        endedAt: Date,
+        language: String?,
+        samples: [Float]?
+    ) async {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            logger.info("Log entry skipped: empty text after processing")
+            appState.lastLogEntryURL = nil
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error("No speech detected - try speaking louder or closer to the mic")
+            return
+        }
+        appState.lastTranscription = text
+        let entry = LogEntry(text: text, startedAt: startedAt, endedAt: endedAt, presetName: preset.name, language: language)
+        do {
+            let url = try await LogEntryWriter.write(
+                entry,
+                layout: appState.libraryLayout,
+                audioSamples: preset.keepAudio ? samples : nil
+            )
+            appState.lastLogEntryURL = url
+            logger.notice("Log entry saved: \(url.path, privacy: .public)")
+        } catch {
+            logger.error("Log entry write failed: \(error.localizedDescription, privacy: .public)")
+            appState.lastLogEntryURL = nil
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error("Could not save the log entry. Copy the text from the menu bar.")
+            return
+        }
+
+        audioLevelMeter.reset()
+        appState.dictationState = .idle
+        logSavedGeneration += 1
+        let generation = logSavedGeneration
+        showsLogSaved = true
+        // Detached from the pipeline so `runPipeline` returns right away and a
+        // new dictation is not held up (its defer clears the active preset).
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard generation == self.logSavedGeneration else { return }
+            self.showsLogSaved = false
+            // A new dictation may have started meanwhile; it owns the panel then.
+            if self.appState.dictationState == .idle {
+                self.floatingPanel.hide()
+            }
+        }
+    }
+
     /// Returns a copy of `preset` with every AI step disabled — used when the
     /// configured LLM provider is unavailable or refuses to process the text.
     private static func nonAIFallback(from preset: DictationPreset) -> DictationPreset {
-        DictationPreset(
-            id: preset.id, name: preset.name, isBuiltIn: preset.isBuiltIn,
-            enableFillerRemoval: preset.enableFillerRemoval,
-            enableDedup: preset.enableDedup,
-            enableAIFormatting: false,
-            enableCustomDictionary: preset.enableCustomDictionary,
-            enableRewrite: false,
-            aiPrompt: "", rewritePrompt: "",
-            dictionaryEntries: preset.dictionaryEntries
-        )
+        preset.withoutAI
     }
 
     // MARK: - Model Setup
@@ -479,7 +619,7 @@ final class AppCoordinator {
             modelSetupProgress = nil
             lastModelError = error.localizedDescription
             pendingMediaFile = nil
-            appState.dictationState = .error("Model download failed — check your connection and retry")
+            appState.dictationState = .error("Model download failed. Check your connection and retry.")
         }
     }
 
@@ -552,7 +692,7 @@ final class AppCoordinator {
                 logger.info("Speech model still loading — queued: \(url.lastPathComponent, privacy: .public)")
                 pendingMediaFile = url
             } else {
-                appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+                appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
             }
             return
         }
@@ -565,6 +705,7 @@ final class AppCoordinator {
         let job = FileTranscriptionJob(sourceURL: url, displayName: url.lastPathComponent)
         activeFileTranscription = job
         floatingPanel.show(coordinator: self)
+        cancelLogSavedIndicator()
 
         fileTranscriptionTask = Task { [weak self] in
             await self?.runFileTranscription(job: job)
@@ -693,7 +834,7 @@ final class AppCoordinator {
             let outputURL = try TranscriptOutputWriter.write(
                 source: job.sourceURL,
                 location: appState.fileTranscriptOutputLocation,
-                customFolder: appState.fileTranscriptOutputFolder
+                layout: appState.libraryLayout
             ) { destination in
                 MediaTranscriptFormatter.content(
                     source: job.sourceURL,
@@ -705,6 +846,13 @@ final class AppCoordinator {
                     diarized: diarized,
                     diarizationFailed: diarizationFailed
                 )
+            }
+            if appState.fileTranscriptOutputLocation == .alongsideSource {
+                do {
+                    try ExternalTranscriptRegistry.standard.add(outputURL)
+                } catch {
+                    logger.warning("Could not remember transcript path: \(error.localizedDescription, privacy: .public)")
+                }
             }
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
@@ -759,7 +907,9 @@ final class AppCoordinator {
     /// preconditions fail. UI calls this from the menu bar Start row and
     /// from the global hotkey.
     func startMeetingRecording() async {
-        guard meetingRecorder.state == .idle else {
+        // `.error` from an earlier run is not active and must not block a
+        // new recording.
+        guard !meetingRecorder.isActive else {
             appState.dictationState = .error(MeetingRecordingError.alreadyRecording.errorDescription ?? "")
             return
         }
@@ -784,6 +934,7 @@ final class AppCoordinator {
         do {
             try await meetingRecorder.start()
             floatingPanel.show(coordinator: self)
+            cancelLogSavedIndicator()
             // Repurpose the standard hotkey as the mic-mute toggle for the
             // duration of the recording.
             hotkeyManager.meetingRecordingActive = true
@@ -813,9 +964,9 @@ final class AppCoordinator {
         systemMicMute.restoreIfNeeded()
         await meetingRecorder.stop()
         floatingPanel.hide()
-        // Refresh recovery list — a freshly finalised session won't be in
-        // it, but a sleep-interrupted one might.
-        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+        // Refresh recovery list: a freshly finalised session won't be in
+        // it, but a failed one will.
+        refreshPendingMeetingSessions()
     }
 
     /// Toggle visibility of the floating overlay during active capture. No-op
@@ -855,22 +1006,29 @@ final class AppCoordinator {
     func resumeMeetingFinalisation(_ session: MeetingSession) async {
         meetingOverlayHidden = false
         floatingPanel.show(coordinator: self)
+        cancelLogSavedIndicator()
         await meetingRecorder.finaliseRecovered(session)
         floatingPanel.hide()
-        // Surface any error from the pipeline (e.g. encode failed, model
-        // unavailable) so the user sees why the banner didn't clear. If
-        // finalisation succeeded the state is .idle and we don't touch the
-        // dictation state.
-        if case .error(let recordingError) = meetingRecorder.state {
-            appState.dictationState = .error(recordingError.errorDescription ?? "Couldn't finalise meeting")
-        }
-        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+        // Errors from the pipeline (e.g. encode failed, model unavailable)
+        // reach the menu bar through `observeRecorderState`.
+        refreshPendingMeetingSessions()
     }
 
     /// Drops a recovered session from the pending list without finalising
     /// (the user opted to discard or handle it manually).
+    /// The dismissal is stored by folder path and survives relaunch.
     func dismissPendingMeeting(_ session: MeetingSession) {
+        let path = session.folder.standardizedFileURL.path
+        if !appState.dismissedMeetingSessions.contains(path) {
+            appState.dismissedMeetingSessions.append(path)
+        }
         pendingMeetingSessions.removeAll { $0.id == session.id }
+    }
+
+    private func refreshPendingMeetingSessions() {
+        let dismissed = Set(appState.dismissedMeetingSessions)
+        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
+            .filter { !dismissed.contains($0.folder.standardizedFileURL.path) }
     }
 
     // MARK: - Error Management

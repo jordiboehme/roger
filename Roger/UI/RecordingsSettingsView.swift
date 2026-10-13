@@ -14,21 +14,21 @@ struct RecordingsSettingsView: View {
         @Bindable var state = coordinator.appState
         ScrollView {
             VStack(spacing: 16) {
-                // Output folder
-                settingsCard(icon: "folder", title: "Output Folder") {
+                // Library folder
+                settingsCard(icon: "folder", title: "Library Folder") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Each meeting is saved as a folder containing the mic + system audio files and a diarised markdown transcript.")
+                        Text("Roger saves log entries, meetings and file transcripts here, in the folders Logs, Meetings and Transcripts, sorted by year and month.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
                         HStack(spacing: 6) {
-                            Text(folderLabel)
+                            Text(state.libraryLayout.root.path)
                                 .font(.system(size: 12))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .layoutPriority(1)
-                            if isUsingDefaultFolder {
+                            if state.libraryRoot == nil {
                                 Text("Default")
                                     .font(.system(size: 9, weight: .semibold))
                                     .padding(.horizontal, 6)
@@ -40,21 +40,57 @@ struct RecordingsSettingsView: View {
                             Button("Choose…") { showingFolderPicker = true }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
-                            if state.meetingRecordingsFolder != nil {
-                                Button("Reset") { state.meetingRecordingsFolder = nil }
+                            if state.libraryRoot != nil {
+                                Button("Reset") { state.libraryRoot = nil }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
                             }
                         }
 
                         HStack(spacing: 8) {
-                            Button("Reveal in Finder") { revealRecordingsFolder() }
+                            Button("Reveal in Finder") { revealLibraryFolder() }
                                 .buttonStyle(.borderless)
                                 .controlSize(.small)
                             Spacer()
-                            Text("Existing recordings stay where they are when the folder changes.")
+                            Text("Existing files stay where they are when the folder changes.")
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
+                        }
+
+                        HStack {
+                            Text("Keep audio after transcription")
+                                .font(.system(size: 12))
+                            Spacer()
+                            Toggle("", isOn: $state.keepMeetingAudio)
+                                .labelsHidden()
+                        }
+                        Text("When off, mic.m4a and system.m4a are deleted once the meeting transcript is written.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+
+                        if !state.extraScanFolders.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Older folders")
+                                    .font(.system(size: 12, weight: .medium))
+                                ForEach(state.extraScanFolders, id: \.path) { folder in
+                                    HStack(spacing: 8) {
+                                        Text(folder.path)
+                                            .font(.system(size: 12))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        Spacer()
+                                        Button("Forget") {
+                                            state.extraScanFolders.removeAll { $0 == folder }
+                                        }
+                                        .help("Stop looking for meetings in this folder. No files are deleted.")
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                }
+                                Text("Roger still finds meetings in these folders.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -107,7 +143,7 @@ struct RecordingsSettingsView: View {
                 // Transcription post-processing
                 settingsCard(icon: "slider.horizontal.3", title: "Transcription") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Cleanup runs locally on the merged transcript: filler-word removal, dedup and your custom dictionary. Presets with AI steps are disabled — meeting transcripts always stay on-device.")
+                        Text("Cleanup runs locally on the merged transcript: filler-word removal, dedup and your custom dictionary. Presets with AI steps are disabled. Meeting transcripts always stay on-device.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -188,63 +224,41 @@ struct RecordingsSettingsView: View {
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
-                state.meetingRecordingsFolder = url
+                state.libraryRoot = url
                 refresh()
             }
         }
         .onAppear { refresh() }
-        .onChange(of: state.meetingRecordingsFolder) { _, _ in refresh() }
+        .onChange(of: state.libraryRoot) { _, _ in refresh() }
+        .onChange(of: state.extraScanFolders) { _, _ in refresh() }
     }
 
-    private var folderLabel: String {
-        if let url = coordinator.appState.meetingRecordingsFolder {
-            return url.path
-        }
-        return defaultRecordingsFolder().path
-    }
-
-    private var isUsingDefaultFolder: Bool {
-        coordinator.appState.meetingRecordingsFolder == nil
-    }
-
-    private func defaultRecordingsFolder() -> URL {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents")
-        return documents.appendingPathComponent("Roger Recordings", isDirectory: true)
-    }
-
-    private func resolvedFolder() -> URL {
-        coordinator.appState.meetingRecordingsFolder ?? defaultRecordingsFolder()
-    }
-
-    private func revealRecordingsFolder() {
-        let folder = resolvedFolder()
+    private func revealLibraryFolder() {
+        let folder = coordinator.appState.libraryLayout.root
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         NSWorkspace.shared.activateFileViewerSelecting([folder])
     }
 
     private func refresh() {
-        let folder = resolvedFolder()
+        let appState = coordinator.appState
         let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey]) else {
-            sessions = []
-            return
-        }
-        let rows: [SessionRow] = contents.compactMap { url in
-            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            guard isDir else { return nil }
-            let creationDate = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
-            let transcriptURL = url.appendingPathComponent("transcript.md")
-            let micURL = url.appendingPathComponent("mic.m4a")
-            let systemURL = url.appendingPathComponent("system.m4a")
+        let folders = MeetingSessionScanner.allSessionFolders(
+            layout: appState.libraryLayout,
+            extraFolders: appState.extraScanFolders
+        )
+        let rows: [SessionRow] = folders.map { url in
+            let name = url.lastPathComponent
+            let date = MeetingSession.folderNameFormatter.date(from: String(name.prefix(16)))
+                ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+                ?? .distantPast
             return SessionRow(
                 id: url.path,
                 folder: url,
-                name: url.lastPathComponent,
-                date: creationDate,
-                hasTranscript: fm.fileExists(atPath: transcriptURL.path),
-                hasMic: fm.fileExists(atPath: micURL.path),
-                hasSystem: fm.fileExists(atPath: systemURL.path)
+                name: name,
+                date: date,
+                hasTranscript: fm.fileExists(atPath: url.appendingPathComponent("transcript.md").path),
+                hasMic: fm.fileExists(atPath: url.appendingPathComponent("mic.m4a").path),
+                hasSystem: fm.fileExists(atPath: url.appendingPathComponent("system.m4a").path)
             )
         }
         sessions = rows.sorted { $0.date > $1.date }

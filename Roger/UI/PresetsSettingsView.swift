@@ -37,6 +37,12 @@ struct PresetsSettingsView: View {
                     }
                     Text(preset.name)
                     Spacer()
+                    if preset.output == .logEntry {
+                        Image(systemName: "book.closed")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .help("Saves to the log")
+                    }
                     if preset.excludedFromRotation {
                         Image(systemName: "eye.slash")
                             .font(.caption2)
@@ -79,7 +85,7 @@ struct PresetsSettingsView: View {
             if preset.wrappedValue.isBuiltIn {
                 Section {
                     HStack {
-                        Text("Built-in presets are read-only — language and output settings can still be customized.")
+                        Text("Built-in presets are read-only. Language and output settings can still be customized.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -146,16 +152,27 @@ struct PresetsSettingsView: View {
             languageSection(preset: preset)
 
             Section {
-                Picker("Append at end", selection: preset.trailingCharacter) {
-                    ForEach(TrailingCharacter.allCases) { choice in
+                Picker("Output", selection: preset.output) {
+                    ForEach(PresetOutput.allCases) { choice in
                         Text(choice.displayName).tag(choice)
                     }
                 }
-                Toggle("Press Return after insertion", isOn: preset.sendReturnAfterInsert)
+                if preset.wrappedValue.output == .logEntry {
+                    Toggle("Keep audio", isOn: preset.keepAudio)
+                } else {
+                    Picker("Append at end", selection: preset.trailingCharacter) {
+                        ForEach(TrailingCharacter.allCases) { choice in
+                            Text(choice.displayName).tag(choice)
+                        }
+                    }
+                    Toggle("Press Return after insertion", isOn: preset.sendReturnAfterInsert)
+                }
             } header: {
                 Text("Output")
             } footer: {
-                Text("Use Return to submit the text automatically — handy for sending a prompt to a chat box or chat app.")
+                Text(preset.wrappedValue.output == .logEntry
+                     ? "Saves the text as a Markdown file in the Logs folder of your Roger library. Nothing is typed. Keep audio also saves the recording as an .m4a file next to it."
+                     : "Use Return to submit the text automatically. Handy for sending a prompt to a chat box or chat app.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -185,7 +202,7 @@ struct PresetsSettingsView: View {
 
             if aiUnsupported, let code = pinnedCode {
                 warningRow(
-                    "Apple Intelligence doesn't support \(WhisperLanguage.displayName(for: code)) — the AI step in this preset will fail. Switch AI provider in Settings › AI Provider, or pick a different language."
+                    "Apple Intelligence doesn't support \(WhisperLanguage.displayName(for: code)) - the AI step in this preset will fail. Switch AI provider in Settings › AI Provider, or pick a different language."
                 )
             }
         } header: {
@@ -331,23 +348,10 @@ struct PresetsSettingsView: View {
     }
 
     private func duplicatePreset(_ source: DictationPreset) {
-        let newPreset = DictationPreset(
-            id: UUID(),
-            name: "\(source.name) Copy",
-            isBuiltIn: false,
-            enableFillerRemoval: source.enableFillerRemoval,
-            enableDedup: source.enableDedup,
-            enableAIFormatting: source.enableAIFormatting,
-            enableCustomDictionary: source.enableCustomDictionary,
-            enableRewrite: source.enableRewrite,
-            aiPrompt: source.aiPrompt,
-            rewritePrompt: source.rewritePrompt,
-            dictionaryEntries: source.dictionaryEntries,
-            trailingCharacter: source.trailingCharacter,
-            sendReturnAfterInsert: source.sendReturnAfterInsert,
-            excludedFromRotation: source.excludedFromRotation,
-            language: source.language
-        )
+        var newPreset = source
+        newPreset.id = UUID()
+        newPreset.name = "\(source.name) Copy"
+        newPreset.isBuiltIn = false
         coordinator.appState.presets.append(newPreset)
         selectedPresetID = newPreset.id
     }

@@ -15,6 +15,8 @@ enum MeetingRecordingError: LocalizedError, Sendable {
     case finalisationFailed(String)
     case noAudioCaptured
     case sleepInterrupted
+    /// The transcript was written, but a track's audio could not be saved.
+    case trackAudioFailed(mic: Bool, system: Bool)
 
     var errorDescription: String? {
         switch self {
@@ -25,9 +27,9 @@ enum MeetingRecordingError: LocalizedError, Sendable {
         case .fileTranscriptionActive:
             return "Wait for the current file transcription to finish before starting a meeting."
         case .microphonePermissionDenied:
-            return "Microphone access denied — grant permission in System Settings › Privacy & Security."
+            return "Microphone access denied. Grant permission in System Settings › Privacy & Security."
         case .audioCapturePermissionDenied:
-            return "System audio recording denied — grant permission in System Settings › Privacy & Security › Audio."
+            return "System audio recording denied. Grant permission in System Settings › Privacy & Security › Audio."
         case .tapStartFailed(let reason):
             return "Couldn't start system audio capture: \(reason)"
         case .audioWriterFailed(let reason):
@@ -35,9 +37,12 @@ enum MeetingRecordingError: LocalizedError, Sendable {
         case .finalisationFailed(let reason):
             return "Couldn't finalise the meeting recording: \(reason)"
         case .noAudioCaptured:
-            return "No audio captured — the recording is too short to transcribe."
+            return "No audio captured. The recording is too short to transcribe."
         case .sleepInterrupted:
             return "Recording paused because the system went to sleep."
+        case .trackAudioFailed(let mic, let system):
+            let tracks = mic && system ? "Microphone and system audio" : (mic ? "Microphone audio" : "System audio")
+            return "\(tracks) could not be fully saved, so the transcript may be incomplete. Roger kept the recording. Try again from the menu bar."
         }
     }
 }

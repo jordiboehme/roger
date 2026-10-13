@@ -88,7 +88,7 @@ struct MicrophoneSettingsView: View {
 
     private var activeDeviceSubtitle: String {
         if coordinator.appState.selectedInputDeviceUID == nil {
-            return "Automatic — follows the macOS system setting"
+            return "Automatic (follows the macOS system setting)"
         }
         if let uid = coordinator.appState.selectedInputDeviceUID,
            !devices.contains(where: { $0.id == uid }) {
@@ -207,7 +207,7 @@ struct MicrophoneSettingsView: View {
                 let actualDefault = AudioDeviceLookup.systemDefaultInputName ?? "unknown"
                 if let samples = result.samples, !samples.isEmpty {
                     let peak = samples.map { abs($0) }.max() ?? 0
-                    testResult = "OK — peak \(String(format: "%.3f", peak))"
+                    testResult = "OK: peak \(String(format: "%.3f", peak))"
                 } else if result.health == .halStarved {
                     starved = true
                     testResult = "Failed - audio system is stuck"
@@ -215,10 +215,10 @@ struct MicrophoneSettingsView: View {
                     let routingHint = expectedDeviceName != actualDefault
                         ? " (system default: \(actualDefault))"
                         : ""
-                    testResult = "Failed — 0 samples from \(expectedDeviceName)\(routingHint). Check mic privacy settings or MDM audio policy."
+                    testResult = "Failed: 0 samples from \(expectedDeviceName)\(routingHint). Check mic privacy settings or MDM audio policy."
                 }
             } catch {
-                testResult = "Failed — \(error.localizedDescription)"
+                testResult = "Failed: \(error.localizedDescription)"
             }
             testing = false
         }

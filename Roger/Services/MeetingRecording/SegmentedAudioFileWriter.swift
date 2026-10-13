@@ -169,7 +169,7 @@ enum SegmentedAudioFileWriterError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .diskSpaceExhausted:
-            return "Recording stopped — less than 500 MB free on the recordings volume."
+            return "Recording stopped. Less than 500 MB free on the recordings volume."
         }
     }
 }

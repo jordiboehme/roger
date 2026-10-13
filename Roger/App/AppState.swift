@@ -20,6 +20,8 @@ final class AppState {
 
     var dictationState: DictationState = .idle
     var lastTranscription: String?
+    /// The `.md` written by the last log entry, nil after a normal dictation.
+    var lastLogEntryURL: URL?
 
     // MARK: - General Settings
 
@@ -66,17 +68,6 @@ final class AppState {
     var fileTranscriptOutputLocation: FileTranscriptOutputLocation {
         didSet { defaults.set(fileTranscriptOutputLocation.rawValue, forKey: "fileTranscriptOutputLocation") }
     }
-    /// Destination folder when `fileTranscriptOutputLocation == .customFolder`.
-    /// Stored as a file URL; nil means the user hasn't picked one yet.
-    var fileTranscriptOutputFolder: URL? {
-        didSet {
-            if let url = fileTranscriptOutputFolder {
-                defaults.set(url.path, forKey: "fileTranscriptOutputFolder")
-            } else {
-                defaults.removeObject(forKey: "fileTranscriptOutputFolder")
-            }
-        }
-    }
     /// Preset used to post-process dropped-file transcripts. Constrained to
     /// presets that don't require an LLM — file transcription should never
     /// silently reach out to an AI provider.
@@ -87,20 +78,59 @@ final class AppState {
         didSet { defaults.set(fileTranscriptionDiarize, forKey: "fileTranscriptionDiarize") }
     }
 
-    // MARK: - Meeting Recording Settings
+    // MARK: - Library Settings
 
-    /// Folder where meeting-recording session subfolders are written. nil
-    /// resolves to `~/Documents/Roger Recordings/` (the recommended default
-    /// — the Recordings settings tab lets the user pick another).
-    var meetingRecordingsFolder: URL? {
+    /// Root of the library (Logs, Meetings, Transcripts). nil resolves to
+    /// `~/Documents/Roger/`.
+    var libraryRoot: URL? {
         didSet {
-            if let url = meetingRecordingsFolder {
-                defaults.set(url.path, forKey: "meetingRecordingsFolder")
+            if let url = libraryRoot {
+                defaults.set(url.path, forKey: "libraryRoot")
             } else {
-                defaults.removeObject(forKey: "meetingRecordingsFolder")
+                defaults.removeObject(forKey: "libraryRoot")
             }
         }
     }
+
+    var libraryLayout: LibraryLayout {
+        LibraryLayout(root: libraryRoot ?? LibraryLayout.defaultRoot)
+    }
+
+    /// Older folders that still hold meetings or transcripts. Scanned for
+    /// unfinished meetings and listed in the Recordings settings.
+    var extraScanFolders: [URL] {
+        didSet { defaults.set(extraScanFolders.map(\.path), forKey: "extraScanFolders") }
+    }
+
+    /// When false, mic.m4a and system.m4a are deleted once the meeting
+    /// transcript is written.
+    var keepMeetingAudio: Bool {
+        didSet { defaults.set(keepMeetingAudio, forKey: "keepMeetingAudio") }
+    }
+
+    /// Folder paths of unfinished meetings the user dismissed from the
+    /// recovery banner. Pruned on launch when a folder no longer exists.
+    var dismissedMeetingSessions: [String] {
+        didSet { defaults.set(dismissedMeetingSessions, forKey: "dismissedMeetingSessions") }
+    }
+
+    /// Set once the one-time move into the library has run (or was declined).
+    var libraryMigrationDone: Bool {
+        didSet { defaults.set(libraryMigrationDone, forKey: "libraryMigrationDone") }
+    }
+
+    /// Pre-library meetings folder setting, read by the migration only.
+    var legacyMeetingRecordingsFolder: URL? {
+        defaults.string(forKey: "meetingRecordingsFolder").map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    /// Pre-library custom folder for file transcripts, read by the migration only.
+    var legacyFileTranscriptFolder: URL? {
+        defaults.string(forKey: "fileTranscriptOutputFolder").map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    // MARK: - Meeting Recording Settings
+
     /// How often the per-track CAF chunk file is rolled. Caps long-meeting
     /// memory growth and bounds blast radius from a mid-recording crash.
     var meetingMaxSegmentMinutes: Int {
@@ -315,21 +345,18 @@ final class AppState {
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
             rawValue: defaults.string(forKey: "fileTranscriptOutputLocation") ?? ""
-        ) ?? .alongsideSource
-        if let path = defaults.string(forKey: "fileTranscriptOutputFolder") {
-            self.fileTranscriptOutputFolder = URL(fileURLWithPath: path)
-        } else {
-            self.fileTranscriptOutputFolder = nil
-        }
+        ) ?? .library
         self.fileTranscriptionPresetID = UUID(uuidString: defaults.string(forKey: "fileTranscriptionPresetID") ?? "")
             ?? DictationPreset.plain.id
         self.fileTranscriptionDiarize = defaults.bool(forKey: "fileTranscriptionDiarize")
 
-        if let path = defaults.string(forKey: "meetingRecordingsFolder") {
-            self.meetingRecordingsFolder = URL(fileURLWithPath: path)
-        } else {
-            self.meetingRecordingsFolder = nil
-        }
+        self.libraryRoot = defaults.string(forKey: "libraryRoot").map { URL(fileURLWithPath: $0, isDirectory: true) }
+        self.extraScanFolders = (defaults.stringArray(forKey: "extraScanFolders") ?? [])
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        self.keepMeetingAudio = defaults.object(forKey: "keepMeetingAudio") as? Bool ?? true
+        self.libraryMigrationDone = defaults.bool(forKey: "libraryMigrationDone")
+        self.dismissedMeetingSessions = defaults.stringArray(forKey: "dismissedMeetingSessions") ?? []
+
         let storedSegmentMinutes = defaults.object(forKey: "meetingMaxSegmentMinutes") as? Int
         self.meetingMaxSegmentMinutes = storedSegmentMinutes ?? 30
         let storedDiarizeSystem = defaults.object(forKey: "meetingDiarizeSystem") as? Bool
@@ -431,15 +458,16 @@ final class AppState {
 }
 
 enum FileTranscriptOutputLocation: String, CaseIterable, Identifiable, Codable {
+    /// `<library>/Transcripts/YYYY/MM/`.
+    case library
     case alongsideSource
-    case customFolder
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .library: return "Roger library"
         case .alongsideSource: return "Next to the source file"
-        case .customFolder: return "Custom folder"
         }
     }
 }
