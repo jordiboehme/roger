@@ -107,11 +107,25 @@ struct MeetingSessionScannerTests {
     }
 
     @Test func chunksAreKeptWhenTheEncodeFails() {
-        #expect(MeetingTrackEncodeOutcome.wrote.allowsDeletingChunks(archiveExists: true))
-        #expect(!MeetingTrackEncodeOutcome.wrote.allowsDeletingChunks(archiveExists: false))
-        #expect(MeetingTrackEncodeOutcome.empty.allowsDeletingChunks(archiveExists: false))
-        // A failed encode keeps the chunks, even when an older archive exists.
-        #expect(!MeetingTrackEncodeOutcome.failed.allowsDeletingChunks(archiveExists: false))
-        #expect(!MeetingTrackEncodeOutcome.failed.allowsDeletingChunks(archiveExists: true))
+        let a = URL(fileURLWithPath: "/s/mic-001.caf")
+        let b = URL(fileURLWithPath: "/s/mic-002.caf")
+        let c = URL(fileURLWithPath: "/s/mic-003.caf")
+        typealias R = AudioSegmentConcatenator.Result
+        // Encode threw: keep everything, even when an older archive exists.
+        #expect(MeetingTrackEncodeOutcome.failed.deletableChunks(archiveExists: true).isEmpty)
+        #expect(MeetingTrackEncodeOutcome.failed.isFailure)
+        // Archive written: delete inserted and empty chunks, keep unreadable ones.
+        let partial = MeetingTrackEncodeOutcome.encoded(R(inserted: [a], empty: [b], unreadable: [c]))
+        #expect(partial.deletableChunks(archiveExists: true) == [a, b])
+        #expect(partial.deletableChunks(archiveExists: false).isEmpty)
+        #expect(!partial.isFailure)
+        // Nothing written, all empty: no audio to lose.
+        let silent = MeetingTrackEncodeOutcome.encoded(R(empty: [a, b]))
+        #expect(silent.deletableChunks(archiveExists: false) == [a, b])
+        #expect(!silent.isFailure)
+        // Nothing written, some unreadable: a failure, keep everything.
+        let broken = MeetingTrackEncodeOutcome.encoded(R(empty: [a], unreadable: [b]))
+        #expect(broken.deletableChunks(archiveExists: false).isEmpty)
+        #expect(broken.isFailure)
     }
 }

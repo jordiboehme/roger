@@ -487,9 +487,9 @@ final class MeetingRecordingService {
 
         if !micSegments.isEmpty {
             do {
-                let wrote = try await AudioSegmentConcatenator.concatenate(segments: micSegments, destinationURL: micArchive)
-                micPresent = wrote
-                micOutcome = wrote ? .wrote : .empty
+                let result = try await AudioSegmentConcatenator.concatenate(segments: micSegments, destinationURL: micArchive)
+                micPresent = result.wrote
+                micOutcome = .encoded(result)
             } catch {
                 logger.error("Mic encode failed: \(error.localizedDescription, privacy: .public)")
                 failFinalisation("Mic encode failed: \(error.localizedDescription)", session: session)
@@ -499,9 +499,9 @@ final class MeetingRecordingService {
         state = .finalising(progress: 0.30)
         if !systemSegments.isEmpty {
             do {
-                let wrote = try await AudioSegmentConcatenator.concatenate(segments: systemSegments, destinationURL: systemArchive)
-                systemPresent = wrote
-                systemOutcome = wrote ? .wrote : .empty
+                let result = try await AudioSegmentConcatenator.concatenate(segments: systemSegments, destinationURL: systemArchive)
+                systemPresent = result.wrote
+                systemOutcome = .encoded(result)
             } catch {
                 // System-side encode failures should NOT block the rest of
                 // the pipeline — the mic transcript is still useful. Log
@@ -512,15 +512,13 @@ final class MeetingRecordingService {
             }
         }
 
-        // Delete CAF chunks once their target encode either landed or was
-        // confirmed empty. After a failed encode they stay on disk, so the
-        // audio is not lost.
-        if micOutcome?.allowsDeletingChunks(archiveExists: FileManager.default.fileExists(atPath: micArchive.path)) == true {
-            for url in micSegments { try? FileManager.default.removeItem(at: url) }
-        }
-        if systemOutcome?.allowsDeletingChunks(archiveExists: FileManager.default.fileExists(atPath: systemArchive.path)) == true {
-            for url in systemSegments { try? FileManager.default.removeItem(at: url) }
-        }
+        // Delete only chunks whose audio is in the archive, plus empty ones.
+        // Unreadable chunks, and all chunks after a failed encode, stay on
+        // disk so the audio is not lost.
+        let micDeletable = micOutcome?.deletableChunks(archiveExists: FileManager.default.fileExists(atPath: micArchive.path)) ?? []
+        for url in micDeletable { try? FileManager.default.removeItem(at: url) }
+        let systemDeletable = systemOutcome?.deletableChunks(archiveExists: FileManager.default.fileExists(atPath: systemArchive.path)) ?? []
+        for url in systemDeletable { try? FileManager.default.removeItem(at: url) }
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface

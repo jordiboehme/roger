@@ -81,22 +81,29 @@ enum MeetingTrackSource: Equatable, Sendable {
 
 /// How encoding one track's CAF chunks into its archive went.
 enum MeetingTrackEncodeOutcome: Equatable, Sendable {
-    /// The archive was written.
-    case wrote
-    /// Every chunk was empty: there was no audio to encode.
-    case empty
+    /// The concatenator ran; the result says which chunks it used.
+    case encoded(AudioSegmentConcatenator.Result)
     /// The encode threw.
     case failed
 
-    /// Whether the chunks may be deleted after this outcome: only when the
-    /// archive landed or there was no audio to lose. After a failed encode
-    /// the chunks stay so a later recovery can try again (an archive on disk
-    /// then may be an older one and does not count).
-    func allowsDeletingChunks(archiveExists: Bool) -> Bool {
+    /// True when the track's audio could not be saved: the encode threw, or
+    /// nothing was written and some chunks could not be read.
+    var isFailure: Bool {
         switch self {
-        case .wrote: return archiveExists
-        case .empty: return true
-        case .failed: return false
+        case .failed: return true
+        case .encoded(let result): return !result.wrote && !result.unreadable.isEmpty
         }
+    }
+
+    /// Chunks that may be deleted now: the ones whose audio is safe in the
+    /// archive, and empty ones (no audio to lose). Unreadable chunks always
+    /// stay, and after a failure everything stays, so a later recovery can
+    /// try again.
+    func deletableChunks(archiveExists: Bool) -> [URL] {
+        guard case .encoded(let result) = self, !isFailure else { return [] }
+        if result.wrote {
+            return archiveExists ? result.inserted + result.empty : []
+        }
+        return result.empty
     }
 }
