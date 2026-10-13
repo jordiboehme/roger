@@ -61,4 +61,15 @@ struct MeetingSessionScannerTests {
         #expect(names == ["new", "old"])
     }
 
+    @Test func overlappingExtraFolderDoesNotListSessionsTwice() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let layout = LibraryLayout(root: root.appendingPathComponent("Roger"))
+        let month = layout.kindFolder(.meetings).appendingPathComponent("2026/10")
+        try makeSession(month.appendingPathComponent("s"), files: ["mic-001.caf"])
+        // Same month folder twice, once spelled with "..".
+        let spelledOtherwise = layout.kindFolder(.meetings).appendingPathComponent("2026/../2026/10")
+        let found = MeetingSessionScanner.allSessionFolders(layout: layout, extraFolders: [month, spelledOtherwise])
+        #expect(found.map(\.standardizedFileURL.path) == [month.appendingPathComponent("s").standardizedFileURL.path])
+    }
 }

@@ -38,12 +38,14 @@ enum MeetingSessionScanner {
     }
 
     /// All sessions: the library's `Meetings/YYYY/MM/` tree plus sessions
-    /// stored directly in each extra folder.
+    /// stored directly in each extra folder. An extra folder may overlap the
+    /// library tree, so each session is listed once (first spelling wins).
     static func allSessionFolders(layout: LibraryLayout, extraFolders: [URL]) -> [URL] {
-        var result = sessionFolders(in: layout.kindFolder(.meetings), maxDepth: 3)
+        var found = sessionFolders(in: layout.kindFolder(.meetings), maxDepth: 3)
         for folder in extraFolders {
-            result.append(contentsOf: sessionFolders(in: folder, maxDepth: 1))
+            found.append(contentsOf: sessionFolders(in: folder, maxDepth: 1))
         }
-        return result
+        var seen = Set<String>()
+        return found.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 }
