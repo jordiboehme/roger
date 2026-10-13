@@ -16,7 +16,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 
 - **Near-instant results** — release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
 - **Works everywhere** — Notes, Warp, VS Code, Slack, browsers — if it has a cursor, Roger can type into it
-- **Drop files to transcribe** — drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a Markdown transcript next to it, or into a folder you configure. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
+- **Drop files to transcribe** - drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a Markdown transcript into the library, or next to the source file if you prefer. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
 - **Record meetings** — capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps — ready for your knowledge base. Configurable output folder, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Slide checkpoints** - drop a screenshot of a shared slide onto the recording overlay and Roger saves it next to a timestamped transcript segment of the audio since the last drop, while the recording keeps running. The session folder becomes a chronological record of what was said and shown, ready for an AI agent
 - **Mute yourself everywhere** — while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once — no per-app setup, no plugin
@@ -32,7 +32,7 @@ Roger lives in your menu bar and turns your voice into text — in any app. Hold
 - **Pick your mic** — dedicated Microphone tab lets you pin a specific input or follow the system default
 - **Caps Lock push-to-talk** — hold to listen, release to transcribe. Toggle mode and configurable minimum duration if you prefer
 - **Session safety** — a configurable recording cap (default two minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
-- **Stays out of the way** — menu bar only, no Dock icon. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
+- **Stays out of the way** - menu bar only, no Dock icon except while the library window is open. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
 
 ## Installation
 
@@ -73,19 +73,23 @@ Roger captures audio from your chosen input device — system default or a speci
 
 ### Transcribing files
 
-Drop any audio or video file on Roger's menu bar icon, or right-click it in Finder and pick Open With > Roger or Services > Transcribe with Roger, and it writes the transcript to a Markdown file (`talk.mp4.md`) next to the source — or into a folder you pick once. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
+Drop any audio or video file on Roger's menu bar icon, or right-click it in Finder and pick Open With > Roger or Services > Transcribe with Roger, and it writes the transcript to a Markdown file (`talk.mp4.md`) in the library's `Transcripts` folder. You can also have it written next to the source file. Video files have their audio track extracted on the fly. File transcription always uses an AI-free preset so it stays fully on-device; destination and preset live under Settings › File Transcription. A floating overlay shows progress with a Cancel button for long files.
 
 ### Recording meetings
 
-Roger records your mic and everything you hear from the system on two separate tracks, encodes both as M4A on stop, then transcribes each track and diarizes the remote one to label participants. The result lands in a per-meeting folder under `~/Documents/Roger/Meetings/`, sorted by year and month, with `mic.m4a`, `system.m4a` and `transcript.md`. The markdown stamps every speaker turn with both an elapsed offset and the absolute local time, so a knowledge base can ingest it directly - and screenshots or notes you capture mid-call line up with what was said. Audio is chunked to disk every 30 minutes, so a crash mid-call doesn't lose work - Roger offers to resume finalizing on next launch. Start from the menu bar item or assign a global hotkey under Settings › Recordings. While a recording is live, your dictation hotkey toggles a system-level mic mute - one press silences you in the meeting app and on the recording alike, with no per-app setup. Turn on mic-side speaker detection there too if more than one person speaks into the same mic.
+Roger records your mic and everything you hear from the system on two separate tracks, encodes both as M4A on stop, then transcribes each track and diarizes the remote one to label participants. The result lands in a per-meeting folder under `~/Documents/Roger/Meetings/`, sorted by year and month, with `mic.m4a`, `system.m4a` and `transcript.md`. The markdown stamps every speaker turn with both an elapsed offset and the absolute local time, so a knowledge base can ingest it directly - and screenshots or notes you capture mid-call line up with what was said. Audio is chunked to disk every 30 minutes, so a crash mid-call doesn't lose work - Roger offers to finalise it on next launch. Start from the menu bar item or assign a global hotkey under Settings › Recordings. While a recording is live, your dictation hotkey toggles a system-level mic mute - one press silences you in the meeting app and on the recording alike, with no per-app setup. Turn on mic-side speaker detection there too if more than one person speaks into the same mic.
 
 While a recording is live you can also drop screenshots of shared slides onto the floating overlay - straight from the macOS screenshot thumbnail, from Finder or from a browser. Each drop lands in the session folder named by its capture time and triggers a transcript segment covering the audio since the previous drop, written as a matching timestamped markdown file while the recording continues. Speaker labels stay stable across segments because every checkpoint transcribes the meeting from the start. On stop, Roger rewrites all segments from the final full-quality pass and weaves the screenshots into `transcript.md` as inline images, so the folder reads as a chronological dataset of what was said and shown - hand it to an AI agent and it can follow the meeting slide by slide.
 
-If you finalize a meeting again, Roger keeps your edited segments and the old transcript as `.previous.md` files and lists any leftover audio in the transcript.
+If you finalise a meeting again, Roger keeps your edited segments and the old transcript as `.previous.md` files and lists any leftover audio in the transcript.
 
 ### Library
 
-Log entries, meetings and file transcripts all live in one folder, `~/Documents/Roger/` by default, sorted into `Logs`, `Meetings` and `Transcripts` by year and month. Open the library window from the menu bar, or set your own shortcut under Settings › General. Search everything Roger wrote, filter by kind and date and sort by date, title or duration. Read an entry in place, fix a typo, give it a better title, drag it into a terminal or an agent, copy its path or move it to the Trash. File names never change, so paths you hand to an agent stay valid. While the window is open, Roger shows up in the Dock and in Cmd-Tab.
+Log entries, meetings and file transcripts all live in one folder, `~/Documents/Roger/` by default, sorted into `Logs`, `Meetings` and `Transcripts` by year and month. Open the library window from the menu bar, or set your own shortcut under Settings › General. Search everything Roger wrote, filter by kind and date and sort by date, title or duration. Read an entry in place, fix a typo, give it a better title, drag it into a terminal or an agent, copy its path or move it to the Trash. File names never change, so paths you hand to an agent stay valid. While the window is open, Roger shows up in the Dock and in Cmd-Tab. Change the library folder under Settings › Recordings.
+
+### Log entries
+
+The Log preset does not type anything. What you say is saved as a Markdown file in the library's `Logs` folder instead, sorted by year and month. Turn on Keep audio for the preset to save the recording as an `.m4a` file next to the entry. Use it for quick notes, a work journal or ideas you want to keep for later.
 
 ### Transcript format
 
