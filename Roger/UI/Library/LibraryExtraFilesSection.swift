@@ -16,8 +16,16 @@ struct LibraryExtraFilesSection: View {
         !LibraryDocumentEditor.canEdit(item, activeSessionFolder: coordinator.meetingRecorder.activeSessionFolder)
     }
 
+    /// Checked again from disk right before anything moves: a retry may
+    /// have started or failed since the section was drawn.
+    private var mayTrash: Bool {
+        !isLocked && !item.isUnfinished && !MeetingSessionScanner.isUnfinished(item.folderURL)
+    }
+
     var body: some View {
-        Group {
+        // A container that always exists, so `.task` runs and the dialogs
+        // have a host even while there are no files.
+        VStack(spacing: 0) {
             if !files.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -52,7 +60,7 @@ struct LibraryExtraFilesSection: View {
                                 Image(systemName: "trash")
                             }
                             .help("Move to Trash")
-                            .disabled(isLocked)
+                            .disabled(isLocked || item.isUnfinished)
                         }
                         .buttonStyle(.borderless)
                     }
@@ -82,12 +90,29 @@ struct LibraryExtraFilesSection: View {
         }
     }
 
+    /// Only the `transcript.md` of a session folder Roger wrote has extra
+    /// files. Anywhere else, other files that happen to match are left alone.
     private func refresh() {
-        files = item.kind == .meeting ? MeetingExtraFiles.find(in: item.folderURL) : []
+        let lists = LibraryActions.listsExtraFiles(
+            item,
+            layout: coordinator.appState.libraryLayout,
+            extraFolders: coordinator.appState.extraScanFolders
+        )
+        files = lists ? MeetingExtraFiles.find(in: item.folderURL) : []
     }
 
+    /// Checks the meeting again, lists the folder again and moves only
+    /// files that are still extra files and that the user chose. Nothing
+    /// moves when the meeting is now locked or unfinished.
     private func trash(_ urls: [URL]) {
-        let failed = LibraryActions.moveToTrash(urls)
+        guard mayTrash else {
+            refresh()
+            return
+        }
+        refresh()
+        let current = Set(files.map { LibraryPath.canonical($0.url) })
+        let allowed = urls.filter { current.contains(LibraryPath.canonical($0)) }
+        let failed = LibraryActions.moveToTrash(allowed)
         refresh()
         errorText = LibraryActions.trashFailureMessage(failed)
     }
