@@ -208,7 +208,7 @@ struct AIProviderSettingsView: View {
             )
             let available = await service.isAvailable
             testingConnection = false
-            connectionStatus = available ? "OK — Connected" : "Cannot reach Ollama"
+            connectionStatus = available ? "OK: connected" : "Cannot reach Ollama"
         }
     }
 }

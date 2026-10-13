@@ -243,7 +243,7 @@ private struct FloatingIndicatorContent: View {
                         .symbolRenderingMode(.hierarchical)
                 }
                 .buttonStyle(.plain)
-                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide — click to unmute" : "Mute mic system-wide (also mutes the meeting app)")
+                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide. Click to unmute." : "Mute mic system-wide (also mutes the meeting app)")
 
                 Button {
                     coordinator.setMeetingOverlayHidden(true)

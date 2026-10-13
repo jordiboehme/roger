@@ -263,12 +263,12 @@ final class AppCoordinator {
         }
 
         guard permissionManager.microphoneAuthorized else {
-            appState.dictationState = .error("Microphone access required — open Settings > Permissions")
+            appState.dictationState = .error("Microphone access required. Open Settings > Permissions.")
             return
         }
 
         guard transcriptionEngine.isReady else {
-            appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+            appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
             return
         }
 
@@ -404,7 +404,7 @@ final class AppCoordinator {
                 logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 audioLevelMeter.reset()
-                appState.dictationState = .error("No speech detected — try speaking louder or closer to the mic")
+                appState.dictationState = .error("No speech detected. Try speaking louder or closer to the mic.")
                 return
             }
 
@@ -446,7 +446,7 @@ final class AppCoordinator {
                         appState.lastLogEntryURL = nil
                         floatingPanel.hide()
                         audioLevelMeter.reset()
-                        appState.dictationState = .error("AI declined this dictation — copy the transcript from the menu bar")
+                        appState.dictationState = .error("AI declined this dictation. Copy the transcript from the menu bar.")
                         return
                     }
                 } else {
@@ -601,7 +601,7 @@ final class AppCoordinator {
             modelSetupProgress = nil
             lastModelError = error.localizedDescription
             pendingMediaFile = nil
-            appState.dictationState = .error("Model download failed — check your connection and retry")
+            appState.dictationState = .error("Model download failed. Check your connection and retry.")
         }
     }
 
@@ -674,7 +674,7 @@ final class AppCoordinator {
                 logger.info("Speech model still loading — queued: \(url.lastPathComponent, privacy: .public)")
                 pendingMediaFile = url
             } else {
-                appState.dictationState = .error("Speech model not ready — download it in Settings > Model")
+                appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
             }
             return
         }

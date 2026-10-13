@@ -21,7 +21,7 @@ struct MenuBarView: View {
             }
 
             if !coordinator.hotkeyActive && coordinator.appState.dictationState == .idle {
-                alertBanner("Hotkey not active — grant Accessibility in Settings", isRetryable: false, onRetry: {}, onDismiss: nil)
+                alertBanner("Hotkey not active. Grant Accessibility in Settings.", isRetryable: false, onRetry: {}, onDismiss: nil)
             }
 
             if coordinator.isSettingUpModel {
@@ -150,7 +150,7 @@ struct MenuBarView: View {
                         .foregroundStyle(coordinator.systemMicMute.isMuted ? Color.orange : Color.secondary)
                 }
                 .buttonStyle(.plain)
-                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide — click to unmute" : "Mute mic system-wide (also mutes the meeting app)")
+                .help(coordinator.systemMicMute.isMuted ? "Mic muted system-wide. Click to unmute." : "Mute mic system-wide (also mutes the meeting app)")
 
                 Button {
                     coordinator.setMeetingOverlayHidden(!coordinator.meetingOverlayHidden)
@@ -225,7 +225,7 @@ struct MenuBarView: View {
     private var meetingRowDetail: String? {
         switch coordinator.meetingRecorder.state {
         case .finalising(let progress):
-            return "Encoding & transcribing — \(Int(progress * 100))%"
+            return "Encoding & transcribing (\(Int(progress * 100))%)"
         case .recording:
             return nil
         default:

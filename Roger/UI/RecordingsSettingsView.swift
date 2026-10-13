@@ -143,7 +143,7 @@ struct RecordingsSettingsView: View {
                 // Transcription post-processing
                 settingsCard(icon: "slider.horizontal.3", title: "Transcription") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Cleanup runs locally on the merged transcript: filler-word removal, dedup and your custom dictionary. Presets with AI steps are disabled — meeting transcripts always stay on-device.")
+                        Text("Cleanup runs locally on the merged transcript: filler-word removal, dedup and your custom dictionary. Presets with AI steps are disabled. Meeting transcripts always stay on-device.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 

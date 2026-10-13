@@ -314,7 +314,7 @@ struct PermissionsSettingsView: View {
                 }
             }
 
-            Text("macOS surfaces this prompt the first time Roger starts a meeting recording. There's no way to ask in advance — use Test to confirm capture works.")
+            Text("macOS surfaces this prompt the first time Roger starts a meeting recording. There's no way to ask in advance. Use Test to confirm capture works.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -417,11 +417,11 @@ struct PermissionsSettingsView: View {
             if player.isRunning { player.terminate() }
 
             systemAudioTestResult = sawAudio
-                ? "OK — captured system playback"
+                ? "OK: captured system playback"
                 : "No audio captured. Grant permission in System Settings › Privacy & Security › Audio."
         } catch {
             tap.stop()
-            systemAudioTestResult = "Failed — \(error.localizedDescription)"
+            systemAudioTestResult = "Failed: \(error.localizedDescription)"
         }
     }
 
@@ -503,14 +503,14 @@ struct PermissionsSettingsView: View {
                 let result = try await service.probe()
                 if let samples = result.samples, !samples.isEmpty {
                     let peak = samples.map { abs($0) }.max() ?? 0
-                    micTestResult = "OK — \(samples.count) samples (peak: \(String(format: "%.3f", peak)))"
+                    micTestResult = "OK: \(samples.count) samples (peak: \(String(format: "%.3f", peak)))"
                 } else if result.health == .halStarved {
                     micTestResult = "Failed - \(AudioCaptureService.halStarvedAdvice)"
                 } else {
-                    micTestResult = "Failed — no audio captured"
+                    micTestResult = "Failed: no audio captured"
                 }
             } catch {
-                micTestResult = "Failed — \(error.localizedDescription)"
+                micTestResult = "Failed: \(error.localizedDescription)"
             }
         }
     }
@@ -533,8 +533,8 @@ struct PermissionsSettingsView: View {
             &focusedElement
         )
         accessibilityTestResult = result == .success
-            ? "OK — can read focused UI element"
-            : "Failed — error \(result.rawValue)"
+            ? "OK: can read focused UI element"
+            : "Failed: error \(result.rawValue)"
     }
 
     private func testHotkey() {
@@ -546,7 +546,7 @@ struct PermissionsSettingsView: View {
 
         coordinator.hotkeyManager.onRecordingStarted = { [self] _ in
             Task { @MainActor in
-                hotkeyTestResult = "OK — keypress detected!"
+                hotkeyTestResult = "OK: keypress detected!"
                 hotkeyTestActive = false
                 coordinator.hotkeyManager.onRecordingStarted = originalStart
                 coordinator.hotkeyManager.onRecordingStopped = originalStop
@@ -556,7 +556,7 @@ struct PermissionsSettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [self] in
             if hotkeyTestActive {
-                hotkeyTestResult = "Timeout — no keypress in 10s"
+                hotkeyTestResult = "Timeout: no keypress in 10s"
                 hotkeyTestActive = false
                 coordinator.hotkeyManager.onRecordingStarted = originalStart
                 coordinator.hotkeyManager.onRecordingStopped = originalStop
@@ -609,7 +609,7 @@ struct FileTranscriptionSettingsView: View {
                 // Post-processing
                 settingsCard(icon: "slider.horizontal.3", title: "Post-Processing") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("File transcription runs entirely on-device. Presets with AI steps are disabled — pick one that only uses filler removal, dedup and your custom dictionary.")
+                        Text("File transcription runs entirely on-device. Presets with AI steps are disabled. Pick one that only uses filler removal, dedup and your custom dictionary.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -715,7 +715,7 @@ struct ModelSettingsView: View {
                 settingsCard(icon: "cpu", title: "Speech Model") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
-                            Text("Roger uses Parakeet (via FluidAudio) for on-device speech recognition. Models run entirely on your Mac using the Neural Engine — your voice data never leaves your machine.")
+                            Text("Roger uses Parakeet (via FluidAudio) for on-device speech recognition. Models run entirely on your Mac using the Neural Engine. Your voice data never leaves your machine.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()

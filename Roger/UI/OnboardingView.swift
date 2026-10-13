@@ -160,7 +160,7 @@ struct OnboardingView: View {
             stepHeader(
                 icon: "capslock.fill",
                 title: "Caps Lock Hotkey",
-                description: "Use Caps Lock as a push-to-talk key. This remaps it system-wide — you can undo it anytime in Settings."
+                description: "Use Caps Lock as a push-to-talk key. This remaps it system-wide. You can undo it anytime in Settings."
             )
 
             if capsLockRemapped {
@@ -177,7 +177,7 @@ struct OnboardingView: View {
                 .buttonStyle(.bordered)
             }
 
-            Text("Optional — you can also configure a different shortcut in Settings > General.")
+            Text("Optional. You can also configure a different shortcut in Settings > General.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
