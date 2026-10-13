@@ -158,4 +158,13 @@ struct MeetingSessionScannerTests {
         #expect(MeetingTrackEncodeOutcome.failed.needsRetry)
         #expect(!MeetingTrackEncodeOutcome.encoded(R(inserted: [a], empty: [b])).needsRetry)
     }
+
+    @Test func dismissedPathsArePrunedWhenTheFolderIsGone() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let kept = root.appendingPathComponent("kept")
+        try makeSession(kept, files: ["mic-001.caf"])
+        let gone = root.appendingPathComponent("gone").path
+        #expect(MeetingSessionScanner.existingFolderPaths([kept.path, gone]) == [kept.path])
+    }
 }

@@ -108,6 +108,12 @@ final class AppState {
         didSet { defaults.set(keepMeetingAudio, forKey: "keepMeetingAudio") }
     }
 
+    /// Folder paths of unfinished meetings the user dismissed from the
+    /// recovery banner. Pruned on launch when a folder no longer exists.
+    var dismissedMeetingSessions: [String] {
+        didSet { defaults.set(dismissedMeetingSessions, forKey: "dismissedMeetingSessions") }
+    }
+
     /// Set once the one-time move into the library has run (or was declined).
     var libraryMigrationDone: Bool {
         didSet { defaults.set(libraryMigrationDone, forKey: "libraryMigrationDone") }
@@ -349,6 +355,7 @@ final class AppState {
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
         self.keepMeetingAudio = defaults.object(forKey: "keepMeetingAudio") as? Bool ?? true
         self.libraryMigrationDone = defaults.bool(forKey: "libraryMigrationDone")
+        self.dismissedMeetingSessions = defaults.stringArray(forKey: "dismissedMeetingSessions") ?? []
 
         let storedSegmentMinutes = defaults.object(forKey: "meetingMaxSegmentMinutes") as? Int
         self.meetingMaxSegmentMinutes = storedSegmentMinutes ?? 30

@@ -71,10 +71,6 @@ final class AppCoordinator {
     /// MenuBarView so the user can decide whether to finalise.
     private(set) var pendingMeetingSessions: [MeetingSession] = []
 
-    /// Sessions the user dismissed from the recovery banner in this app
-    /// run. Session ids are derived from the folder, so they stay stable
-    /// across rescans. Not persisted: dismissed sessions return on relaunch.
-    private var dismissedPendingMeetingIDs: Set<UUID> = []
 
     /// Session-scoped flag: true when the user has dismissed the floating
     /// overlay during an active recording. The status-bar item compensates
@@ -103,6 +99,10 @@ final class AppCoordinator {
         audioCaptureService.onLevelUpdate = { [weak self] raw in
             Task { @MainActor in self?.audioLevelMeter.ingest(raw: raw) }
         }
+        // Forget dismissals of folders that no longer exist.
+        let dismissed = appState.dismissedMeetingSessions
+        let stillThere = MeetingSessionScanner.existingFolderPaths(dismissed)
+        if stillThere != dismissed { appState.dismissedMeetingSessions = stillThere }
         refreshPendingMeetingSessions()
         observeRecorderState()
         // HAL mute persists after our process exits, so always restore on quit.
@@ -1021,14 +1021,19 @@ final class AppCoordinator {
 
     /// Drops a recovered session from the pending list without finalising
     /// (the user opted to discard or handle it manually).
+    /// The dismissal is stored by folder path and survives relaunch.
     func dismissPendingMeeting(_ session: MeetingSession) {
-        dismissedPendingMeetingIDs.insert(session.id)
+        let path = session.folder.standardizedFileURL.path
+        if !appState.dismissedMeetingSessions.contains(path) {
+            appState.dismissedMeetingSessions.append(path)
+        }
         pendingMeetingSessions.removeAll { $0.id == session.id }
     }
 
     private func refreshPendingMeetingSessions() {
+        let dismissed = Set(appState.dismissedMeetingSessions)
         pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
-            .filter { !dismissedPendingMeetingIDs.contains($0.id) }
+            .filter { !dismissed.contains($0.folder.standardizedFileURL.path) }
     }
 
     // MARK: - Error Management

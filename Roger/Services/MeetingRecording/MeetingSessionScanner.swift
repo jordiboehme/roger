@@ -47,6 +47,12 @@ enum MeetingSessionScanner {
         return false
     }
 
+    /// The paths in `paths` that still exist (used to prune stored
+    /// dismissals of recovery sessions).
+    static func existingFolderPaths(_ paths: [String]) -> [String] {
+        paths.filter { FileManager.default.fileExists(atPath: $0) }
+    }
+
     /// Session folders at most `maxDepth` levels below `folder`. Does not
     /// look inside a session folder once found.
     static func sessionFolders(in folder: URL, maxDepth: Int) -> [URL] {
