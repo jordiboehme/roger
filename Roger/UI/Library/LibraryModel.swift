@@ -7,6 +7,10 @@ enum LibrarySidebarSelection: Hashable, Sendable {
     case kind(LibraryItemKind)
     /// `AppCoordinator.pendingMeetingSessions`, not index items.
     case unfinished
+
+    /// Search, the date filter and sort apply to this list. Unfinished
+    /// meetings are a plain list without them.
+    var usesFilters: Bool { self != .unfinished }
 }
 
 /// State of the library window over a `LibraryIndex`. Views read it and

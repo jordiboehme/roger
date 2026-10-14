@@ -98,7 +98,8 @@ struct LibraryQuery: Equatable, Sendable {
             case .oldestFirst:
                 return a.date != b.date ? a.date < b.date : a.id < b.id
             case .title:
-                let order = a.title.localizedStandardCompare(b.title)
+                // What the row shows: a log's text, not its hidden "Log <date> <time>" title.
+                let order = LibraryFormat.rowText(for: a).title.localizedStandardCompare(LibraryFormat.rowText(for: b).title)
                 if order != .orderedSame { return order == .orderedAscending }
                 return a.date != b.date ? a.date > b.date : a.id < b.id
             case .duration:

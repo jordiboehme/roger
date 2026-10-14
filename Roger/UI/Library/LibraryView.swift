@@ -24,18 +24,24 @@ struct LibraryView: View {
             LibraryDetailView(model: model)
         }
         .navigationTitle("Roger Library")
-        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search titles and text")
+        .searchable(
+            text: searchBinding,
+            placement: .toolbar,
+            prompt: model.sidebar.usesFilters ? "Search titles and text" : "Search is off for Unfinished"
+        )
         .searchFocused($searchFocused)
         .toolbar {
             ToolbarItemGroup {
                 LibraryDateFilterMenu(model: model)
+                    .disabled(!model.sidebar.usesFilters)
                 LibrarySortMenu(model: model)
+                    .disabled(!model.sidebar.usesFilters)
             }
         }
         .background {
             // Cmd-F focuses the search field. The default Find menu item is
             // not wired to `.searchable` in an AppKit-hosted window.
-            Button("Find") { searchFocused = true }
+            Button("Find") { if model.sidebar.usesFilters { searchFocused = true } }
                 .keyboardShortcut("f", modifiers: .command)
                 .opacity(0)
                 .accessibilityHidden(true)
@@ -46,5 +52,15 @@ struct LibraryView: View {
         .onChange(of: coordinator.pendingMeetingSessions.isEmpty) { _, isEmpty in
             if isEmpty && model.sidebar == .unfinished { model.sidebar = .all }
         }
+    }
+
+    /// SwiftUI cannot disable a toolbar search field. While Unfinished is
+    /// selected the field shows nothing and ignores input; the search of
+    /// the other lists is kept for when the user goes back.
+    private var searchBinding: Binding<String> {
+        Binding(
+            get: { model.sidebar.usesFilters ? model.searchText : "" },
+            set: { if model.sidebar.usesFilters { model.searchText = $0 } }
+        )
     }
 }
