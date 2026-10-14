@@ -40,6 +40,10 @@ final class MeetingRecordingService {
     private(set) var state: State = .idle
     private(set) var lastSession: MeetingSession?
 
+    /// Called after `transcript.md` is on disk, on the first finalisation
+    /// and on every retry. The coordinator records the change for agents.
+    @ObservationIgnored var onTranscriptWritten: (@MainActor (URL) -> Void)?
+
     private let appState: AppState
     private let transcriptionEngine: TranscriptionEngine
     private let diarization: DiarizationService
@@ -637,12 +641,14 @@ final class MeetingRecordingService {
             }
         }
 
+        let transcriptURL: URL
         do {
-            _ = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata, markers: markers)
+            transcriptURL = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata, markers: markers)
         } catch {
             failFinalisation(error.localizedDescription, session: session)
             return
         }
+        onTranscriptWritten?(transcriptURL)
 
         if !audioKept, !paragraphs.isEmpty {
             // Only after the transcript exists: the CAF chunks are already gone,
