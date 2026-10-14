@@ -25,4 +25,12 @@ struct LibraryLayoutRootTests {
         defer { TempDir.remove(base) }
         #expect(LibraryLayout.createRootIfDefault(LibraryLayout(root: base), defaultRoot: base.appendingPathComponent("Other")))
     }
+
+    @Test func aPlainFileIsNotARoot() throws {
+        let base = try TempDir.make()
+        defer { TempDir.remove(base) }
+        let file = base.appendingPathComponent("Roger")
+        try Data().write(to: file)
+        #expect(!LibraryLayout.createRootIfDefault(LibraryLayout(root: file), defaultRoot: base.appendingPathComponent("Other")))
+    }
 }

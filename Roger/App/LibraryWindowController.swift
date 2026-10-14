@@ -47,6 +47,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
         if let url { model?.select(url: url) }
         // Reopened after a close: follow changes again and load once.
         model?.resume()
+        // The app may already be active (no activation notification), so a
+        // drive connected meanwhile is noticed here.
+        if let model { Task { await model.recheckLibraryRoot() } }
         isOpen = true
         NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)

@@ -42,7 +42,7 @@ public struct LibraryLayout: Sendable, Equatable {
     @discardableResult
     public static func createRootIfDefault(_ layout: LibraryLayout, defaultRoot: URL = LibraryLayout.defaultRoot) -> Bool {
         let fm = FileManager.default
-        if fm.fileExists(atPath: layout.root.path) { return true }
+        if isFolder(layout.root) { return true }
         guard layout.root.standardizedFileURL.path == defaultRoot.standardizedFileURL.path else { return false }
         do {
             try fm.createDirectory(at: layout.root, withIntermediateDirectories: true)
@@ -52,6 +52,21 @@ public struct LibraryLayout: Sendable, Equatable {
             logger.warning("Could not create the library folder \(path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return false
         }
+    }
+
+    /// True when `url` exists and is a folder (a plain file is not a root).
+    static func isFolder(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    /// Makes sure writers may create month and session folders: the root
+    /// exists, or it is the default root and can be created. A missing
+    /// custom root is never created (it may be on a drive that is not
+    /// connected); this throws `LibraryRootMissingError` instead.
+    public static func prepareRootForWriting(_ layout: LibraryLayout, defaultRoot: URL = LibraryLayout.defaultRoot) throws {
+        if createRootIfDefault(layout, defaultRoot: defaultRoot) { return }
+        throw LibraryRootMissingError(path: layout.root.path)
     }
 
     public func kindFolder(_ kind: Kind) -> URL {
@@ -66,5 +81,14 @@ public struct LibraryLayout: Sendable, Equatable {
         return kindFolder(kind)
             .appendingPathComponent(year, isDirectory: true)
             .appendingPathComponent(month, isDirectory: true)
+    }
+}
+
+/// The library folder is missing and Roger must not create it.
+public struct LibraryRootMissingError: LocalizedError, Equatable, Sendable {
+    public let path: String
+    public init(path: String) { self.path = path }
+    public var errorDescription: String? {
+        "The library folder \(path) is missing. Connect the drive or choose another folder in Settings."
     }
 }

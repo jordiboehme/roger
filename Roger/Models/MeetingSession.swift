@@ -20,6 +20,18 @@ struct MeetingSession: Sendable, Equatable, Identifiable {
         return f
     }()
 
+    /// Builds a fresh session in the library's month folder for `startedAt`.
+    /// Throws `LibraryRootMissingError` when the library root is missing and
+    /// is not the default root (nothing is created then).
+    static func create(
+        layout: LibraryLayout,
+        startedAt: Date = .now,
+        defaultRoot: URL = LibraryLayout.defaultRoot
+    ) throws -> MeetingSession {
+        try LibraryLayout.prepareRootForWriting(layout, defaultRoot: defaultRoot)
+        return try create(in: layout.monthFolder(.meetings, for: startedAt), startedAt: startedAt)
+    }
+
     /// Builds a fresh session under `parent`, creating its folder.
     static func create(in parent: URL, startedAt: Date = .now) throws -> MeetingSession {
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)

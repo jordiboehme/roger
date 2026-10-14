@@ -100,10 +100,9 @@ final class MeetingRecordingService {
         state = .starting
 
         let startedAt = Date()
-        let parent = appState.libraryLayout.monthFolder(.meetings, for: startedAt)
         let session: MeetingSession
         do {
-            session = try MeetingSession.create(in: parent, startedAt: startedAt)
+            session = try MeetingSession.create(layout: appState.libraryLayout, startedAt: startedAt)
         } catch {
             state = .error(.audioWriterFailed(error.localizedDescription))
             throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)

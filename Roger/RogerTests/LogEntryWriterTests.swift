@@ -123,4 +123,25 @@ struct LogEntryWriterTests {
             _ = try await LogEntryWriter.write(entry(), layout: LibraryLayout(root: blocker), audioSamples: nil)
         }
     }
+
+    @Test func aMissingCustomRootIsNotCreated() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let custom = base.appendingPathComponent("Drive/Roger")
+        await #expect(throws: LibraryRootMissingError(path: custom.path)) {
+            try await LogEntryWriter.write(
+                entry(), layout: LibraryLayout(root: custom), audioSamples: nil,
+                defaultRoot: base.appendingPathComponent("Documents/Roger")
+            )
+        }
+        #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Drive").path))
+    }
+
+    @Test func theDefaultRootIsCreatedForALogEntry() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let root = base.appendingPathComponent("Documents/Roger")
+        let url = try await LogEntryWriter.write(entry(), layout: LibraryLayout(root: root), audioSamples: nil, defaultRoot: root)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+    }
 }

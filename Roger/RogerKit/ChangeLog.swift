@@ -59,8 +59,7 @@ public actor ChangeLog {
     func locked<T: Sendable>(
         _ decide: ([ChangeEvent]) throws -> ([PendingChange], T)
     ) throws -> (written: [ChangeEvent], result: T) {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard LibraryLayout.isFolder(root) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: root.path])
         }
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)

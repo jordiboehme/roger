@@ -25,6 +25,7 @@ enum TranscriptOutputWriter {
         location: FileTranscriptOutputLocation,
         layout: LibraryLayout,
         now: Date = .now,
+        defaultRoot: URL = LibraryLayout.defaultRoot,
         content: (URL) -> String
     ) throws -> URL {
         let baseDir: URL
@@ -32,6 +33,7 @@ enum TranscriptOutputWriter {
         case .alongsideSource:
             baseDir = source.deletingLastPathComponent()
         case .library:
+            try LibraryLayout.prepareRootForWriting(layout, defaultRoot: defaultRoot)
             baseDir = layout.monthFolder(.transcripts, for: now)
         }
         do {

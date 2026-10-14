@@ -223,7 +223,15 @@ struct RecordingsSettingsView: View {
 
     private func revealLibraryFolder() {
         let folder = coordinator.appState.libraryLayout.root
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // Only the default folder is created; a missing custom one may be on
+        // a drive that is not connected.
+        guard LibraryLayout.createRootIfDefault(coordinator.appState.libraryLayout) else {
+            let alert = NSAlert()
+            alert.messageText = "Library folder not found"
+            alert.informativeText = LibraryRootMissingError(path: folder.path).localizedDescription
+            alert.runModal()
+            return
+        }
         NSWorkspace.shared.activateFileViewerSelecting([folder])
     }
 

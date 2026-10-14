@@ -129,6 +129,18 @@ struct LibraryListView: View {
         }
         .disabled(model.isEditing)
         .overlay { overlay }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // With items still listed (extra folders, external transcripts)
+            // the empty state does not show, so say it here.
+            if model.libraryMissing, !model.isLoading, !model.results.isEmpty {
+                Label("Library folder not found: \(coordinator.appState.libraryLayout.root.path)", systemImage: "folder.badge.questionmark")
+                    .font(.callout)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.yellow.opacity(0.2))
+            }
+        }
     }
 
     private func rows(_ items: [LibraryItem]) -> some View {

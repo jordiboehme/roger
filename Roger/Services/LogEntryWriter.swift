@@ -92,8 +92,10 @@ enum LogEntryWriter {
         _ entry: LogEntry,
         layout: LibraryLayout,
         audioSamples: [Float]?,
+        defaultRoot: URL = LibraryLayout.defaultRoot,
         encodeAudio: @escaping @Sendable ([Float], URL) throws -> Void = LogAudioEncoder.writeM4A
     ) async throws -> URL {
+        try LibraryLayout.prepareRootForWriting(layout, defaultRoot: defaultRoot)
         let folder = layout.monthFolder(.logs, for: entry.startedAt)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let name = uniqueBaseName(baseName(for: entry.startedAt), in: folder)

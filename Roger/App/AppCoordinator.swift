@@ -589,7 +589,14 @@ final class AppCoordinator {
             appState.lastLogEntryURL = nil
             floatingPanel.hide()
             audioLevelMeter.reset()
-            appState.dictationState = .error("Could not save the log entry. Copy the text from the menu bar.")
+            if let missing = error as? LibraryRootMissingError {
+                // The text must not be lost: it goes to the clipboard.
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                appState.dictationState = .error("\(missing.localizedDescription) The text is on the clipboard.")
+            } else {
+                appState.dictationState = .error("Could not save the log entry. Copy the text from the menu bar.")
+            }
             return
         }
 

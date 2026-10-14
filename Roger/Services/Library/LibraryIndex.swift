@@ -132,7 +132,8 @@ actor InMemoryLibraryIndex: LibraryIndex {
     /// reports them or not. Does nothing before the first build.
     func apply(changedPaths paths: [String]) {
         guard isBuilt else { return }
-        let units = Set(paths.compactMap { unit(forChangedPath: $0) })
+        let known = Self.meetingFolders(itemsByID)
+        let units = Set(paths.compactMap { unit(forChangedPath: $0, knownMeetings: known) })
         guard !units.isEmpty else { return }
         if units.contains(.everything) {
             rebuild()
@@ -147,7 +148,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
     /// Maps one changed path to what must be read again. Nil for paths
     /// outside the library and for hidden files and folders below a kind
     /// folder or an extra folder (the full scan skips them too).
-    func unit(forChangedPath raw: String) -> LibraryScanUnit? {
+    func unit(forChangedPath raw: String, knownMeetings: Set<String>? = nil) -> LibraryScanUnit? {
         let path = LibraryPath.canonical(URL(fileURLWithPath: raw))
         if let list = externalListPath, path == list { return .externalList }
         if externalIDs.contains(path) { return .file(path, .transcript) }
@@ -165,7 +166,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
             guard !Self.hasHiddenPart(path, below: meetings) else { return nil }
             // Sessions sit up to three levels down (`YYYY/MM/<session>` or
             // anywhere above), like the full scan finds them.
-            return sessionFolder(containing: path, below: meetings, maxDepth: 3).map(LibraryScanUnit.session)
+            return sessionFolder(containing: path, below: meetings, maxDepth: 3, known: knownMeetings).map(LibraryScanUnit.session)
                 ?? .tree(path, .meeting)
         }
         for extra in extras where LibraryPath.isPath(path, inside: extra) {
@@ -183,6 +184,10 @@ actor InMemoryLibraryIndex: LibraryIndex {
         return nil
     }
 
+    private static func meetingFolders(_ items: [String: LibraryItem]) -> Set<String> {
+        Set(items.values.filter { $0.kind == .meeting }.map(\.folderURL.path))
+    }
+
     /// True when a part of `path` below `folder` starts with a dot.
     private static func hasHiddenPart(_ path: String, below folder: String) -> Bool {
         LibraryPath.components(of: path, below: folder).contains { $0.hasPrefix(".") }
@@ -192,7 +197,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
     /// folder at most `maxDepth` levels below `base` that the index knows as
     /// a meeting folder (also after it was deleted), else one that is a
     /// session folder on disk.
-    private func sessionFolder(containing path: String, below base: String, maxDepth: Int) -> String? {
+    private func sessionFolder(containing path: String, below base: String, maxDepth: Int, known: Set<String>?) -> String? {
         var candidates: [String] = []
         var current = base
         for part in LibraryPath.components(of: path, below: base).prefix(maxDepth) {
@@ -200,7 +205,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
             candidates.append(current)
         }
         guard !candidates.isEmpty else { return nil }
-        let known = Set(itemsByID.values.filter { $0.kind == .meeting }.map(\.folderURL.path))
+        let known = known ?? Self.meetingFolders(itemsByID)
         if let hit = candidates.first(where: known.contains) { return hit }
         return candidates.first { MeetingSessionScanner.isSessionFolder(URL(fileURLWithPath: $0, isDirectory: true)) }
     }
