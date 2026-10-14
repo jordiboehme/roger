@@ -38,11 +38,14 @@ enum SkillUninstallOutcome: Equatable, Sendable {
 enum SkillInstallError: Error, Equatable, LocalizedError {
     case unknownFolder(String)
     case symbolicLink(String)
+    case notAFile(String)
 
     var errorDescription: String? {
         switch self {
         case .unknownFolder(let path):
             return "Roger only installs its skill in the skills folders of known agents, not in \(path)."
+        case .notAFile(let path):
+            return "\(path) is not a regular file. Roger leaves it alone."
         case .symbolicLink(let path):
             return "\(path) is a link. Roger does not write through links. Remove the link and try again."
         }
@@ -120,7 +123,12 @@ struct SkillInstaller: Sendable {
             backup = target
         }
         let temp = skillFolder.appendingPathComponent(".\(Self.fileName).\(UUID().uuidString).tmp")
-        try skill.content.write(to: temp)
+        do {
+            try skill.content.write(to: temp)
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
         guard rename(temp.path, file.path) == 0 else {
             let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             try? FileManager.default.removeItem(at: temp)
@@ -144,17 +152,19 @@ struct SkillInstaller: Sendable {
             try save(receipt)
             return .notInstalled
         }
+        guard regularFileData(file) != nil else { throw SkillInstallError.notAFile(file.path) }
         let outcome: SkillUninstallOutcome
         if state(of: folder) == .changedByYou {
             guard confirmChanged else { return .needsConfirmation }
             try trash(file)
             outcome = .movedToTrash
         } else {
-            try FileManager.default.removeItem(at: file)
+            guard unlink(file.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             outcome = .removed
         }
-        if let rest = try? FileManager.default.contentsOfDirectory(atPath: skillFolder.path), rest.isEmpty {
-            try FileManager.default.removeItem(at: skillFolder)
+        // rmdir only removes an empty folder, so nothing that landed there meanwhile is lost.
+        if rmdir(skillFolder.path) != 0, errno != ENOTEMPTY, errno != ENOENT {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         receipt.installs[key(folder)] = nil
         try save(receipt)

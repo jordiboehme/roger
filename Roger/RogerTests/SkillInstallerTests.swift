@@ -213,4 +213,40 @@ struct SkillInstallerTests {
         #expect(installer(home, v1).loadReceipt().installs.isEmpty)
         #expect(try installer(home, v1).install(into: claudeSkills(home)) == .installed)
     }
+
+    @Test func uninstallLeavesADirectoryNamedSkillMd() throws {
+        let home = try makeHome([".claude"])
+        defer { TempFolder.remove(home) }
+        let folder = claudeSkills(home)
+        let file = installer(home, v1).skillFile(in: folder)
+        let inner = file.appendingPathComponent("keep.txt")
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: inner)
+        #expect(throws: SkillInstallError.notAFile(file.path)) {
+            try installer(home, v1).uninstall(from: folder, confirmChanged: true)
+        }
+        #expect(FileManager.default.fileExists(atPath: inner.path))
+    }
+
+    @Test func linkedSkillFileAndFolderAreRefused() throws {
+        let home = try makeHome([".claude/skills"])
+        defer { TempFolder.remove(home) }
+        let folder = claudeSkills(home)
+        let file = installer(home, v1).skillFile(in: folder)
+        let skillFolder = file.deletingLastPathComponent()
+        let target = home.appendingPathComponent("target.md")
+        try Data("t".utf8).write(to: target)
+        try FileManager.default.createDirectory(at: skillFolder, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: file, withDestinationURL: target)
+        #expect(throws: SkillInstallError.symbolicLink(file.path)) { try installer(home, v1).install(into: folder) }
+        #expect(throws: SkillInstallError.symbolicLink(file.path)) { try installer(home, v1).uninstall(from: folder, confirmChanged: true) }
+        #expect(try Data(contentsOf: target) == Data("t".utf8))
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.removeItem(at: skillFolder)
+        let elsewhere = home.appendingPathComponent("dotfiles", isDirectory: true)
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: skillFolder, withDestinationURL: elsewhere)
+        #expect(throws: SkillInstallError.symbolicLink(skillFolder.path)) { try installer(home, v1).uninstall(from: folder, confirmChanged: true) }
+        #expect(FileManager.default.fileExists(atPath: elsewhere.path))
+    }
 }
