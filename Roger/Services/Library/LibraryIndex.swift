@@ -17,12 +17,6 @@ protocol LibraryIndex: Sendable {
     var changes: AsyncStream<Void> { get }
 }
 
-/// The folders an index covers: the library root and the extra scan folders.
-struct LibraryScanScope: Equatable, Sendable {
-    let layout: LibraryLayout
-    let extraFolders: [URL]
-}
-
 /// What must be read again after a file system change. Paths are canonical.
 enum LibraryScanUnit: Hashable, Sendable {
     /// One Markdown file; the kind is the fallback when its tags do not say.
@@ -251,10 +245,10 @@ actor InMemoryLibraryIndex: LibraryIndex {
             }
         case .tree(let path, let kind):
             removeAll { LibraryPath.isPath($0.url.path, inside: path) || LibraryPath.isPath($0.folderURL.path, inside: path) }
-            insert(scanTree(path, kind: kind))
+            insert(LibraryScanner.scanTree(path, kind: kind))
         case .extraFolder(let path):
             removeAll { LibraryPath.isPath($0.url.path, inside: path) }
-            insert(scanExtraFolder(path))
+            insert(LibraryScanner.scanExtraFolder(path))
         case .externalList:
             let previous = externalIDs
             removeAll { previous.contains($0.id) }
@@ -275,68 +269,19 @@ actor InMemoryLibraryIndex: LibraryIndex {
     }
 
     private func scanAll() -> [String: LibraryItem] {
-        var found = scanTree(logs, kind: .log)
-        found += scanTree(transcripts, kind: .transcript)
-        found += scanTree(meetings, kind: .meeting)
-        for extra in extras { found += scanExtraFolder(extra) }
+        var found = LibraryScanner.scanTree(logs, kind: .log)
+        found += LibraryScanner.scanTree(transcripts, kind: .transcript)
+        found += LibraryScanner.scanTree(meetings, kind: .meeting)
+        for extra in extras { found += LibraryScanner.scanExtraFolder(extra) }
         found += scanExternal()
         var result: [String: LibraryItem] = [:]
         for item in found { result[item.id] = item }
         return result
     }
 
-    /// Every item at or below `path`. Meetings: session folders up to three
-    /// levels down (`YYYY/MM/<session>`). Logs and transcripts: every `.md`
-    /// file. Synchronous on purpose: iterating a `DirectoryEnumerator` is
-    /// not allowed in async functions under Swift 6.
-    private func scanTree(_ path: String, kind: LibraryItemKind) -> [LibraryItem] {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return [] }
-        let url = URL(fileURLWithPath: path, isDirectory: true)
-        if kind == .meeting {
-            let sessions = MeetingSessionScanner.isSessionFolder(url)
-                ? [url]
-                : MeetingSessionScanner.sessionFolders(in: url, maxDepth: 3)
-            return sessions.compactMap { LibraryItemReader.meetingItem(sessionFolder: $0) }
-        }
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return [] }
-        var items: [LibraryItem] = []
-        for case let file as URL in enumerator where file.pathExtension.lowercased() == "md" {
-            if let item = LibraryItemReader.item(markdownAt: file, fallbackKind: kind) { items.append(item) }
-        }
-        return items
-    }
-
-    /// Sessions stored directly in an extra folder (the pre-library meetings
-    /// folder) and `.md` files directly inside it (the pre-library custom
-    /// transcripts folder).
-    private func scanExtraFolder(_ path: String) -> [LibraryItem] {
-        let url = URL(fileURLWithPath: path, isDirectory: true)
-        var items = MeetingSessionScanner.sessionFolders(in: url, maxDepth: 1)
-            .compactMap { LibraryItemReader.meetingItem(sessionFolder: $0) }
-        let children = (try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        )) ?? []
-        for file in children where file.pathExtension.lowercased() == "md" {
-            if let item = LibraryItemReader.item(markdownAt: file, fallbackKind: .transcript) { items.append(item) }
-        }
-        return items
-    }
-
     private func scanExternal() -> [LibraryItem] {
-        var items: [LibraryItem] = []
-        var ids: Set<String> = []
-        for file in externalFiles() {
-            let url = LibraryPath.canonicalURL(file)
-            guard let item = LibraryItemReader.item(markdownAt: url, fallbackKind: .transcript) else { continue }
-            items.append(item)
-            ids.insert(item.id)
-        }
-        externalIDs = ids
+        let items = LibraryScanner.scanExternal(externalFiles())
+        externalIDs = Set(items.map(\.id))
         return items
     }
 }

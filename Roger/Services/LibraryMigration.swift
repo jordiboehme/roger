@@ -15,9 +15,7 @@ enum LibraryMigration {
     /// Start date from a session folder name (`yyyy-MM-dd HH-mm`, maybe with
     /// a ` 1` style suffix).
     static func sessionDate(for folder: URL) -> Date? {
-        let name = folder.lastPathComponent
-        guard name.count >= 16 else { return nil }
-        return MeetingSession.folderNameFormatter.date(from: String(name.prefix(16)))
+        SessionFolderName.date(for: folder)
     }
 
     /// True when `folder` is the library's Meetings folder or lies inside the library root.

@@ -158,10 +158,7 @@ enum MeetingTranscriptWriter {
 
     /// `yyyy-MM-dd HH:mm` in local time, used in meeting and segment titles.
     static func displayDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd HH:mm"
-        return f.string(from: date)
+        SessionFolderName.displayDate(date)
     }
 
     /// Absolute wall-clock time in the local timezone, so transcript times line

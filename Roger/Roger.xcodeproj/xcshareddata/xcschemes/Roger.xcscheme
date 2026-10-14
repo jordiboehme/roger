@@ -50,6 +50,17 @@
                ReferencedContainer = "container:Roger.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "78D151ACFEA72B2899989F72"
+               BuildableName = "RogerKitTests.xctest"
+               BlueprintName = "RogerKitTests"
+               ReferencedContainer = "container:Roger.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

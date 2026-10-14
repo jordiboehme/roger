@@ -48,11 +48,43 @@ targets:
     scheme:
       testTargets:
         - RogerTests
+        - RogerKitTests
     dependencies:
+      - target: RogerKit
       - package: FluidAudio
         product: FluidAudio
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
+
+  RogerKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: RogerKit
+    settings:
+      base:
+        PRODUCT_NAME: RogerKit
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+
+  RogerKitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: RogerKitTests
+    dependencies:
+      - target: RogerKit
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+        PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.kittests
 
   RogerTests:
     type: bundle.unit-test
@@ -69,3 +101,13 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 77PA95K95V
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.tests
+
+schemes:
+  RogerKitTests:
+    build:
+      targets:
+        RogerKit: all
+        RogerKitTests: [test]
+    test:
+      targets:
+        - RogerKitTests

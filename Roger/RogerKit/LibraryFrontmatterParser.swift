@@ -1,29 +1,40 @@
 import Foundation
 
 /// The parts of a Roger Markdown file's frontmatter the library needs.
-struct LibraryFrontmatter: Equatable, Sendable {
-    struct Source: Equatable, Sendable {
-        let id: String
-        let resource: String
+public struct LibraryFrontmatter: Equatable, Sendable {
+    public struct Source: Equatable, Sendable {
+        public let id: String
+        public let resource: String
+
+        public init(id: String, resource: String) {
+            self.id = id
+            self.resource = resource
+        }
     }
 
     /// Top-level `key: value` lines with the value unquoted. Inline maps
     /// such as `generated` keep their raw `{ ... }` text.
-    var scalars: [String: String] = [:]
-    var tags: [String] = []
-    var sources: [Source] = []
+    public var scalars: [String: String] = [:]
+    public var tags: [String] = []
+    public var sources: [Source] = []
+
+    public init(scalars: [String: String] = [:], tags: [String] = [], sources: [Source] = []) {
+        self.scalars = scalars
+        self.tags = tags
+        self.sources = sources
+    }
 }
 
 /// Reads the frontmatter `TranscriptFrontmatter` writes: top-level scalars
 /// (plain, double-quoted or single-quoted), `tags` as `[a, b]` or a block
 /// list, and `sources` as a block list of inline maps. Not a general YAML
 /// parser.
-enum LibraryFrontmatterParser {
+public enum LibraryFrontmatterParser {
     /// Splits `text` into the frontmatter block (the opening `---` line up to
     /// and including the closing `---` line) and the rest, so that
     /// `frontmatter + body == text`. No frontmatter when the text does not
     /// start with `---\n` or the block is never closed.
-    static func split(_ text: String) -> (frontmatter: Substring?, body: Substring) {
+    public static func split(_ text: String) -> (frontmatter: Substring?, body: Substring) {
         guard text.hasPrefix("---\n") else { return (nil, text[...]) }
         let searchStart = text.index(text.startIndex, offsetBy: 3)
         if let close = text.range(of: "\n---\n", range: searchStart..<text.endIndex) {
@@ -35,7 +46,7 @@ enum LibraryFrontmatterParser {
         return (nil, text[...])
     }
 
-    static func parse(_ text: String) -> LibraryFrontmatter? {
+    public static func parse(_ text: String) -> LibraryFrontmatter? {
         guard let block = split(text).frontmatter else { return nil }
         var lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         lines.removeFirst()
@@ -78,7 +89,7 @@ enum LibraryFrontmatterParser {
     /// Undoes `TranscriptFrontmatter.quoted`: `\"`, `\\`, `\n`, `\r`, `\t`
     /// and `\uXXXX`. Single-quoted values lose their quotes (`''` is `'`).
     /// Anything else is returned trimmed.
-    static func unquote(_ raw: String) -> String {
+    public static func unquote(_ raw: String) -> String {
         let value = raw.trimmingCharacters(in: .whitespaces)
         if value.count >= 2, value.hasPrefix("'"), value.hasSuffix("'") {
             return String(value.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'")
@@ -121,7 +132,7 @@ enum LibraryFrontmatterParser {
 
     /// `{ id: audio, resource: "a.m4a" }` as a dictionary with unquoted
     /// values. Only the first `:` of each entry separates key and value.
-    static func inlineMap(_ raw: String) -> [String: String] {
+    public static func inlineMap(_ raw: String) -> [String: String] {
         var inner = raw.trimmingCharacters(in: .whitespaces)
         if inner.hasPrefix("{") { inner.removeFirst() }
         if inner.hasSuffix("}") { inner.removeLast() }
