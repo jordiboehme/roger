@@ -126,6 +126,19 @@ struct LibraryDocumentTests {
         #expect(try read(url) == document.frontmatter + "\n# Log\n\nFixed a typo\n")
     }
 
+    @Test func saveKeepsAFrontmatterWithoutFinalNewlineClosed() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = folder.appendingPathComponent("only-frontmatter.md")
+        try Data("---\ntitle: x\n---".utf8).write(to: url)
+        let document = try LibraryDocument.load(url)
+
+        #expect(try LibraryDocumentEditor.saveBody("# Neu\n", of: document) == .saved)
+        let text = try read(url)
+        #expect(LibraryFrontmatterParser.parse(text)?.scalars["title"] == "x")
+        #expect(LibraryFrontmatterParser.split(text).body == "# Neu\n")
+    }
+
     @Test func saveKeepsTheCreationDate() throws {
         let folder = try TempFolder.make()
         defer { TempFolder.remove(folder) }

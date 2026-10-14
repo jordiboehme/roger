@@ -98,7 +98,11 @@ enum LibraryDocumentEditor {
         guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
         if !overwrite, modificationDate(of: url) != document.modificationDate { return .changedOnDisk }
         let current = try LibraryDocument.load(url)
-        try write(current.frontmatter + TextFile.normalizeLineEndings(body), to: url)
+        let newBody = TextFile.normalizeLineEndings(body)
+        // A file that ends right after its closing "---" needs a line break
+        // there, or the body would be glued to it and the block left open.
+        let gap = !current.frontmatter.isEmpty && !current.frontmatter.hasSuffix("\n") && !newBody.isEmpty ? "\n" : ""
+        try write(current.frontmatter + gap + newBody, to: url)
         return .saved
     }
 
