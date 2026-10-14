@@ -29,6 +29,7 @@
 		1D39079F61B25C0BE829CFD1 /* LibrarySidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BE40DFE76EFF5E60D0DBCC /* LibrarySidebarView.swift */; };
 		1D598CEA9055107E9CD2D001 /* LibraryDayGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBCBF2023B82DFBABE1FD871 /* LibraryDayGrouping.swift */; };
 		1DA882C769CE38BC204A45BA /* LibraryMigrationRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1170DD82879908D901D781E4 /* LibraryMigrationRun.swift */; };
+		1E9DA11E22CD16C32F80FF59 /* TestHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591EAEB010B224F337E90980 /* TestHostTests.swift */; };
 		1EE4A1CA71B9252CC9B75A16 /* TOON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA820989B3678203F26D5FA /* TOON.swift */; };
 		1FC8E18E65D90B1903608AC3 /* libRogerKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DF74B19119A51472F796DC2 /* libRogerKit.a */; };
 		20DB81390ADDD91D75C08353 /* AppleIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3743725D72D2E40A31B42614 /* AppleIntelligenceService.swift */; };
@@ -332,6 +333,7 @@
 		570A51824DC21AD677774B2E /* AudioChunkSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChunkSampleReader.swift; sourceTree = "<group>"; };
 		582DC4C7AAAE0A49B3643199 /* AppRelauncherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncherTests.swift; sourceTree = "<group>"; };
 		58EF1835E801D525049BE156 /* LibraryActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryActions.swift; sourceTree = "<group>"; };
+		591EAEB010B224F337E90980 /* TestHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHostTests.swift; sourceTree = "<group>"; };
 		5A30F7C94DC4E26D9241B863 /* LogEntryWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntryWriterTests.swift; sourceTree = "<group>"; };
 		5A714446F3E75A567DF819F1 /* ChangeEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeEvent.swift; sourceTree = "<group>"; };
 		5A97BC097A0F02C2BCDCB2BE /* MeetingSegmentWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSegmentWriterTests.swift; sourceTree = "<group>"; };
@@ -810,6 +812,7 @@
 				BDB54DAA0AB47CAF121D907C /* RogerMCPEndToEndTests.swift */,
 				AF88D1335D211AF7D1C15632 /* SkillInstallerTests.swift */,
 				02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */,
+				591EAEB010B224F337E90980 /* TestHostTests.swift */,
 				851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */,
 				6ACC9C36B2DA1F2D731176F9 /* TranscriptOutputWriterTests.swift */,
 			);
@@ -1264,6 +1267,7 @@
 				FA13532335B7D7014E404BC0 /* RogerMCPEndToEndTests.swift in Sources */,
 				995B66F815E758BA1C7F462A /* SkillInstallerTests.swift in Sources */,
 				065B93FE7A30FEEE02F2A248 /* TempFolder.swift in Sources */,
+				1E9DA11E22CD16C32F80FF59 /* TestHostTests.swift in Sources */,
 				5900A9257E39AD6D3A4DDFEB /* TextSamples.swift in Sources */,
 				2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */,
 				72802E9233C7491CA0DD6F42 /* TranscriptOutputWriterTests.swift in Sources */,

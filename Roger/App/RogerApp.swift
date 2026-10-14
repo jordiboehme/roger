@@ -21,14 +21,27 @@ let sharedCoordinator = AppCoordinator()
 
 private let appLogger = Logger(subsystem: "com.jordiboehme.roger", category: "App")
 
+enum AppLaunch {
+    /// Unit tests run inside Roger.app.
+    static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+}
+
 @main
 struct RogerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
         Settings {
-            SettingsView()
-                .environment(sharedCoordinator)
+            // Under tests the settings must not build the coordinator: it
+            // reads the real settings and the library folder.
+            if AppLaunch.isRunningTests {
+                EmptyView()
+            } else {
+                SettingsView()
+                    .environment(sharedCoordinator)
+            }
         }
         .windowResizability(.contentMinSize)
     }
@@ -49,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Unit tests run inside Roger.app. Skip the event tap, model
         // download, mic warm-up and onboarding there.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        if AppLaunch.isRunningTests {
             return
         }
 

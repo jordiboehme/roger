@@ -105,7 +105,15 @@ final class AppCoordinator {
         libraryOpener?(url)
     }
 
+    #if DEBUG
+    /// How many coordinators this process built. The test host must build none.
+    private(set) static var instancesCreated = 0
+    #endif
+
     init() {
+        #if DEBUG
+        Self.instancesCreated += 1
+        #endif
         // FluidAudio's debug lines include recognised words. Keep transcripts
         // out of the console and the system log, even in Debug builds.
         AppLogger.minimumLevel = .info
