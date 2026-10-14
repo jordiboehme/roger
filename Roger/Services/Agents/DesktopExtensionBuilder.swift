@@ -214,8 +214,9 @@ enum DesktopExtensionBuilder {
         }
     }
 
-    /// The app icon as a `size` x `size` PNG.
-    static func iconPNG(for appBundle: URL, size: Int = 256) -> Data? {
+    /// The app icon as a `size` x `size` PNG. 512 px: Claude Desktop shows
+    /// extension icons large on Retina screens.
+    static func iconPNG(for appBundle: URL, size: Int = 512) -> Data? {
         let image = NSWorkspace.shared.icon(forFile: appBundle.path)
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,

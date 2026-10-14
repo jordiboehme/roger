@@ -120,6 +120,10 @@ enum LibrarySnapshotRunner {
         // 7. Unfinished meetings, when there are any.
         model.searchText = ""
         await waitUntil(seconds: 5) { model.appliedSearch.isEmpty }
+        // 6b. The list filled again after the empty search: rows must show
+        // all their lines (no rebuild of the list since 0.26.0).
+        await settle()
+        render(window, "06b-refilled.png", into: folder)
         if !coordinator.pendingMeetingSessions.isEmpty {
             model.selection = []
             model.sidebar = .unfinished
@@ -134,7 +138,7 @@ enum LibrarySnapshotRunner {
         model.selection = item.map { [$0.id] } ?? []
     }
 
-    private static func settle(seconds: Double = 1) async {
+    static func settle(seconds: Double = 1) async {
         try? await Task.sleep(for: .seconds(seconds))
     }
 
@@ -150,7 +154,7 @@ enum LibrarySnapshotRunner {
     }
 
     /// The whole window, title bar and toolbar included, at its backing scale.
-    private static func render(_ window: NSWindow, _ name: String, into folder: URL) {
+    static func render(_ window: NSWindow, _ name: String, into folder: URL) {
         window.displayIfNeeded()
         guard let frameView = window.contentView?.superview,
               let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else {

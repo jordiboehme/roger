@@ -107,4 +107,25 @@ struct MeetingSegmentWriterTests {
         #expect(try read(previous(url)).contains("Final words"))
         #expect(try read(url).contains("Other words"))
     }
+
+    /// A retry over a segment another editor saved with CRLF, unchanged
+    /// otherwise: the file stays and no `.previous` copy is made.
+    @Test func anUnchangedCRLFSegmentCountsAsUnchanged() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try write(folder, "Final words", provisional: false, generatedAt: start)
+        let crlf = try read(url).replacingOccurrences(of: "\n", with: "\r\n")
+        try Data(crlf.utf8).write(to: url)
+        _ = try write(folder, "Final words", provisional: false, generatedAt: start.addingTimeInterval(3 * 86_400))
+        #expect(try names(folder) == [url.lastPathComponent])
+        #expect(try Data(contentsOf: url) == Data(crlf.utf8))
+    }
+
+    @Test func aCRLFDraftIsStillADraft() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try write(folder, "Live words", provisional: true)
+        try Data(try read(url).replacingOccurrences(of: "\n", with: "\r\n").utf8).write(to: url)
+        #expect(MeetingSegmentWriter.isDraft(url))
+    }
 }

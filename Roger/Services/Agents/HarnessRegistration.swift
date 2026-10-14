@@ -68,7 +68,7 @@ enum HarnessRegistration {
         var sawUnreadable = false
         for file in spec.configFiles {
             guard let data = try? Data(contentsOf: home.appendingPathComponent(file)) else { continue }
-            let lookup = spec.id == .codex ? tomlCommand(String(decoding: data, as: UTF8.self)) : jsonCommand(data)
+            let lookup = spec.id == .codex ? tomlCommand(TextFile.decode(data)) : jsonCommand(data)
             switch lookup {
             case .command(let command):
                 guard let executable else { return .otherCommand(command) }
@@ -92,24 +92,93 @@ enum HarnessRegistration {
         return .command(command)
     }
 
-    /// `command = "..."` inside `[mcp_servers.roger]`.
+    /// `command = "..."` inside `[mcp_servers.roger]`. Accepts what Codex
+    /// and people write: spaces, a `# comment` after the header or the
+    /// value, and the header as `[mcp_servers."roger"]` or
+    /// `[mcp_servers.'roger']`. The text comes from `TextFile` (LF).
     static func tomlCommand(_ text: String) -> ConfigLookup {
         var inSection = false
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
-                inSection = line == "[mcp_servers.roger]"
+                inSection = tomlTableName(line) == ["mcp_servers", "roger"]
                 continue
             }
-            guard inSection else { continue }
+            guard inSection, !line.hasPrefix("#") else { continue }
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, parts[0] == "command" else { continue }
-            let value = parts[1]
-            guard value.count >= 2, let quote = value.first, quote == "\"" || quote == "'", value.last == quote else { return .unreadable }
-            let inner = String(value.dropFirst().dropLast())
-            return .command(quote == "\"" ? inner.replacingOccurrences(of: "\\\"", with: "\"").replacingOccurrences(of: "\\\\", with: "\\") : inner)
+            guard parts.count == 2, unquotedTOMLKey(parts[0]) == "command" else { continue }
+            guard let (value, rest) = tomlString(parts[1]) else { return .unreadable }
+            let tail = rest.trimmingCharacters(in: .whitespaces)
+            guard tail.isEmpty || tail.hasPrefix("#") else { return .unreadable }
+            return .command(value)
         }
         return .absent
+    }
+
+    /// The dotted parts of `[a."b"]`, unquoted. Nil for `[[array]]` or a
+    /// broken line. Spaces and a `# comment` may follow the `]`.
+    static func tomlTableName(_ line: String) -> [String]? {
+        guard line.hasPrefix("["), !line.hasPrefix("[[") else { return nil }
+        var parts: [String] = []
+        var current = ""
+        var quote: Character?
+        var rest: Substring?
+        var index = line.index(after: line.startIndex)
+        while index < line.endIndex {
+            let ch = line[index]
+            index = line.index(after: index)
+            if let open = quote {
+                if ch == open { quote = nil } else { current.append(ch) }
+            } else if ch == "\"" || ch == "'" {
+                quote = ch
+            } else if ch == "." {
+                parts.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else if ch == "]" {
+                rest = line[index...]
+                break
+            } else {
+                current.append(ch)
+            }
+        }
+        guard let rest, quote == nil else { return nil }
+        let tail = rest.trimmingCharacters(in: .whitespaces)
+        guard tail.isEmpty || tail.hasPrefix("#") else { return nil }
+        return parts + [current.trimmingCharacters(in: .whitespaces)]
+    }
+
+    private static func unquotedTOMLKey(_ key: String) -> String {
+        guard key.count >= 2, let first = key.first, first == "\"" || first == "'", key.last == first else { return key }
+        return String(key.dropFirst().dropLast())
+    }
+
+    /// A basic (`"..."`, with `\\` and `\"` escapes) or literal (`'...'`)
+    /// string at the start of `text`, and what follows it.
+    static func tomlString(_ text: String) -> (String, Substring)? {
+        guard let quote = text.first, quote == "\"" || quote == "'" else { return nil }
+        var value = ""
+        var index = text.index(after: text.startIndex)
+        while index < text.endIndex {
+            let ch = text[index]
+            if ch == quote {
+                return (value, text[text.index(after: index)...])
+            }
+            if quote == "\"", ch == "\\" {
+                let next = text.index(after: index)
+                guard next < text.endIndex else { return nil }
+                switch text[next] {
+                case "\"": value.append("\"")
+                case "\\": value.append("\\")
+                case "t": value.append("\t")
+                default: value.append("\\"); value.append(text[next])
+                }
+                index = text.index(after: next)
+                continue
+            }
+            value.append(ch)
+            index = text.index(after: index)
+        }
+        return nil
     }
 
     private static func sameExecutable(_ a: String, _ b: String) -> Bool {

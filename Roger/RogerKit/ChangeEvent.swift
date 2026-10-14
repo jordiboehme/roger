@@ -34,9 +34,12 @@ public struct ChangeEvent: Equatable, Sendable {
         "{\"seq\":\(seq),\"at\":\(Self.json(RFC3339.string(at, timeZone: timeZone))),\"event\":\(Self.json(event.rawValue)),\"kind\":\(Self.json(kind.rawValue)),\"key\":\(Self.json(key)),\"path\":\(Self.json(path))}"
     }
 
+    /// Made once: `parse` runs for every line of the log.
+    private static let decoder = JSONDecoder()
+
     /// Nil for anything that is not a complete, valid event.
     public static func parse(_ line: Data) -> ChangeEvent? {
-        guard let raw = try? JSONDecoder().decode(Raw.self, from: line),
+        guard let raw = try? decoder.decode(Raw.self, from: line),
               raw.seq >= 1,
               !raw.key.isEmpty,
               let at = RFC3339.date(raw.at),

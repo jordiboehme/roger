@@ -18,10 +18,12 @@ struct AgentsLibraryStatus: Equatable {
     let lastEventAt: Date?
     let consumers: [AgentsConsumerRow]
 
+    /// Reads the change log and the bookmarks. Consumers are listed even
+    /// when `changes.jsonl` is missing or unreadable, so they can still be
+    /// started over or forgotten.
     static func read(root: URL) -> AgentsLibraryStatus {
-        guard let events = try? ChangeLogFile.readEvents(root: root) else {
-            return AgentsLibraryStatus(libraryPath: root.path, isSetUp: false, eventCount: 0, lastEventAt: nil, consumers: [])
-        }
+        let log = try? ChangeLogFile.readEvents(root: root)
+        let events = log ?? []
         let consumers = ConsumerBookmarks(root: root).all().map { named in
             AgentsConsumerRow(
                 name: named.name,
@@ -32,7 +34,7 @@ struct AgentsLibraryStatus: Equatable {
         }
         return AgentsLibraryStatus(
             libraryPath: root.path,
-            isSetUp: true,
+            isSetUp: log != nil,
             eventCount: events.count,
             lastEventAt: events.max { $0.seq < $1.seq }?.at,
             consumers: consumers

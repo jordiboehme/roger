@@ -53,10 +53,15 @@ public actor ChangeLog {
     /// Runs `decide` with all events under the lock and appends what it
     /// returns. `seq` continues after the highest valid seq in the file.
     /// When the file does not end with a newline (a crash cut the last
-    /// line), one is written first so the new lines parse.
+    /// line), one is written first so the new lines parse. Throws when the
+    /// library root is not an existing folder: the log never creates the
+    /// root (it may be on a drive that is not connected), only `.roger/`.
     func locked<T: Sendable>(
         _ decide: ([ChangeEvent]) throws -> ([PendingChange], T)
     ) throws -> (written: [ChangeEvent], result: T) {
+        guard LibraryLayout.isFolder(root) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: root.path])
+        }
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         return try FileLock.withExclusiveLock(at: fileURL, flags: O_RDWR | O_APPEND | O_CREAT) { fd in
             let existing = try Self.readAll(fd)
@@ -74,7 +79,9 @@ public actor ChangeLog {
                 written.append(event)
                 text += event.jsonLine() + "\n"
             }
-            try Self.writeAll(fd, Data(text.utf8))
+            try FileIO.writeAll(fd, Data(text.utf8))
+            // On disk before a writer or a reader relies on the new seq.
+            try FileIO.sync(fd)
             return (written, result)
         }
     }
@@ -92,22 +99,6 @@ public actor ChangeLog {
             if count == 0 { return data }
             data.append(contentsOf: buffer[0..<count])
             offset += off_t(count)
-        }
-    }
-
-    /// One `write` call; loops only if the kernel takes fewer bytes.
-    private static func writeAll(_ fd: Int32, _ data: Data) throws {
-        try data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            var offset = 0
-            while offset < raw.count {
-                let count = write(fd, base + offset, raw.count - offset)
-                if count < 0 {
-                    if errno == EINTR { continue }
-                    throw POSIXError.current
-                }
-                offset += count
-            }
         }
     }
 }

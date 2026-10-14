@@ -6,9 +6,9 @@ import UniformTypeIdentifiers
 import os
 
 extension KeyboardShortcuts.Name {
-    /// Global hotkey to start/stop a meeting recording. User-configurable
-    /// from the Recordings settings tab. Unset by default — Roger only takes
-    /// the hotkey if the user explicitly assigns one.
+    /// Global hotkey to start/stop a meeting recording. Set in Settings >
+    /// General. Unset by default, Roger only takes the hotkey if the user
+    /// explicitly assigns one.
     static let meetingRecordingToggle = Self("meetingRecordingToggle")
 
     /// Global hotkey to open the library window. Unset by default, set in
@@ -21,16 +21,30 @@ let sharedCoordinator = AppCoordinator()
 
 private let appLogger = Logger(subsystem: "com.jordiboehme.roger", category: "App")
 
+enum AppLaunch {
+    /// Unit tests run inside Roger.app.
+    static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+}
+
 @main
 struct RogerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
+        // Settings live in their own window (SettingsWindowController). This
+        // empty scene is never shown. It only carries the Settings command,
+        // which Roger's main menu has while a window makes it a regular app.
         Settings {
-            SettingsView()
-                .environment(sharedCoordinator)
+            EmptyView()
         }
-        .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { appDelegate.showSettings() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
+        }
     }
 }
 
@@ -38,6 +52,7 @@ struct RogerApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
     private var libraryWindowController: LibraryWindowController?
+    private var settingsWindowController: SettingsWindowController?
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var dropView: StatusBarDropView?
@@ -49,13 +64,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Unit tests run inside Roger.app. Skip the event tap, model
         // download, mic warm-up and onboarding there.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        if AppLaunch.isRunningTests {
             return
         }
 
         #if DEBUG
         if let folder = LibrarySnapshotRunner.requestedFolder {
-            startSnapshotRun(into: folder)
+            if SettingsSnapshotRunner.isRequested {
+                startSettingsSnapshotRun(into: folder)
+            } else {
+                startSnapshotRun(into: folder)
+            }
             return
         }
         #endif
@@ -66,13 +85,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.runLibraryMigrationIfNeeded()
 
         // Fill or catch up the change log agents read (after the migration,
-        // so moved meetings get their library keys).
+        // so moved meetings get their library keys). The change log never
+        // creates the root; the default one is created here on first launch.
+        LibraryLayout.createRootIfDefault(coordinator.appState.libraryLayout)
         coordinator.libraryChanges.reconcile()
         coordinator.checkAgentSkills()
 
         installStatusItem(coordinator: coordinator)
         coordinator.libraryOpener = { [weak self] url in
             self?.openLibrary(selecting: url)
+        }
+        coordinator.settingsOpener = { [weak self] pane in
+            self?.showSettings(pane)
         }
 
         // Check permissions
@@ -95,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.startHotkey()
 
         // Wire the meeting-recording global hotkey. Only fires when the
-        // user has assigned a key combo from the Recordings settings tab.
+        // user has assigned a key combo in Settings > General.
         KeyboardShortcuts.onKeyDown(for: .meetingRecordingToggle) {
             Task { @MainActor in
                 await sharedCoordinator.toggleMeetingRecording()
@@ -118,9 +142,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
     }
 
-    /// An unsaved edit in the library window is asked about first.
+    /// An unsaved edit in the library window is asked about first. A
+    /// relaunch ("Relaunch Roger") starts its helper only after that.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        (libraryWindowController?.confirmUnsavedEdit() ?? true) ? .terminateNow : .terminateCancel
+        let mayQuit = libraryWindowController?.confirmUnsavedEdit() ?? true
+        let reply = AppRelauncher.terminateReply(mayQuit: mayQuit)
+        // Only once the quit really goes ahead: close Settings so its pane
+        // saves what was typed (an API key saves on disappear).
+        if reply == .terminateNow { settingsWindowController?.closeForTermination() }
+        return reply
     }
 
     // MARK: - Open With / Services
@@ -314,6 +344,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.show(selecting: url)
     }
 
+    // MARK: - Settings
+
+    /// Shows the settings window on `pane`, or on the last pane when nil.
+    func showSettings(_ pane: SettingsPane? = nil) {
+        popover?.performClose(nil)
+        let controller = settingsWindowController ?? makeSettingsWindowController()
+        settingsWindowController = controller
+        controller.show(pane)
+    }
+
+    private func makeSettingsWindowController(
+        memory: SettingsPaneMemory = .standard,
+        frameAutosaveName: String? = SettingsWindowController.frameName
+    ) -> SettingsWindowController {
+        SettingsWindowController(
+            presence: .shared,
+            memory: memory,
+            frameAutosaveName: frameAutosaveName,
+            makeContent: { navigation in
+                AnyView(SettingsRootView(navigation: navigation).environment(sharedCoordinator))
+            }
+        )
+    }
+
     private func makeLibraryIndexStore() -> LibraryIndexStore {
         #if DEBUG
         if LibrarySnapshotRunner.requestedFolder != nil { return LibrarySnapshotRunner.indexStore() }
@@ -342,12 +396,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         }
     }
+
+    /// Settings snapshot mode: only the settings window, without the launch
+    /// work. Remembers no pane and no window frame.
+    private func startSettingsSnapshotRun(into folder: URL) {
+        let controller = makeSettingsWindowController(memory: .none, frameAutosaveName: nil)
+        settingsWindowController = controller
+        sharedCoordinator.settingsOpener = { [weak self] pane in
+            self?.showSettings(pane)
+        }
+        Task {
+            await SettingsSnapshotRunner.run(controller: controller, folder: folder)
+            NSApp.terminate(nil)
+        }
+    }
     #endif
 
-    /// Clicking the Dock icon (only there while the library is open) brings
-    /// the library to the front.
+    /// Clicking the Dock icon (only there while the library or the settings
+    /// window is open) brings that window to the front, the library first.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if let controller = libraryWindowController, controller.isOpen {
+            controller.show()
+        } else if let controller = settingsWindowController, controller.isOpen {
             controller.show()
         }
         return false

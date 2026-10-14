@@ -78,9 +78,14 @@ public struct ConsumerBookmarks: Sendable {
     }
 
     /// Moves the bookmark to `upTo` when that is higher. Never backwards.
+    /// An `upTo` that is not newer writes nothing, not even the folder or
+    /// the lock file (the file is replaced by `rename`, so reading it
+    /// without the lock is safe).
     @discardableResult
     public func ack(_ name: String, upTo: Int, now: Date = Date()) throws -> AckResult {
         try validate(name)
+        let seen = Self.read(fileURL(name))?.seq ?? 0
+        guard upTo > seen else { return AckResult(previous: seen, current: seen) }
         return try withLock {
             let previous = Self.read(fileURL(name))?.seq ?? 0
             guard upTo > previous else { return AckResult(previous: previous, current: previous) }
@@ -116,17 +121,34 @@ public struct ConsumerBookmarks: Sendable {
         guard Self.isValidName(name) else { throw ConsumerBookmarkError.invalidName(name) }
     }
 
+    /// Like the change log, never creates the library root (it may be on a
+    /// drive that is not connected), only `.roger/consumers/`.
     private func withLock<T>(_ body: () throws -> T) throws -> T {
+        guard LibraryLayout.isFolder(root) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: root.path])
+        }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return try FileLock.withExclusiveLock(
             at: folder.appendingPathComponent(".lock"), flags: O_RDWR | O_CREAT
         ) { _ in try body() }
     }
 
+    /// The temp file is `fsync`ed before the `rename`, so a crash never
+    /// leaves an empty bookmark in place of a good one.
     private func write(_ bookmark: ConsumerBookmark, name: String) throws {
         let text = "{\"seq\":\(bookmark.seq),\"updatedAt\":\"\(RFC3339.string(bookmark.updatedAt))\"}\n"
         let temp = folder.appendingPathComponent(".\(name).json.\(UUID().uuidString).tmp")
-        try Data(text.utf8).write(to: temp)
+        let fd = open(temp.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { throw POSIXError.current }
+        do {
+            try FileIO.writeAll(fd, Data(text.utf8))
+            try FileIO.sync(fd)
+            close(fd)
+        } catch {
+            close(fd)
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
         guard rename(temp.path, fileURL(name).path) == 0 else {
             let error = POSIXError.current
             try? FileManager.default.removeItem(at: temp)

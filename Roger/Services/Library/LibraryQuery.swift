@@ -91,24 +91,35 @@ struct LibraryQuery: Equatable, Sendable {
     }
 
     static func sorted(_ items: [LibraryItem], by sort: LibrarySort) -> [LibraryItem] {
-        items.sorted { a, b in
-            switch sort {
-            case .newestFirst:
-                return a.date != b.date ? a.date > b.date : a.id < b.id
-            case .oldestFirst:
-                return a.date != b.date ? a.date < b.date : a.id < b.id
-            case .title:
-                let order = a.title.localizedStandardCompare(b.title)
-                if order != .orderedSame { return order == .orderedAscending }
-                return a.date != b.date ? a.date > b.date : a.id < b.id
-            case .duration:
+        switch sort {
+        case .newestFirst:
+            return items.sorted(by: newestFirst)
+        case .oldestFirst:
+            return items.sorted { a, b in a.date != b.date ? a.date < b.date : a.id < b.id }
+        case .title:
+            // What the row shows: a log's text, not its hidden "Log <date> <time>"
+            // title. Each key is made once, not on every comparison.
+            return items
+                .map { (item: $0, key: LibraryFormat.rowText(for: $0).title) }
+                .sorted { a, b in
+                    let order = a.key.localizedStandardCompare(b.key)
+                    if order != .orderedSame { return order == .orderedAscending }
+                    return newestFirst(a.item, b.item)
+                }
+                .map(\.item)
+        case .duration:
+            return items.sorted { a, b in
                 switch (a.durationSeconds, b.durationSeconds) {
                 case let (x?, y?) where x != y: return x > y
                 case (nil, _?): return false
                 case (_?, nil): return true
-                default: return a.date != b.date ? a.date > b.date : a.id < b.id
+                default: return newestFirst(a, b)
                 }
             }
         }
+    }
+
+    private static func newestFirst(_ a: LibraryItem, _ b: LibraryItem) -> Bool {
+        a.date != b.date ? a.date > b.date : a.id < b.id
     }
 }

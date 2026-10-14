@@ -1,7 +1,7 @@
 import Foundation
 
-/// A library file as read from disk for the detail pane. `frontmatter +
-/// body` is exactly the file's text.
+/// A library file as read from disk for the detail pane, through
+/// `TextFile` (UTF-8, LF). `frontmatter + body` is that text.
 struct LibraryDocument: Equatable, Sendable {
     let url: URL
     /// Exact frontmatter text including both `---` lines; empty when the file has none.
@@ -11,10 +11,7 @@ struct LibraryDocument: Equatable, Sendable {
     let modificationDate: Date?
 
     static func load(_ url: URL) throws -> LibraryDocument {
-        let data = try Data(contentsOf: url)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw CocoaError(.fileReadInapplicableStringEncoding, userInfo: [NSFilePathErrorKey: url.path])
-        }
+        let text = try TextFile.read(url)
         let parts = LibraryFrontmatterParser.split(text)
         return LibraryDocument(
             url: url,
@@ -44,9 +41,20 @@ enum LibraryDocumentEditor {
         }
     }
 
-    /// Read without URL resource caching, so a change by another app is seen.
+    enum WriteError: LocalizedError, Equatable {
+        /// The entry is a link and the file it points to is gone.
+        case linkTargetMissing
+
+        var errorDescription: String? {
+            "The file this entry links to is gone. Roger did not save."
+        }
+    }
+
+    /// Read without URL resource caching, so a change by another app is
+    /// seen. For a symlink this is the date of the file it points to
+    /// (`attributesOfItem` alone describes the link itself).
     static func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        (try? FileManager.default.attributesOfItem(atPath: LibraryPath.canonical(url)))?[.modificationDate] as? Date
     }
 
     /// One line, trimmed. Nil when nothing is left.
@@ -72,8 +80,7 @@ enum LibraryDocumentEditor {
     }
 
     static func rename(fileAt url: URL, to title: String) throws {
-        let data = try Data(contentsOf: url)
-        guard let text = String(data: data, encoding: .utf8), let renamed = renamed(text, to: title) else {
+        guard let renamed = renamed(try TextFile.read(url), to: title) else {
             throw RenameError.notRenamable
         }
         try write(renamed, to: url)
@@ -85,27 +92,39 @@ enum LibraryDocumentEditor {
     /// overwrite never undoes a rename made in the meantime. Overwrite writes
     /// the caller's body as is, so an H1 renamed meanwhile is replaced by the
     /// body's H1 (the frontmatter title survives). The UI disables rename
-    /// while editing.
+    /// while editing. The body's line endings become LF.
     static func saveBody(_ body: String, of document: LibraryDocument, overwrite: Bool = false) throws -> SaveOutcome {
         let url = document.url
         guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
         if !overwrite, modificationDate(of: url) != document.modificationDate { return .changedOnDisk }
         let current = try LibraryDocument.load(url)
-        try write(current.frontmatter + body, to: url)
+        let newBody = TextFile.normalizeLineEndings(body)
+        // A file that ends right after its closing "---" needs a line break
+        // there, or the body would be glued to it and the block left open.
+        let gap = !current.frontmatter.isEmpty && !current.frontmatter.hasSuffix("\n") && !newBody.isEmpty ? "\n" : ""
+        try write(current.frontmatter + gap + newBody, to: url)
         return .saved
     }
 
     /// Writes into a scratch folder on the same volume and swaps the file
     /// in with `replaceItemAt`, which keeps the original's creation date,
     /// Finder tags and other attributes. The original is never truncated in
-    /// place, so a failed write leaves it intact.
+    /// place, so a failed write leaves it intact. A symlink is followed: the
+    /// file it points to gets the text and the link stays a link. A link
+    /// whose file is gone is refused (`WriteError.linkTargetMissing`).
     static func write(_ text: String, to url: URL) throws {
         let fm = FileManager.default
-        let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+        // A dangling link would be replaced by a plain file: refuse instead.
+        let isLink = (try? fm.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeSymbolicLink
+        if isLink, !fm.fileExists(atPath: url.path) {
+            throw WriteError.linkTargetMissing
+        }
+        let target = LibraryPath.canonicalURL(url)
+        let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
         defer { try? fm.removeItem(at: scratch) }
-        let temp = scratch.appendingPathComponent(url.lastPathComponent)
+        let temp = scratch.appendingPathComponent(target.lastPathComponent)
         try Data(text.utf8).write(to: temp)
-        _ = try fm.replaceItemAt(url, withItemAt: temp)
+        _ = try fm.replaceItemAt(target, withItemAt: temp)
     }
 
     /// False for an unfinished meeting without a transcript and for files
@@ -145,7 +164,7 @@ enum LibraryDocumentEditor {
             if fence == nil, line.hasPrefix("# ") { found = i; break }
         }
         guard let index = found else { return (body, false) }
-        lines[index] = "# " + title + (lines[index].hasSuffix("\r") ? "\r" : "")
+        lines[index] = "# " + title
         return (lines.joined(separator: "\n"), true)
     }
 }

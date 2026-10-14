@@ -35,9 +35,23 @@ enum LibraryMigration {
         }
     }
 
+    /// False while the library root is missing and may not be created (a
+    /// custom folder on a drive that is not connected): the migration is
+    /// then neither offered nor marked done.
+    static func isReadyToMigrate(layout: LibraryLayout, defaultRoot: URL = LibraryLayout.defaultRoot) -> Bool {
+        (try? LibraryLayout.prepareRootForWriting(layout, defaultRoot: defaultRoot)) != nil
+    }
+
     /// Moves each session. A name that is taken gets ` 1`, ` 2` … Returns
     /// the new folder URLs and the moves that failed (left in place).
-    static func execute(_ moves: [Move]) -> (moved: [URL], failed: [Move]) {
+    /// Throws `LibraryRootMissingError` before anything moves when the
+    /// library root is missing and is not the default root.
+    static func execute(
+        _ moves: [Move],
+        layout: LibraryLayout,
+        defaultRoot: URL = LibraryLayout.defaultRoot
+    ) throws -> (moved: [URL], failed: [Move]) {
+        try LibraryLayout.prepareRootForWriting(layout, defaultRoot: defaultRoot)
         let fm = FileManager.default
         var moved: [URL] = []
         var failed: [Move] = []

@@ -144,6 +144,15 @@ jobs:
           cat "${{ runner.temp }}/roger-mcp-sign.txt"
           grep -q "Authority=Developer ID Application" "${{ runner.temp }}/roger-mcp-sign.txt"
           grep -Eq "flags=0x[0-9a-f]*\(.*runtime.*\)" "${{ runner.temp }}/roger-mcp-sign.txt"
+          # The same team as the app, and a secure timestamp (notarization
+          # needs it; a signature without one shows "Signed Time=" instead).
+          APP_TEAM=$(codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+          BIN_TEAM=$(sed -n 's/^TeamIdentifier=//p' "${{ runner.temp }}/roger-mcp-sign.txt")
+          echo "Roger.app team: $APP_TEAM, roger-mcp team: $BIN_TEAM"
+          test -n "$APP_TEAM"
+          test "$APP_TEAM" != "not set"
+          test "$APP_TEAM" = "$BIN_TEAM"
+          grep -q "^Timestamp=" "${{ runner.temp }}/roger-mcp-sign.txt"
           codesign --verify --deep --strict --verbose=2 "$APP"
           "$BIN" --version
 

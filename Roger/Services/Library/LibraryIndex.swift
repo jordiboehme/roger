@@ -15,6 +15,27 @@ protocol LibraryIndex: Sendable {
     /// Single consumer: iterate it from one place only (it is one
     /// `AsyncStream`, not a broadcast). Finishes when the index is released.
     var changes: AsyncStream<Void> { get }
+    /// True when the library root is not a folder (deleted, or on a drive
+    /// that is not connected).
+    func libraryRootMissing() async -> Bool
+    /// Looks at the root again; reads everything again when it appeared or
+    /// went away.
+    func recheckRoot() async
+    /// Reads these files again now, without waiting for the folder watcher
+    /// (after Roger wrote them).
+    func refresh(paths: [String]) async
+    /// What changed since the last call, then starts over. Read it after
+    /// `changes` yielded.
+    func takeChange() async -> LibraryIndexChange
+}
+
+extension LibraryIndex {
+    func libraryRootMissing() async -> Bool { false }
+    func recheckRoot() async {}
+    func refresh(paths: [String]) async {}
+    func takeChange() async -> LibraryIndexChange {
+        LibraryIndexChange(itemsChanged: true, sessionFolders: [])
+    }
 }
 
 /// What must be read again after a file system change. Paths are canonical.
@@ -31,6 +52,15 @@ enum LibraryScanUnit: Hashable, Sendable {
     case externalList
     /// The library root or one of its parents changed.
     case everything
+}
+
+/// What changed in an index since the last `takeChange()`.
+struct LibraryIndexChange: Equatable, Sendable {
+    /// The items changed or were read again: the list must reload.
+    var itemsChanged: Bool
+    /// Canonical paths of the meeting session folders something changed in,
+    /// also when their meeting item stayed the same.
+    var sessionFolders: Set<String>
 }
 
 /// Scans `Logs/`, `Meetings/`, `Transcripts/`, the extra scan folders and
@@ -52,6 +82,14 @@ actor InMemoryLibraryIndex: LibraryIndex {
     private var itemsByID: [String: LibraryItem] = [:]
     private var externalIDs: Set<String> = []
     private var isBuilt = false
+    /// How often `changes` yielded. For tests: a missing yield would make
+    /// them wait forever on the stream.
+    private(set) var changeCount = 0
+    /// Collected for `takeChange()`.
+    private var pendingItemsChanged = false
+    private var pendingSessionFolders: Set<String> = []
+    /// Set by every full build: the root is not a folder.
+    private var rootMissing = false
     private let watchesFileSystem: Bool
     private var watcher: LibraryFolderWatcher?
     private var eventTask: Task<Void, Never>?
@@ -104,21 +142,51 @@ actor InMemoryLibraryIndex: LibraryIndex {
     func rebuild() {
         let start = Date()
         scanEventId = FSEventsGetCurrentEventId()
+        rootMissing = !Self.isFolder(root)
         itemsByID = scanAll()
         isBuilt = true
         // Plain locals: Logger interpolation must not touch actor state.
         let count = itemsByID.count
         let milliseconds = Int(Date().timeIntervalSince(start) * 1000)
         logger.info("Library index built: \(count) items in \(milliseconds) ms")
-        continuation.yield()
+        pendingItemsChanged = true
+        notifyChange()
         if watchesFileSystem { restartWatcherIfNeeded() }
+    }
+
+    /// Reads again what Roger just wrote. A path that is an item's id is
+    /// read as is: for a symlinked entry the id is the link path, which
+    /// `apply` would resolve to the target (outside the library or another
+    /// item).
+    func refresh(paths: [String]) async {
+        guard isBuilt else { return }
+        var rest: [String] = []
+        var units: [LibraryScanUnit] = []
+        for path in paths {
+            guard let item = itemsByID[path] else {
+                rest.append(path)
+                continue
+            }
+            units.append(item.kind == .meeting ? .session(item.folderURL.path) : .file(path, item.kind))
+        }
+        if !units.isEmpty {
+            let before = itemsByID
+            scanEventId = FSEventsGetCurrentEventId()
+            for unit in units { reload(unit) }
+            if itemsByID != before {
+                pendingItemsChanged = true
+                notifyChange()
+            }
+        }
+        if !rest.isEmpty { apply(changedPaths: rest) }
     }
 
     /// Reads again what `paths` touched. Paths may be spelled as FSEvents
     /// reports them or not. Does nothing before the first build.
     func apply(changedPaths paths: [String]) {
         guard isBuilt else { return }
-        let units = Set(paths.compactMap { unit(forChangedPath: $0) })
+        let known = Self.meetingFolders(itemsByID)
+        let units = Set(paths.compactMap { unit(forChangedPath: $0, knownMeetings: known) })
         guard !units.isEmpty else { return }
         if units.contains(.everything) {
             rebuild()
@@ -127,20 +195,41 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let before = itemsByID
         scanEventId = FSEventsGetCurrentEventId()
         for unit in units { reload(unit) }
-        if itemsByID != before { continuation.yield() }
+        // A change inside a meeting folder is reported even when the meeting
+        // item stayed the same: the Extra files section lists the folder again.
+        let sessions = units.compactMap { unit -> String? in
+            if case .session(let folder) = unit { return folder } else { return nil }
+        }
+        let itemsChanged = itemsByID != before
+        if itemsChanged { pendingItemsChanged = true }
+        pendingSessionFolders.formUnion(sessions)
+        if itemsChanged || !sessions.isEmpty { notifyChange() }
+    }
+
+    func takeChange() async -> LibraryIndexChange {
+        defer {
+            pendingItemsChanged = false
+            pendingSessionFolders = []
+        }
+        return LibraryIndexChange(itemsChanged: pendingItemsChanged, sessionFolders: pendingSessionFolders)
+    }
+
+    private func notifyChange() {
+        changeCount += 1
+        continuation.yield()
     }
 
     /// Maps one changed path to what must be read again. Nil for paths
-    /// outside the library.
-    func unit(forChangedPath raw: String) -> LibraryScanUnit? {
+    /// outside the library and for hidden files and folders below a kind
+    /// folder or an extra folder (the full scan skips them too).
+    func unit(forChangedPath raw: String, knownMeetings: Set<String>? = nil) -> LibraryScanUnit? {
         let path = LibraryPath.canonical(URL(fileURLWithPath: raw))
         if let list = externalListPath, path == list { return .externalList }
         if externalIDs.contains(path) { return .file(path, .transcript) }
         if LibraryPath.isPath(root, inside: path) { return .everything }
-        // Hidden files are not scanned, so their changes do not matter.
-        if (path as NSString).lastPathComponent.hasPrefix("."), !extras.contains(path) { return nil }
         for (folder, kind) in [(logs, LibraryItemKind.log), (transcripts, .transcript)]
         where LibraryPath.isPath(path, inside: folder) {
+            guard !Self.hasHiddenPart(path, below: folder) else { return nil }
             let ext = (path as NSString).pathExtension.lowercased()
             if ext == "md" { return .file(path, kind) }
             // Audio next to a log entry: its .md says whether it has audio.
@@ -148,12 +237,14 @@ actor InMemoryLibraryIndex: LibraryIndex {
             return ext.isEmpty ? .tree(path, kind) : nil
         }
         if LibraryPath.isPath(path, inside: meetings) {
-            let parts = LibraryPath.components(of: path, below: meetings)
-            // Meetings/YYYY/MM/<session>/...
-            if parts.count >= 3 { return .session(([meetings] + parts.prefix(3)).joined(separator: "/")) }
-            return .tree(path, .meeting)
+            guard !Self.hasHiddenPart(path, below: meetings) else { return nil }
+            // Sessions sit up to three levels down (`YYYY/MM/<session>` or
+            // anywhere above), like the full scan finds them.
+            return sessionFolder(containing: path, below: meetings, maxDepth: 3, known: knownMeetings).map(LibraryScanUnit.session)
+                ?? .tree(path, .meeting)
         }
         for extra in extras where LibraryPath.isPath(path, inside: extra) {
+            guard !Self.hasHiddenPart(path, below: extra) else { return nil }
             let parts = LibraryPath.components(of: path, below: extra)
             guard let first = parts.first else { return .extraFolder(extra) }
             if parts.count == 1 {
@@ -161,9 +252,53 @@ actor InMemoryLibraryIndex: LibraryIndex {
                 if ext == "md" { return .file(path, .transcript) }
                 if !ext.isEmpty { return nil }
             }
+            // Sessions sit directly in an extra folder.
             return .session(extra + "/" + first)
         }
         return nil
+    }
+
+    private static func meetingFolders(_ items: [String: LibraryItem]) -> Set<String> {
+        Set(items.values.filter { $0.kind == .meeting }.map(\.folderURL.path))
+    }
+
+    /// True when a part of `path` below `folder` starts with a dot.
+    private static func hasHiddenPart(_ path: String, below folder: String) -> Bool {
+        LibraryPath.components(of: path, below: folder).contains { $0.hasPrefix(".") }
+    }
+
+    /// The session folder that holds `path` (or is `path`): the shallowest
+    /// folder at most `maxDepth` levels below `base` that the index knows as
+    /// a meeting folder (also after it was deleted), else one that is a
+    /// session folder on disk.
+    private func sessionFolder(containing path: String, below base: String, maxDepth: Int, known: Set<String>?) -> String? {
+        var candidates: [String] = []
+        var current = base
+        for part in LibraryPath.components(of: path, below: base).prefix(maxDepth) {
+            current = (current as NSString).appendingPathComponent(part)
+            candidates.append(current)
+        }
+        guard !candidates.isEmpty else { return nil }
+        let known = known ?? Self.meetingFolders(itemsByID)
+        if let hit = candidates.first(where: known.contains) { return hit }
+        return candidates.first { MeetingSessionScanner.isSessionFolder(URL(fileURLWithPath: $0, isDirectory: true)) }
+    }
+
+    func libraryRootMissing() async -> Bool {
+        buildIfNeeded()
+        return rootMissing
+    }
+
+    /// Called when Roger becomes active: a root that appeared (a drive was
+    /// connected) or went away is noticed without a file system event.
+    func recheckRoot() async {
+        guard isBuilt else { return }
+        if Self.isFolder(root) == rootMissing { rebuild() }
+    }
+
+    private static func isFolder(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     // MARK: - Watching
@@ -188,6 +323,8 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let paths = watchedPaths()
         if let watcher, watcher.paths == paths { return }
         tearDownWatcher()
+        // Nothing to watch: a missing root and no other folders.
+        guard !paths.isEmpty else { return }
         let (events, sink) = AsyncStream.makeStream(of: [String]?.self)
         let watcher = LibraryFolderWatcher(paths: paths, latency: 0.5) { changed, mustRescan in
             sink.yield(mustRescan ? nil : changed)
@@ -210,12 +347,13 @@ actor InMemoryLibraryIndex: LibraryIndex {
         }
     }
 
-    /// The library root (or its nearest existing parent, so the root
-    /// appearing is noticed), the extra folders, the folder of the external
-    /// list and the folders of external transcripts. FSEvents watches each
-    /// recursively, so new `YYYY/MM` folders are covered.
-    private func watchedPaths() -> [String] {
-        var urls = [LibraryPath.nearestExisting(scope.layout.root)]
+    /// The library root when it exists (never a parent: that could be all
+    /// of `~/Documents`; a root that appears is found by `recheckRoot`), the
+    /// extra folders, the folder of the external list and the folders of
+    /// external transcripts. FSEvents watches each recursively, so new
+    /// `YYYY/MM` folders are covered.
+    func watchedPaths() -> [String] {
+        var urls: [URL] = rootMissing ? [] : [scope.layout.root]
         urls += scope.extraFolders.filter { FileManager.default.fileExists(atPath: $0.path) }
         if let list = externalListPath {
             urls.append(LibraryPath.nearestExisting(URL(fileURLWithPath: list).deletingLastPathComponent()))
@@ -246,13 +384,12 @@ actor InMemoryLibraryIndex: LibraryIndex {
         case .tree(let path, let kind):
             removeAll { LibraryPath.isPath($0.url.path, inside: path) || LibraryPath.isPath($0.folderURL.path, inside: path) }
             insert(LibraryScanner.scanTree(path, kind: kind))
-        case .extraFolder(let path):
-            removeAll { LibraryPath.isPath($0.url.path, inside: path) }
-            insert(LibraryScanner.scanExtraFolder(path))
+        case .extraFolder:
+            // Rare (the extra folder itself appeared, went or was renamed).
+            // A full read keeps the scanner's rule for a file found twice.
+            itemsByID = scanAll()
         case .externalList:
-            let previous = externalIDs
-            removeAll { previous.contains($0.id) }
-            insert(scanExternal())
+            itemsByID = scanAll()
             // A new external transcript may live in a folder nobody watches yet.
             if watchesFileSystem { restartWatcherIfNeeded() }
         case .everything:
@@ -268,20 +405,16 @@ actor InMemoryLibraryIndex: LibraryIndex {
         for item in items { itemsByID[item.id] = item }
     }
 
+    /// The scanner's order and rule: Logs, Transcripts, Meetings, extra
+    /// folders, external list; a file found twice keeps its first item.
+    /// `externalIDs` holds only the files first found through the list: a
+    /// file found twice keeps the kind of its first find after a later edit.
     private func scanAll() -> [String: LibraryItem] {
-        var found = LibraryScanner.scanTree(logs, kind: .log)
-        found += LibraryScanner.scanTree(transcripts, kind: .transcript)
-        found += LibraryScanner.scanTree(meetings, kind: .meeting)
-        for extra in extras { found += LibraryScanner.scanExtraFolder(extra) }
-        found += scanExternal()
-        var result: [String: LibraryItem] = [:]
-        for item in found { result[item.id] = item }
-        return result
-    }
-
-    private func scanExternal() -> [LibraryItem] {
-        let items = LibraryScanner.scanExternal(externalFiles())
-        externalIDs = Set(items.map(\.id))
-        return items
+        var items = LibraryScanner.scanAll(scope: scope, externalFiles: [])
+        var seen = Set(items.map(\.id))
+        let external = LibraryScanner.scanExternal(externalFiles()).filter { seen.insert($0.id).inserted }
+        externalIDs = Set(external.map(\.id))
+        items += external
+        return Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 }

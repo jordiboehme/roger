@@ -46,6 +46,12 @@ struct DesktopExtensionBuilderTests {
         #expect(!text.contains("\u{2014}") && !text.contains("\u{2013}"))
     }
 
+    @Test func theExtensionIconIs512Pixels() throws {
+        let rep = try #require(NSBitmapImageRep(data: try pngIcon()))
+        #expect(rep.pixelsWide == 512)
+        #expect(rep.pixelsHigh == 512)
+    }
+
     @Test func launcherExecsTheQuotedPath() {
         #expect(DesktopExtensionBuilder.launcher(executable: "/Users/x/My Apps/Roger.app/Contents/MacOS/roger-mcp")
                 == "#!/bin/sh\nexec '/Users/x/My Apps/Roger.app/Contents/MacOS/roger-mcp' \"$@\"\n")

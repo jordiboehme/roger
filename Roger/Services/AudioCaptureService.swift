@@ -288,7 +288,7 @@ enum AudioCaptureError: LocalizedError {
         case .noInputDevice:
             return "No audio input device found"
         case .permissionDenied:
-            return "Microphone access denied. Grant permission in System Settings › Privacy & Security."
+            return "Microphone access denied. Grant permission in System Settings > Privacy & Security."
         }
     }
 }

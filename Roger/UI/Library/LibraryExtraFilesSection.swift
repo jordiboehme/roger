@@ -8,9 +8,18 @@ import SwiftUI
 struct LibraryExtraFilesSection: View {
     @Environment(AppCoordinator.self) private var coordinator
     let item: LibraryItem
+    /// Its `sessionFolderChanges` count for this folder lists the folder
+    /// again. Only this section reads it, not the detail body.
+    let model: LibraryModel
     @State private var files: [MeetingExtraFiles.File] = []
     @State private var confirmsCleanUp = false
+    /// What Clean Up asks about, taken when the button is clicked, so the
+    /// count in the question and the files moved are the same.
+    @State private var cleanUpURLs: [URL] = []
     @State private var errorText: String?
+    /// `item.folderURL` resolved once per item (a realpath call), not on
+    /// every draw.
+    @State private var canonicalFolder = ""
 
     private var isLocked: Bool {
         !LibraryDocumentEditor.canEdit(item, activeSessionFolder: coordinator.meetingRecorder.activeSessionFolder)
@@ -22,6 +31,9 @@ struct LibraryExtraFilesSection: View {
         !isLocked && !item.isUnfinished && !MeetingSessionScanner.isUnfinished(item.folderURL)
     }
 
+    /// What Clean Up and the Trash buttons may move (never a folder).
+    private var trashable: [MeetingExtraFiles.File] { files.filter(\.kind.isTrashable) }
+
     var body: some View {
         // A container that always exists, so `.task` runs and the dialogs
         // have a host even while there are no files.
@@ -32,17 +44,27 @@ struct LibraryExtraFilesSection: View {
                         Text("Extra files")
                             .font(.headline)
                         Spacer()
-                        if !item.isUnfinished {
-                            Button("Clean Up…") { confirmsCleanUp = true }
+                        if !item.isUnfinished, !trashable.isEmpty {
+                            Button("Clean Up…") {
+                                cleanUpURLs = trashable.map(\.url)
+                                confirmsCleanUp = true
+                            }
                                 .disabled(isLocked)
                         }
                     }
-                    Text("A retry left these files in the meeting folder. Leftover audio can hold parts of the meeting that are not in the transcript.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if !trashable.isEmpty {
+                        Text("A retry left these files in the meeting folder. Leftover audio can hold parts of the meeting that are not in the transcript.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if files.contains(where: { $0.kind == .subfolder }) {
+                        Text("Roger does not write folders here and never moves them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     ForEach(files, id: \.url) { file in
                         HStack(spacing: 8) {
-                            Image(systemName: file.kind.isAudio ? "waveform" : "doc.text")
+                            Image(systemName: file.kind == .subfolder ? "folder" : (file.kind.isAudio ? "waveform" : "doc.text"))
                                 .foregroundStyle(.secondary)
                             Text(file.url.lastPathComponent)
                                 .lineLimit(1)
@@ -54,13 +76,15 @@ struct LibraryExtraFilesSection: View {
                                 Image(systemName: "folder")
                             }
                             .help("Reveal in Finder")
-                            Button {
-                                trash([file.url])
-                            } label: {
-                                Image(systemName: "trash")
+                            if file.kind.isTrashable {
+                                Button {
+                                    trash([file.url])
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .help("Move to Trash")
+                                .disabled(isLocked || item.isUnfinished)
                             }
-                            .help("Move to Trash")
-                            .disabled(isLocked || item.isUnfinished)
                         }
                         .buttonStyle(.borderless)
                     }
@@ -69,13 +93,17 @@ struct LibraryExtraFilesSection: View {
                 .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
-        .task(id: item) { refresh() }
+        .task(id: item) {
+            canonicalFolder = LibraryPath.canonical(item.folderURL)
+            refresh()
+        }
+        .onChange(of: model.sessionFolderChanges[canonicalFolder, default: 0]) { _, _ in refresh() }
         .confirmationDialog(
-            files.count == 1 ? "Move 1 extra file to the Trash?" : "Move \(files.count) extra files to the Trash?",
+            cleanUpURLs.count == 1 ? "Move 1 extra file to the Trash?" : "Move \(cleanUpURLs.count) extra files to the Trash?",
             isPresented: $confirmsCleanUp,
             titleVisibility: .visible
         ) {
-            Button("Move to Trash", role: .destructive) { trash(files.map(\.url)) }
+            Button("Move to Trash", role: .destructive) { trash(cleanUpURLs) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You can put them back from the Trash.")
@@ -102,15 +130,17 @@ struct LibraryExtraFilesSection: View {
     }
 
     /// Checks the meeting again, lists the folder again and moves only
-    /// files that are still extra files and that the user chose. Nothing
-    /// moves when the meeting is now locked or unfinished.
+    /// files that are still trashable extra files and that the user chose.
+    /// Nothing moves when the meeting is now locked or unfinished; then the
+    /// user is told why.
     private func trash(_ urls: [URL]) {
         guard mayTrash else {
             refresh()
+            errorText = LibraryActions.extraFilesBusyMessage
             return
         }
         refresh()
-        let current = Set(files.map { LibraryPath.canonical($0.url) })
+        let current = Set(trashable.map { LibraryPath.canonical($0.url) })
         let allowed = urls.filter { current.contains(LibraryPath.canonical($0)) }
         let failed = LibraryActions.moveToTrash(allowed)
         refresh()

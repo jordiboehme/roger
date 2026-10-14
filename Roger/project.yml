@@ -40,7 +40,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger
-        MARKETING_VERSION: "0.25.0"
+        MARKETING_VERSION: "0.26.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_FILE: Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/Roger.entitlements
@@ -106,6 +106,7 @@ targets:
     platform: macOS
     sources:
       - path: RogerKitTests
+      - path: TestSupport
     dependencies:
       - target: RogerKit
     settings:
@@ -122,6 +123,7 @@ targets:
     platform: macOS
     sources:
       - path: RogerTests
+      - path: TestSupport
     dependencies:
       - target: Roger
     settings:

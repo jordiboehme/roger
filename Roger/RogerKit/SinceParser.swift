@@ -19,7 +19,7 @@ public enum SinceParser {
         if text.allSatisfy(\.isASCIIDigit), let seq = Int(text) {
             return .afterSeq(seq)
         }
-        if text.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#, options: .regularExpression) != nil {
+        if isDay(text) {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.calendar = calendar
@@ -35,6 +35,15 @@ public enum SinceParser {
             return .atOrAfter(now.addingTimeInterval(-Double(count) * seconds))
         }
         return RFC3339.date(text).map { .atOrAfter($0) }
+    }
+}
+
+/// `YYYY-MM-DD` by hand (a regex `$` also accepts a final newline).
+private func isDay(_ text: String) -> Bool {
+    let characters = Array(text)
+    guard characters.count == 10 else { return false }
+    return characters.enumerated().allSatisfy { index, character in
+        index == 4 || index == 7 ? character == "-" : character.isASCIIDigit
     }
 }
 

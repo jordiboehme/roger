@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Settings > Agents: what agents need to read Roger's library.
-struct AgentsSettingsView: View {
+struct AgentsPane: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var status: AgentsLibraryStatus?
     @State private var consumerAction: ConsumerAction?
@@ -34,29 +34,21 @@ struct AgentsSettingsView: View {
 
     private var root: URL { coordinator.appState.libraryLayout.root }
 
-    private var executableChoice: RogerMCPLocation.Choice {
-        RogerMCPLocation.choose(appBundle: Bundle.main.bundleURL)
-    }
+    /// Looked up once, off the main actor, by `AgentsController.live()`.
+    private var executableChoice: RogerMCPLocation.Choice? { agents?.executableChoice }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                libraryCard
-                harnessesCard
-                desktopCard
-                manualSetupCard
-                consumersCard
-                Text(Self.documentsHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding()
+        SettingsForm {
+            librarySection
+            harnessesSection
+            desktopSection
+            manualSetupSection
+            consumersSection
         }
         .task {
             reload()
             if !agentsLoaded {
-                agents = AgentsController.live()
+                agents = await AgentsController.live()
                 agentsLoaded = true
             }
             await agents?.refresh()
@@ -94,30 +86,33 @@ struct AgentsSettingsView: View {
         }
     }
 
-    // MARK: - Cards
+    // MARK: - Sections
 
-    private var libraryCard: some View {
-        settingsCard(icon: "books.vertical", title: "Library") {
-            Text(root.path)
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-            if let status, status.isSetUp {
-                if let last = status.lastEventAt {
-                    Text("\(status.eventCount) changes recorded, the last one \(last.formatted(.relative(presentation: .named))).")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("No changes recorded yet.")
-                        .foregroundStyle(.secondary)
+    private var librarySection: some View {
+        Section("Library") {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(root.path)
+                    .font(.subheadline.monospaced())
+                    .textSelection(.enabled)
+                Group {
+                    if let status, status.isSetUp {
+                        if let last = status.lastEventAt {
+                            Text("\(status.eventCount) changes recorded, the last one \(SettingsFormat.relative(last)).")
+                        } else {
+                            Text("No changes recorded yet.")
+                        }
+                    } else {
+                        Text("The change list is not set up yet. Roger sets it up when it starts.")
+                    }
                 }
-            } else {
-                Text("The change list is not set up yet. Roger sets it up when it starts.")
-                    .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var harnessesCard: some View {
-        settingsCard(icon: "terminal", title: "Coding agents") {
+    private var harnessesSection: some View {
+        Section("Coding agents") {
             if let agents {
                 if case .unusable(let reason) = agents.executableChoice {
                     Text(reason).foregroundStyle(.orange)
@@ -128,7 +123,6 @@ struct AgentsSettingsView: View {
                 }
                 ForEach(agents.rows) { row in
                     harnessRow(row, agents: agents)
-                    if row.id != agents.rows.last?.id { Divider() }
                 }
             } else if agentsLoaded {
                 Text("This copy of Roger has no ingest skill.")
@@ -137,9 +131,9 @@ struct AgentsSettingsView: View {
         }
     }
 
-    @ViewBuilder private var desktopCard: some View {
+    @ViewBuilder private var desktopSection: some View {
         if let agents, agents.desktopAvailable {
-            settingsCard(icon: "macwindow", title: "Claude Desktop") {
+            Section {
                 if agents.desktopAppMoved() {
                     Text("Roger.app moved - add again.")
                         .foregroundStyle(.orange)
@@ -155,21 +149,22 @@ struct AgentsSettingsView: View {
                     .disabled(agents.desktopBusy)
                 }
                 if let added = agents.desktopRecord.extensionAddedAt {
-                    Text("Extension last added \(added.formatted(.relative(presentation: .named))).")
-                        .font(.caption)
+                    Text("Extension last added \(SettingsFormat.relative(added)).")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if let saved = agents.desktopRecord.skillSavedAt {
-                    Text("Skill last saved \(saved.formatted(.relative(presentation: .named))).")
-                        .font(.caption)
+                    Text("Skill last saved \(SettingsFormat.relative(saved)).")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if let message = agents.desktopMessage {
-                    Text(message).font(.caption)
+                    Text(message)
                 }
+            } header: {
+                Text("Claude Desktop")
+            } footer: {
                 Text("Roger cannot see what Claude Desktop has installed. These lines show what Roger did last.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -178,9 +173,9 @@ struct AgentsSettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(row.spec.name).font(.body.weight(.medium))
+                    Text(row.spec.name)
                     Text(skillText(row) + " · " + serverText(row.connection))
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -208,7 +203,7 @@ struct AgentsSettingsView: View {
                 }
             }
             if let message = row.message {
-                Text(message).font(.caption).foregroundStyle(.orange)
+                Text(message).font(.subheadline).foregroundStyle(.orange)
             }
             if let command = row.manualCommand {
                 copyableBlock(command)
@@ -237,45 +232,56 @@ struct AgentsSettingsView: View {
         }
     }
 
-    private var manualSetupCard: some View {
-        settingsCard(icon: "wrench.and.screwdriver", title: "Manual setup") {
-            DisclosureGroup("Commands to add Roger to an agent yourself") {
+    private var manualSetupSection: some View {
+        Section {
+            DisclosureGroup("Manual setup") {
                 VStack(alignment: .leading, spacing: 10) {
                     switch executableChoice {
-                    case .usable(let executable):
+                    case .usable(let executable)?:
                         Text("Claude Code:")
                         copyableBlock(McpCommandFormatter.claudeAdd(executable: executable))
                         Text("Other clients (.mcp.json, Cursor, Copilot CLI, Kiro):")
                         copyableBlock(McpCommandFormatter.jsonSnippet(executable: executable))
-                    case .unusable(let reason):
+                    case .unusable(let reason)?:
                         Text(reason).foregroundStyle(.secondary)
+                    case nil:
+                        if agentsLoaded {
+                            Text("Not available in this copy of Roger.").foregroundStyle(.secondary)
+                        } else {
+                            ProgressView().controlSize(.small)
+                        }
                     }
                 }
                 .padding(.top, 6)
             }
+        } footer: {
+            Text("Commands to add Roger to an agent yourself.")
         }
     }
 
-    private var consumersCard: some View {
-        settingsCard(icon: "person.2.badge.gearshape", title: "Consumers") {
+    private var consumersSection: some View {
+        Section {
             let consumers = status?.consumers ?? []
             if consumers.isEmpty {
                 Text("No agent has read the library yet. Each agent keeps a bookmark here under its consumer name.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             ForEach(consumers) { consumer in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(consumer.name).font(.body.weight(.medium))
-                        Text("At change \(consumer.seq), \(consumer.openEvents) open, \(consumer.updatedAt.formatted(.relative(presentation: .named)))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                SettingsRow(
+                    title: consumer.name,
+                    note: "At change \(consumer.seq), \(consumer.openEvents) open, \(SettingsFormat.relative(consumer.updatedAt))"
+                ) {
+                    HStack {
+                        Button("Start Over") { consumerAction = .startOver(consumer.name) }
+                        Button("Forget") { consumerAction = .forget(consumer.name) }
                     }
-                    Spacer()
-                    Button("Start Over") { consumerAction = .startOver(consumer.name) }
-                    Button("Forget") { consumerAction = .forget(consumer.name) }
                 }
             }
+        } header: {
+            Text("Consumers")
+        } footer: {
+            Text(Self.documentsHint)
         }
     }
 
@@ -289,17 +295,22 @@ struct AgentsSettingsView: View {
         }
     }
 
+    /// The bookmark files are written off the main actor.
     private func perform(_ action: ConsumerAction) {
         let bookmarks = ConsumerBookmarks(root: root)
-        do {
-            switch action {
-            case .startOver(let name): try bookmarks.reset(name)
-            case .forget(let name): try bookmarks.forget(name)
+        Task {
+            do {
+                try await Task.detached {
+                    switch action {
+                    case .startOver(let name): try bookmarks.reset(name)
+                    case .forget(let name): try bookmarks.forget(name)
+                    }
+                }.value
+            } catch {
+                actionError = error.localizedDescription
             }
-        } catch {
-            actionError = error.localizedDescription
+            reload()
         }
-        reload()
     }
 
     private func confirmationTitle(_ action: ConsumerAction) -> String {
@@ -330,7 +341,7 @@ struct AgentsSettingsView: View {
     private func copyableBlock(_ text: String) -> some View {
         HStack(alignment: .top) {
             Text(text)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.callout.monospaced())
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Copy") {
@@ -341,22 +352,5 @@ struct AgentsSettingsView: View {
         .padding(8)
         .background(.quaternary.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-    }
-
-    private func settingsCard(icon: String, title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20)
-                Text(title)
-                    .font(.headline)
-            }
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.quaternary.opacity(0.3))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

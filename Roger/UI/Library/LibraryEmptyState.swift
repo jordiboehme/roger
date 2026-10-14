@@ -6,33 +6,46 @@ struct LibraryEmptyState: Equatable {
     let title: String
     let message: String
     let systemImage: String
-    let showsPresetsButton: Bool
+    /// The settings pane a button under the message opens, if any.
+    let settingsButton: SettingsPane?
 
-    static func make(sidebar: LibrarySidebarSelection, searchText: String, dateFilter: LibraryDateFilter) -> LibraryEmptyState {
+    /// `missingRoot` is the library folder when it does not exist; that
+    /// comes before everything else.
+    static func make(
+        sidebar: LibrarySidebarSelection,
+        searchText: String,
+        dateFilter: LibraryDateFilter,
+        missingRoot: URL? = nil
+    ) -> LibraryEmptyState {
+        if let missingRoot {
+            return .init(title: "Library folder not found",
+                         message: "Roger cannot find \(missingRoot.path). Connect the drive that holds it or choose another folder in Settings > Library & Meetings.",
+                         systemImage: "folder.badge.questionmark", settingsButton: .library)
+        }
         if !searchText.isEmpty {
             return .init(title: "No Results", message: "Nothing matches \"\(searchText)\".",
-                         systemImage: "magnifyingglass", showsPresetsButton: false)
+                         systemImage: "magnifyingglass", settingsButton: nil)
         }
         if dateFilter != .any {
             return .init(title: "Nothing in This Time Span", message: "Try a wider date filter.",
-                         systemImage: "calendar", showsPresetsButton: false)
+                         systemImage: "calendar", settingsButton: nil)
         }
         switch sidebar {
         case .kind(.log):
             return .init(title: "No Log Entries",
-                         message: "No log entries yet. Bind the Log preset to Caps+⌥ in Settings → Presets.",
-                         systemImage: "book.closed", showsPresetsButton: true)
+                         message: "No log entries yet. Bind the Log preset to Option + Caps Lock in Settings > Presets.",
+                         systemImage: "book.closed", settingsButton: .presets)
         case .kind(.meeting):
             return .init(title: "No Meetings", message: "No meetings yet. Start a recording from the menu bar.",
-                         systemImage: "person.2", showsPresetsButton: false)
+                         systemImage: "person.2", settingsButton: nil)
         case .kind(.transcript):
             return .init(title: "No Transcripts",
                          message: "No transcripts yet. Drop an audio or video file on the menu bar icon.",
-                         systemImage: "doc.text", showsPresetsButton: false)
+                         systemImage: "doc.text", settingsButton: nil)
         case .all, .unfinished:
             return .init(title: "Nothing Here Yet",
                          message: "Save a log entry, record a meeting or drop a file on the menu bar icon.",
-                         systemImage: "books.vertical", showsPresetsButton: false)
+                         systemImage: "books.vertical", settingsButton: nil)
         }
     }
 }
@@ -47,13 +60,10 @@ struct LibraryEmptyStateView: View {
         } description: {
             Text(state.message)
         } actions: {
-            if state.showsPresetsButton {
-                SettingsLink {
-                    Text("Open Presets Settings")
+            if let pane = state.settingsButton {
+                Button(pane == .presets ? "Open Presets Settings" : "Open Settings") {
+                    coordinator.openSettings(pane)
                 }
-                .simultaneousGesture(TapGesture().onEnded {
-                    coordinator.appState.pendingSettingsTab = .presets
-                })
             }
         }
     }

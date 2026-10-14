@@ -78,6 +78,8 @@ struct ReconcileTests {
         let home = try TempDir.make()
         defer { TempDir.remove(home) }
         let layout = LibraryLayout(root: home.appendingPathComponent("Library", isDirectory: true))
+        // The change log never creates a missing root.
+        try FileManager.default.createDirectory(at: layout.root, withIntermediateDirectories: true)
         let extra = home.appendingPathComponent("Roger Recordings", isDirectory: true)
         try KitFixtures.meeting(in: extra, name: "2025-01-02 10-00", at: KitFixtures.base, text: "old")
         let clip = try KitFixtures.transcript(at: home.appendingPathComponent("Media/clip.m4a.md"), at: KitFixtures.base, title: "Clip", text: "x")

@@ -10,6 +10,8 @@ final class LibraryIndexStore {
     private let externalListURL: URL?
     private let watchesFileSystem: Bool
     private(set) var current: InMemoryLibraryIndex?
+    /// Stops the index a scope change replaced. Tests wait for it.
+    private(set) var stopping: Task<Void, Never>?
 
     init(externalFiles: @escaping @Sendable () -> [URL], externalListURL: URL?, watchesFileSystem: Bool) {
         self.externalFiles = externalFiles
@@ -30,7 +32,7 @@ final class LibraryIndexStore {
     func index(for scope: LibraryScanScope) -> InMemoryLibraryIndex {
         if let current, current.scope == scope { return current }
         if let old = current {
-            Task { await old.stopWatching() }
+            stopping = Task { await old.stopWatching() }
         }
         let index = InMemoryLibraryIndex(
             scope: scope,

@@ -124,11 +124,18 @@ enum LibraryActions {
     ///   Logs and Transcripts folders and look like Roger's own: a session
     ///   folder name (`yyyy-MM-dd HH-mm`) or a `transcript.md` tagged
     ///   `meeting`;
-    /// - it holds session files and no subfolders (Roger writes sessions flat);
+    /// - it holds session files and no subfolders (Roger writes sessions
+    ///   flat). `allowsSubfolders` drops this rule for listing extra files:
+    ///   the section shows subfolders but never moves them;
     /// - it neither is nor contains the library root, a kind folder or an
     ///   extra folder.
     /// Anything else is not a session folder, so nothing in it is moved.
-    static func isRogerSessionFolder(_ folderURL: URL, layout: LibraryLayout, extraFolders: [URL]) -> Bool {
+    static func isRogerSessionFolder(
+        _ folderURL: URL,
+        layout: LibraryLayout,
+        extraFolders: [URL],
+        allowsSubfolders: Bool = false
+    ) -> Bool {
         let folder = LibraryPath.canonical(folderURL)
         let protectedFolders = [layout.root] + LibraryLayout.Kind.allCases.map { layout.kindFolder($0) } + extraFolders
         guard !protectedFolders.contains(where: { LibraryPath.isPath(LibraryPath.canonical($0), inside: folder) }) else {
@@ -142,7 +149,7 @@ enum LibraryActions {
             && (LibraryMigration.sessionDate(for: folderURL) != nil || hasMeetingTranscript(folderURL))
         return (inMeetings || inExtra)
             && MeetingSessionScanner.isSessionFolder(folderURL)
-            && !hasSubfolder(folderURL)
+            && (allowsSubfolders || !hasSubfolder(folderURL))
     }
 
     /// True when the extra files of a retry should be looked for: the item
@@ -152,14 +159,36 @@ enum LibraryActions {
     static func listsExtraFiles(_ item: LibraryItem, layout: LibraryLayout, extraFolders: [URL]) -> Bool {
         guard item.kind == .meeting, item.hasMarkdown else { return false }
         return ownsSessionFolder(item, folder: LibraryPath.canonical(item.folderURL))
-            && isRogerSessionFolder(item.folderURL, layout: layout, extraFolders: extraFolders)
+            && isRogerSessionFolder(item.folderURL, layout: layout, extraFolders: extraFolders, allowsSubfolders: true)
     }
+
+    /// What the Extra files section says when it moved nothing because the
+    /// meeting got busy: it is being recorded or finalised, or a retry
+    /// started while the question was open.
+    static let extraFilesBusyMessage = "Roger did not move these files. This meeting is busy right now or waits for a retry. Try again when it is done."
 
     /// True when the folder's `transcript.md` has `meeting` in its tags.
     private static func hasMeetingTranscript(_ folder: URL) -> Bool {
         let transcript = folder.appendingPathComponent("transcript.md")
-        guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return false }
+        guard let text = try? TextFile.read(transcript) else { return false }
         return LibraryFrontmatterParser.parse(text)?.tags.contains("meeting") ?? false
+    }
+
+    /// The unfinished sessions Roger offers to finalise: only folders that
+    /// `isRogerSessionFolder` accepts (the check Trash uses) and that the
+    /// user did not dismiss (`dismissed` holds standardized paths). A
+    /// subfolder the user added does not count against it: that rule is
+    /// for Trash only.
+    static func finalisable(
+        _ sessions: [MeetingSession],
+        layout: LibraryLayout,
+        extraFolders: [URL],
+        dismissed: Set<String>
+    ) -> [MeetingSession] {
+        sessions.filter { session in
+            !dismissed.contains(session.folder.standardizedFileURL.path)
+                && isRogerSessionFolder(session.folder, layout: layout, extraFolders: extraFolders, allowsSubfolders: true)
+        }
     }
 
     enum MediaOpening: Equatable {

@@ -7,7 +7,7 @@ enum PostProcessingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noAIProviderAvailable:
-            "No AI provider configured. Select one in Settings > AI Provider."
+            "No AI provider configured. Select one in Settings > Text Model."
         case .aiProcessingFailed(let message):
             "AI processing failed: \(message)"
         }

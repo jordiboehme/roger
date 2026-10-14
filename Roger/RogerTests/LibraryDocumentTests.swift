@@ -67,8 +67,35 @@ struct LibraryDocumentTests {
         #expect(LibraryDocumentEditor.renamed(text, to: "New") == "---\ntitle: \"New\"\n---\n\n```\n# comment\n```\n\n# New\n")
     }
 
-    @Test func renameKeepsCarriageReturnOnHeading() {
-        #expect(LibraryDocumentEditor.renamed("# Old\r\nBody\r\n", to: "New") == "# New\r\nBody\r\n")
+    /// A file from another editor: after a rename it is UTF-8 with LF, the
+    /// title and the H1 changed, and every other line is still there.
+    @Test(arguments: TextSample.allCases)
+    func renameOfEveryVariantWritesUTF8WithLF(_ sample: TextSample) throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try sample.write(to: folder.appendingPathComponent("note.md"))
+        try LibraryDocumentEditor.rename(fileAt: url, to: "Neuer Titel")
+        let expected = TextSample.text
+            .replacingOccurrences(of: "title: \"\(TextSample.title)\"", with: "title: \"Neuer Titel\"")
+            .replacingOccurrences(of: "# \(TextSample.title)", with: "# Neuer Titel")
+        #expect(try Data(contentsOf: url) == Data(expected.utf8))
+    }
+
+    @Test(arguments: TextSample.allCases)
+    func saveOfEveryVariantKeepsTheFrontmatter(_ sample: TextSample) throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try sample.write(to: folder.appendingPathComponent("note.md"))
+        let document = try LibraryDocument.load(url)
+        #expect(document.frontmatter + document.body == TextSample.text)
+        #expect(document.frontmatter.contains("title: \"\(TextSample.title)\"\n"))
+        #expect(try LibraryDocumentEditor.saveBody("# Neu\r\n\r\nGeändert\r\n", of: document) == .saved)
+        #expect(try Data(contentsOf: url) == Data((document.frontmatter + "# Neu\n\nGeändert\n").utf8))
+    }
+
+    @Test func renameNeedsNoCarriageReturnHandling() {
+        // Text reaching `renamed` is already normalized by TextFile.
+        #expect(LibraryDocumentEditor.renamed("# Old\nBody\n", to: "New") == "# New\nBody\n")
     }
 
     // MARK: Save
@@ -97,6 +124,19 @@ struct LibraryDocumentTests {
         let outcome = try LibraryDocumentEditor.saveBody("\n# Log\n\nFixed a typo\n", of: document)
         #expect(outcome == .saved)
         #expect(try read(url) == document.frontmatter + "\n# Log\n\nFixed a typo\n")
+    }
+
+    @Test func saveKeepsAFrontmatterWithoutFinalNewlineClosed() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = folder.appendingPathComponent("only-frontmatter.md")
+        try Data("---\ntitle: x\n---".utf8).write(to: url)
+        let document = try LibraryDocument.load(url)
+
+        #expect(try LibraryDocumentEditor.saveBody("# Neu\n", of: document) == .saved)
+        let text = try read(url)
+        #expect(LibraryFrontmatterParser.parse(text)?.scalars["title"] == "x")
+        #expect(LibraryFrontmatterParser.split(text).body == "# Neu\n")
     }
 
     @Test func saveKeepsTheCreationDate() throws {
@@ -162,5 +202,66 @@ struct LibraryDocumentTests {
         #expect(LibraryDocumentEditor.canEdit(meeting, activeSessionFolder: nil))
         #expect(LibraryDocumentEditor.canEdit(log, activeSessionFolder: active))
         #expect(!LibraryDocumentEditor.canEdit(unfinished, activeSessionFolder: nil))
+    }
+
+    // MARK: Symlinks
+
+    /// `<folder>/note.md` is a link to `<folder>/real/note.md`.
+    private func linkedLog(in folder: URL) throws -> (link: URL, target: URL) {
+        let real = folder.appendingPathComponent("real", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let target = try writeLog(in: real)
+        let link = folder.appendingPathComponent("note.md")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        return (link, target)
+    }
+
+    private func isLink(_ url: URL) throws -> Bool {
+        try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true
+    }
+
+    @Test func saveWritesThroughASymlink() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        let document = try LibraryDocument.load(link)
+        #expect(try LibraryDocumentEditor.saveBody("\nMine\n", of: document) == .saved)
+        #expect(try isLink(link))
+        #expect(try read(target) == document.frontmatter + "\nMine\n")
+    }
+
+    @Test func renameWritesThroughASymlink() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        try LibraryDocumentEditor.rename(fileAt: link, to: "Through the link")
+        #expect(try isLink(link))
+        #expect(try read(target).contains("title: \"Through the link\"\n"))
+    }
+
+    /// Another app edits the file the link points to: the save must notice.
+    @Test func targetChangedBehindALinkIsDetected() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        let document = try LibraryDocument.load(link)
+        let otherEdit = try read(target) + "Added by another app\n"
+        try otherEdit.write(to: target, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: date.addingTimeInterval(600)], ofItemAtPath: target.path)
+        #expect(try LibraryDocumentEditor.saveBody("\nMine\n", of: document) == .changedOnDisk)
+        #expect(try read(target) == otherEdit)
+    }
+
+    /// A link whose file is gone stays a link: nothing is written.
+    @Test func aDanglingLinkIsNotReplaced() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        try FileManager.default.removeItem(at: target)
+        #expect(throws: LibraryDocumentEditor.WriteError.linkTargetMissing) {
+            try LibraryDocumentEditor.write("Text\n", to: link)
+        }
+        #expect(try isLink(link))
+        #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 }

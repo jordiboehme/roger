@@ -12,11 +12,14 @@ enum MeetingRecordingError: LocalizedError, Sendable {
     case audioCapturePermissionDenied
     case tapStartFailed(String)
     case audioWriterFailed(String)
+    /// The library folder is missing (the message names it).
+    case libraryMissing(String)
     case finalisationFailed(String)
     case noAudioCaptured
     case sleepInterrupted
     /// The transcript was written, but a track's audio could not be saved.
-    case trackAudioFailed(mic: Bool, system: Bool)
+    /// `setAside` names leftover files that also hold audio.
+    case trackAudioFailed(mic: Bool, system: Bool, setAside: [String])
     /// The transcript was written, but some audio could not be merged into
     /// the archive. It is kept in these leftover files; there is nothing to retry.
     case audioSetAside(files: [String])
@@ -30,33 +33,38 @@ enum MeetingRecordingError: LocalizedError, Sendable {
         case .fileTranscriptionActive:
             return "Wait for the current file transcription to finish before starting a meeting."
         case .microphonePermissionDenied:
-            return "Microphone access denied. Grant permission in System Settings › Privacy & Security."
+            return "Microphone access denied. Grant permission in System Settings > Privacy & Security."
         case .audioCapturePermissionDenied:
-            return "System audio recording denied. Grant permission in System Settings › Privacy & Security › Audio."
+            return "System audio recording denied. Grant permission in System Settings > Privacy & Security > Audio."
         case .tapStartFailed(let reason):
             return "Couldn't start system audio capture: \(reason)"
         case .audioWriterFailed(let reason):
             return "Couldn't write audio to disk: \(reason)"
+        case .libraryMissing(let message):
+            return message
         case .finalisationFailed(let reason):
             return "Couldn't finalise the meeting recording: \(reason)"
         case .noAudioCaptured:
             return "No audio captured. The recording is too short to transcribe."
         case .sleepInterrupted:
             return "Recording paused because the system went to sleep."
-        case .trackAudioFailed(let mic, let system):
+        case .trackAudioFailed(let mic, let system, let setAside):
             let tracks = mic && system ? "Microphone and system audio" : (mic ? "Microphone audio" : "System audio")
-            return "\(tracks) could not be fully saved, so the transcript may be incomplete. Roger kept the recording. Try again from the menu bar."
+            let retry = "\(tracks) could not be fully saved, so the transcript may be incomplete. Roger kept the recording. Try again from the menu bar."
+            guard !setAside.isEmpty else { return retry }
+            return retry + " Some audio is also saved as \(Self.listed(setAside)) in the meeting folder."
         case .audioSetAside(let files):
             return "Some audio could not be merged. It is saved as \(Self.listed(files)) in the meeting folder."
         }
     }
 
     /// The error a finished finalisation reports, or nil. Kept chunks mean a
-    /// retry can help ("Try again"). Audio that only sits in a leftover file
-    /// needs no retry, so the message says where it is instead.
+    /// retry can help ("Try again"); leftover files are named too. Audio that
+    /// only sits in a leftover file needs no retry, so the message says where
+    /// it is instead.
     static func afterFinalisation(micNeedsRetry: Bool, systemNeedsRetry: Bool, setAside: [String]) -> MeetingRecordingError? {
         if micNeedsRetry || systemNeedsRetry {
-            return .trackAudioFailed(mic: micNeedsRetry, system: systemNeedsRetry)
+            return .trackAudioFailed(mic: micNeedsRetry, system: systemNeedsRetry, setAside: setAside)
         }
         if !setAside.isEmpty {
             return .audioSetAside(files: setAside)

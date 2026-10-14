@@ -29,16 +29,15 @@ struct LibraryListView: View {
             }
         }
         .listStyle(.inset)
-        // Rows added to an empty list keep the table's first row height,
-        // so their second and third lines were cut off until the next
-        // layout. A new list once there are rows measures each row.
-        .id(model.results.isEmpty)
+        // No `.id` rebuild when the list fills (it lost the scroll position
+        // and the focus). Rows added to an empty list may keep the table's
+        // first row height, so every row has the same minimum height and
+        // the table's minimum is that height too.
+        .environment(\.defaultMinListRowHeight, LibraryItemRow.height)
         .focused($listFocused)
         .onChange(of: model.results.isEmpty) { _, isEmpty in
-            // The rebuilt list is not first responder. Give it the focus
-            // once, on the first load, so the arrow keys, Return and
-            // Cmd-Backspace work without a click. Later rebuilds (after a
-            // search without results) leave the focus where it is.
+            // Give the list the focus once, on the first load, so the arrow
+            // keys, Return and Cmd-Backspace work without a click.
             guard !isEmpty, !focusedOnce, model.appliedSearch.isEmpty else { return }
             focusedOnce = true
             DispatchQueue.main.async { listFocused = true }
@@ -129,6 +128,18 @@ struct LibraryListView: View {
         }
         .disabled(model.isEditing)
         .overlay { overlay }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // With items still listed (extra folders, external transcripts)
+            // the empty state does not show, so say it here.
+            if model.libraryMissing, !model.isLoading, !model.results.isEmpty {
+                Label("Library folder not found: \(coordinator.appState.libraryLayout.root.path)", systemImage: "folder.badge.questionmark")
+                    .font(.callout)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.yellow.opacity(0.2))
+            }
+        }
     }
 
     private func rows(_ items: [LibraryItem]) -> some View {
@@ -184,7 +195,8 @@ struct LibraryListView: View {
             LibraryEmptyStateView(state: LibraryEmptyState.make(
                 sidebar: model.sidebar,
                 searchText: model.appliedSearch,
-                dateFilter: model.dateFilter
+                dateFilter: model.dateFilter,
+                missingRoot: model.libraryMissing ? coordinator.appState.libraryLayout.root : nil
             ))
         }
     }
@@ -197,6 +209,10 @@ struct LibraryItemRow: View {
     let item: LibraryItem
     /// Title and duration sorts have no day headers, so rows show the date.
     let showsDate: Bool
+
+    /// The height of a row with three lines (title, preview, details).
+    /// Every row is at least this tall, so the list never cuts a row.
+    static let height: CGFloat = 54
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -240,5 +256,6 @@ struct LibraryItemRow: View {
             }
         }
         .padding(.vertical, 3)
+        .frame(minHeight: Self.height, alignment: .center)
     }
 }

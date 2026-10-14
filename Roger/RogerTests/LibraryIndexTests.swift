@@ -198,6 +198,52 @@ struct LibraryIndexTests {
         #expect(await index.items().map(\.title) == ["talk"])
     }
 
+    /// An extra folder that is also a Logs month folder: a file without tags
+    /// is found twice. The index keeps what `LibraryScanner` keeps (the
+    /// first find, a log), also after the extra folder or the external list
+    /// changed and after a later edit of the file.
+    @Test func aFileFoundTwiceKeepsItsFirstItem() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let month = layout.monthFolder(.logs, for: date)
+        try FileManager.default.createDirectory(at: month, withIntermediateDirectories: true)
+        let note = month.appendingPathComponent("note.md")
+        try "# Note\n\nNo tags here\n".write(to: note, atomically: true, encoding: .utf8)
+        let registry = ExternalTranscriptRegistry(fileURL: base.appendingPathComponent("Support/external-transcripts.json"))
+        try registry.add(note)
+        let scope = LibraryScanScope(layout: layout, extraFolders: [month])
+        #expect(LibraryScanner.scanAll(scope: scope, externalFiles: [note]).map(\.kind) == [.log])
+
+        let index = makeIndex(layout, extras: [month], external: { registry.existingFiles() }, listURL: registry.fileURL)
+        #expect(await index.items().map(\.kind) == [.log])
+        await index.apply(changedPaths: [registry.fileURL.path])
+        #expect(await index.items().map(\.kind) == [.log])
+        try "# Note\n\nNo tags, edited\n".write(to: note, atomically: true, encoding: .utf8)
+        await index.apply(changedPaths: [note.path])
+        #expect(await index.items().map(\.kind) == [.log])
+    }
+
+    /// An extra folder outside Logs, Meetings and Transcripts: a change of
+    /// the folder itself reads everything again and keeps the other items.
+    @Test func anExtraFolderChangeReadsEverythingAgain() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        try writeLog(layout, at: date, text: "A log")
+        let old = base.appendingPathComponent("Roger Recordings", isDirectory: true)
+        try writeTranscript(old.appendingPathComponent("legacy.mp3.md"), title: "legacy")
+        let index = makeIndex(layout, extras: [old])
+        #expect(await index.items().count == 2)
+
+        try writeTranscript(old.appendingPathComponent("second.mp3.md"), title: "second")
+        await index.apply(changedPaths: [old.path])
+        let items = await index.items()
+        #expect(items.count == 3)
+        #expect(items.filter { $0.kind == .transcript }.count == 2)
+        #expect(items.filter { $0.kind == .log }.count == 1)
+    }
+
     @Test func changesYieldAfterBuildAndAfterRealChanges() async throws {
         let base = try TempFolder.make()
         defer { TempFolder.remove(base) }
@@ -230,5 +276,201 @@ struct LibraryIndexTests {
         #expect(await index.unit(forChangedPath: month.appendingPathComponent(".DS_Store").path) == nil)
         #expect(await index.unit(forChangedPath: hiddenExtra.path) == .extraFolder(LibraryPath.canonical(hiddenExtra)))
         #expect(await index.unit(forChangedPath: hiddenExtra.appendingPathComponent(".DS_Store").path) == nil)
+    }
+
+    @Test func hiddenPartsBelowKindFoldersAreIgnored() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let index = makeIndex(layout)
+        let month = layout.monthFolder(.logs, for: date)
+        #expect(await index.unit(forChangedPath: month.appendingPathComponent(".draft.md").path) == nil)
+        #expect(await index.unit(forChangedPath: month.appendingPathComponent(".trash/old.md").path) == nil)
+        #expect(await index.unit(forChangedPath: layout.kindFolder(.transcripts).appendingPathComponent(".cache/x.md").path) == nil)
+        #expect(await index.unit(forChangedPath: layout.kindFolder(.meetings).appendingPathComponent("2026/.tmp/s/transcript.md").path) == nil)
+    }
+
+    /// A log inside a hidden folder (`.trash/`) is skipped by the full scan
+    /// and by an update alike.
+    @Test func aLogInAHiddenFolderIsNotAddedByAnUpdate() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let visible = try writeLog(layout, at: date, text: "Visible")
+        let hidden = visible.deletingLastPathComponent().appendingPathComponent(".trash/old.md")
+        try FileManager.default.createDirectory(at: hidden.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: visible, to: hidden)
+        let index = makeIndex(layout)
+        #expect(await index.items().count == 1)
+        await index.apply(changedPaths: [hidden.path])
+        #expect(await index.items().map(\.id) == [LibraryPath.canonical(visible)])
+    }
+
+    /// A session directly in `Meetings/` (not at `YYYY/MM/`): editing its
+    /// transcript updates the item instead of dropping it.
+    @Test func aShallowSessionIsUpdatedInPlace() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let folder = try writeMeeting(in: layout.kindFolder(.meetings), name: "2026-09-21 09-00", text: "First")
+        let index = makeIndex(layout)
+        #expect(await index.items().first?.firstLine == "First")
+        try writeMeeting(in: layout.kindFolder(.meetings), name: "2026-09-21 09-00", text: "Second")
+        await index.apply(changedPaths: [folder.appendingPathComponent("transcript.md").path])
+        let items = await index.items()
+        #expect(items.count == 1)
+        #expect(items.first?.firstLine == "Second")
+    }
+
+    @Test func aNewSessionTwoLevelsDownIsFound() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let index = makeIndex(layout)
+        #expect(await index.items().isEmpty)
+        let year = layout.kindFolder(.meetings).appendingPathComponent("2026", isDirectory: true)
+        let folder = try writeMeeting(in: year, name: "2026-09-21 09-00", text: "Hello")
+        await index.apply(changedPaths: [folder.appendingPathComponent("transcript.md").path])
+        #expect(await index.items().map(\.folderURL.path) == [LibraryPath.canonical(folder)])
+    }
+
+    @Test func aTrashedShallowSessionIsDropped() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let folder = try writeMeeting(in: layout.kindFolder(.meetings), name: "s", text: "Bye")
+        let index = makeIndex(layout)
+        #expect(await index.items().count == 1)
+        try FileManager.default.removeItem(at: folder)
+        await index.apply(changedPaths: [folder.path])
+        #expect(await index.items().isEmpty)
+    }
+
+    /// A root on a drive that is not connected: no parent folder (it could
+    /// be all of `~/Documents`) is watched in its place.
+    @Test func aMissingRootIsReportedAndNotWatchedThroughItsParent() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let index = makeIndex(LibraryLayout(root: base.appendingPathComponent("Drive/Roger", isDirectory: true)))
+        let missing = await index.libraryRootMissing()
+        #expect(missing)
+        #expect(await index.watchedPaths().isEmpty)
+    }
+
+    @Test func recheckFindsARootThatAppeared() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Drive/Roger", isDirectory: true))
+        let index = makeIndex(layout)
+        #expect(await index.items().isEmpty)
+        try writeLog(layout, at: date, text: "Back again")
+        await index.recheckRoot()
+        let missing = await index.libraryRootMissing()
+        #expect(!missing)
+        #expect(await index.items().count == 1)
+        #expect(await index.watchedPaths() == [LibraryPath.canonical(layout.root)])
+    }
+
+    /// After a rename the index reads the file at once, not when the folder
+    /// watcher reports it.
+    @Test func refreshReadsAFileNow() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let url = try writeLog(layout, at: date, text: "Before")
+        let index = makeIndex(layout)
+        #expect(await index.items().first?.firstLine == "Before")
+        try writeLog(layout, at: date, text: "After")
+        await index.refresh(paths: [url.path])
+        #expect(await index.items().first?.firstLine == "After")
+    }
+
+    /// Roger's rename and save refresh an entry by its id, the link path.
+    @Test func refreshReadsALinkedFileNow() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let outside = LibraryLayout(root: base.appendingPathComponent("Elsewhere", isDirectory: true))
+        let target = try writeLog(outside, at: date, text: "Before")
+        let folder = layout.monthFolder(.logs, for: date)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let link = folder.appendingPathComponent(target.lastPathComponent)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let index = makeIndex(layout)
+        let item = try #require(await index.items().first)
+        #expect(item.firstLine == "Before")
+        try writeLog(outside, at: date, text: "After")
+        await index.refresh(paths: [item.id])
+        let items = await index.items()
+        #expect(items.map(\.id) == [item.id])
+        #expect(items.first?.firstLine == "After")
+    }
+
+    /// A leftover file appearing in a meeting folder does not change the
+    /// meeting item, but the change is still reported (Extra files).
+    @Test func aChangeInsideAMeetingFolderIsReported() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let folder = try writeMeeting(in: layout.monthFolder(.meetings, for: date), name: "s", text: "Hello")
+        let index = makeIndex(layout)
+        let before = await index.items()
+        let reported = await index.changeCount
+        let leftover = folder.appendingPathComponent("mic.leftover.m4a")
+        try Data().write(to: leftover)
+        await index.apply(changedPaths: [leftover.path])
+        #expect(await index.items() == before)
+        #expect(await index.changeCount == reported + 1)
+    }
+
+    /// While a meeting records, its chunks are written all the time. That
+    /// must not reload the list; only that folder's change count grows, so
+    /// only an Extra files section showing that folder lists it again.
+    @MainActor @Test func aWriteInAMeetingFolderDoesNotReloadTheList() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let month = layout.monthFolder(.meetings, for: date)
+        let shown = try writeMeeting(in: month, name: "a", text: "Alpha")
+        let recording = try writeMeeting(in: month, name: "b", text: "Beta")
+        let chunk = recording.appendingPathComponent("notes.txt")
+        try Data("one".utf8).write(to: chunk)
+        let index = makeIndex(layout)
+        let model = LibraryModel(index: index)
+        await model.reload()
+        _ = await index.takeChange()   // the first build
+        let results = model.results
+        let reloads = model.reloadCount
+
+        try Data("one two".utf8).write(to: chunk)
+        await index.apply(changedPaths: [chunk.path])
+        await model.handleIndexChange()
+        #expect(model.reloadCount == reloads)
+        #expect(model.results == results)
+        #expect(model.sessionFolderChangeCount(for: recording) == 1)
+        #expect(model.sessionFolderChangeCount(for: shown) == 0)
+
+        let leftover = shown.appendingPathComponent("mic.leftover.m4a")
+        try Data().write(to: leftover)
+        await index.apply(changedPaths: [leftover.path])
+        await model.handleIndexChange()
+        #expect(model.reloadCount == reloads)
+        #expect(model.sessionFolderChangeCount(for: shown) == 1)
+    }
+
+    @MainActor @Test func aChangedItemStillReloadsTheList() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let url = try writeLog(layout, at: date, text: "Before")
+        let index = makeIndex(layout)
+        let model = LibraryModel(index: index)
+        await model.reload()
+        _ = await index.takeChange()
+        try writeLog(layout, at: date, text: "After")
+        await index.apply(changedPaths: [url.path])
+        await model.handleIndexChange()
+        #expect(model.results.first?.firstLine == "After")
     }
 }

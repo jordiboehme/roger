@@ -74,4 +74,24 @@ struct TOONTests {
         """)
         #expect(TOON.table("items", fields: ["key"], rows: []) == "items: []")
     }
+
+    /// Guard test: it passed before the hand-written check (the regex already
+    /// rejected "abc\n"), and it keeps that so.
+    @Test func keysWithATrailingNewlineAreQuoted() {
+        #expect(TOON.key("abc\n") == "\"abc\\n\"")
+        #expect(TOON.key("_a1") == "_a1")
+        #expect(TOON.key("") == "\"\"")
+        #expect(TOON.key("ä") == "\"ä\"")
+    }
+
+    @Test(arguments: ["1", "-1", "+2", "3.5", "1e9", "2E-3", "-0.5e+7"])
+    func numbersAreQuoted(_ text: String) {
+        #expect(TOON.looksLikeNumber(text))
+        #expect(TOON.needsQuotes(text))
+    }
+
+    @Test(arguments: ["", "-", "1.", ".5", "1e", "1e+", "12a", "1.2.3", "0x10", "١٢"])
+    func otherTextIsNoNumber(_ text: String) {
+        #expect(!TOON.looksLikeNumber(text))
+    }
 }

@@ -24,8 +24,13 @@ struct RogerToolsTests {
     }
 
     /// Two logs and a meeting, caught up into the change log (seq 1 to 3).
-    private func library() async throws -> URL {
-        let root = try TempDir.make()
+    /// With `folder`, the library is that subfolder of a temp folder.
+    private func library(folder: String? = nil) async throws -> URL {
+        var root = try TempDir.make()
+        if let folder {
+            root = root.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        }
         let layout = LibraryLayout(root: root)
         try KitFixtures.log(in: layout, at: KitFixtures.base, text: "Called the supplier", audio: true)
         try KitFixtures.log(in: layout, at: KitFixtures.base.addingTimeInterval(60), text: "Invoice arrived")
@@ -83,7 +88,7 @@ struct RogerToolsTests {
         let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(3)])
         #expect(ack.text == "Bookmark crystalline is now 3 (was 0).")
         let again = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline")])
-        #expect(again.text == "from: 4\nupTo: 3\nmore: false\ncount: 0")
+        #expect(again.text == "from: 4\nupTo: 3\nmore: false\ncount: 0\nlibrary: \(LibraryPath.canonical(root))")
     }
 
     @Test func sinceTakesNumbersAsIntegersOrStrings() async throws {
@@ -268,5 +273,140 @@ struct RogerToolsTests {
             #expect(!tools(root).call(name, arguments: arguments).isError)
         }
         #expect(try snapshot() == before)
+    }
+
+    @Test func getChangesNamesTheLibrary() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        let text = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline"), "summary": .bool(true)]).text
+        #expect(text.hasPrefix("from: 1\nupTo: 3\nmore: false\ncount: 3\nlibrary: \(LibraryPath.canonical(root))\n\n==== roger entry"))
+    }
+
+    /// Roger switched to library B between get_changes and ack: the upTo of
+    /// library A must not move B's bookmark.
+    @Test func ackRefusesAnotherLibrary() async throws {
+        let a = try await library()
+        let b = try await library()
+        defer {
+            TempDir.remove(a)
+            TempDir.remove(b)
+        }
+        let box = PreferencesBox(RogerPreferences(libraryRoot: a.path, extraScanFolders: []))
+        let tools = RogerTools(
+            locator: LibraryLocator(argument: nil, preferences: { box.get() }),
+            registry: ExternalTranscriptRegistry(fileURL: a.appendingPathComponent("none.json"))
+        )
+        _ = tools.call("get_changes", arguments: ["consumer": .string("crystalline")])
+        box.set(RogerPreferences(libraryRoot: b.path, extraScanFolders: []))
+        let ack = tools.call("ack", arguments: [
+            "consumer": .string("crystalline"), "upTo": .int(3), "library": .string(LibraryPath.canonical(a)),
+        ])
+        #expect(ack == .error("The library changed since get_changes. Call get_changes again."))
+        #expect(try ConsumerBookmarks(root: b).bookmark("crystalline") == nil)
+        #expect(!FileManager.default.fileExists(atPath: ConsumerBookmarks(root: b).folder.path))
+    }
+
+    /// `/var/...` and `/private/var/...` (and a trailing slash) are the same library.
+    @Test func ackAcceptsAnotherSpellingOfTheSameLibrary() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        let canonical = LibraryPath.canonical(root)
+        try #require(canonical.hasPrefix("/private/var/"))
+        let spelling = String(canonical.dropFirst("/private".count)) + "/"
+        let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(2), "library": .string(spelling)])
+        #expect(ack.text == "Bookmark crystalline is now 2 (was 0).")
+    }
+
+    /// TOON quotes a path with a comma; the value is passed back verbatim.
+    @Test func ackAcceptsTheQuotedLibraryOfGetChanges() async throws {
+        let root = try await library(folder: "Notes, \"Roger\"")
+        defer { TempDir.remove(root.deletingLastPathComponent()) }
+        let text = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline")]).text
+        let line = try #require(text.split(separator: "\n").first { $0.hasPrefix("library: ") })
+        let value = String(line.dropFirst("library: ".count))
+        #expect(value.hasPrefix("\"") && value.hasSuffix("\""))
+        let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(2), "library": .string(value)])
+        #expect(ack.text == "Bookmark crystalline is now 2 (was 0).")
+    }
+
+    @Test func ackWithoutLibraryWorksAsBefore() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        #expect(tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(1)]).text == "Bookmark crystalline is now 1 (was 0).")
+    }
+
+    /// `changes.jsonl` that opens but cannot be read (here: a folder).
+    private func unreadableLog() async throws -> URL {
+        let root = try TempDir.make()
+        let log = ChangeLogFile.url(root: root)
+        try FileManager.default.createDirectory(at: log, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func statusReportsAnUnreadableChangeLog() async throws {
+        let root = try await unreadableLog()
+        defer { TempDir.remove(root) }
+        let status = tools(root).call("status", arguments: [:])
+        #expect(!status.isError)
+        #expect(status.text.contains("state: not readable"))
+        #expect(status.text.contains("message: \"Roger cannot read the change log at \(ChangeLogFile.url(root: root).path): "))
+        #expect(!status.text.contains("lastSeq"))
+    }
+
+    @Test func anUnexpectedErrorNamesTheToolAndTheLibrary() async throws {
+        let root = try await unreadableLog()
+        defer { TempDir.remove(root) }
+        let output = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline")])
+        #expect(output.isError)
+        #expect(output.text.hasPrefix("get_changes failed in the library at \(root.path): "))
+    }
+
+    @Test func expectedErrorsKeepTheirOwnText() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        #expect(tools(root).call("get_item", arguments: ["key": .string("Logs/2026/01/none")]).text == "No item with the key \"Logs/2026/01/none\".")
+        #expect(tools(root).call("ack", arguments: ["consumer": .string("A"), "upTo": .int(1)]).text.hasPrefix("\"A\" is not a valid consumer name."))
+    }
+
+    /// A library that was set up but has no items yet: no tool writes
+    /// anything (no bookmark for an ack of 0, no lock file, no folder).
+    @Test func theSixToolsWriteNothingInAnEmptyLibrary() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        try await ChangeLog(root: root).ensureFile()
+        func snapshot() throws -> [String: Date] {
+            var result: [String: Date] = [:]
+            let keys: [URLResourceKey] = [.contentModificationDateKey]
+            let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys)
+            while let url = enumerator?.nextObject() as? URL {
+                result[url.path] = try url.resourceValues(forKeys: Set(keys)).contentModificationDate
+            }
+            return result
+        }
+        let before = try snapshot()
+        for (name, arguments) in [
+            ("status", [String: ToolValue]()),
+            ("get_changes", ["consumer": .string("crystalline")]),
+            ("ack", ["consumer": .string("crystalline"), "upTo": .int(0)]),
+            ("get_item", ["key": .string("Logs/2026/10/none")]),
+            ("list_items", [:]),
+            ("search", ["query": .string("supplier")]),
+        ] {
+            _ = tools(root).call(name, arguments: arguments)
+        }
+        #expect(try snapshot() == before)
+    }
+
+    @Test func searchClampsTheLimitTo100() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let layout = LibraryLayout(root: root)
+        for i in 0..<101 {
+            try KitFixtures.log(in: layout, at: KitFixtures.base.addingTimeInterval(Double(i) * 60), text: "Supplier note \(i)")
+        }
+        try await ChangeLog(root: root).ensureFile()
+        let output = tools(root).call("search", arguments: ["query": .string("supplier"), "limit": .int(9_999)])
+        #expect(!output.isError)
+        #expect(output.text.hasPrefix("results[100]{key,kind,title,date,snippet}:"))
     }
 }

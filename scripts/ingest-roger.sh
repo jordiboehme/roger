@@ -9,15 +9,21 @@
 #   CRYSTALLINE_MCP_SERVER  name of the Crystalline MCP server (default: crystalline)
 #
 # Only the tools of these two servers are allowed. Exits 0 when everything
-# was ingested, 1 when a run failed (the next run repeats the same range).
-# Also exits 0 when max-runs ran out and there is still more: the next call goes on.
-# Installs nothing.
+# was ingested, 1 when a run failed (the next run repeats the same range),
+# 2 for wrong arguments. Also exits 0 when max-runs ran out and there is
+# still more: the next call goes on. A run counts only by its last
+# non-empty line (RESULT: ...). Installs nothing.
 set -euo pipefail
 
 domain="${1:-}"
 runs="${2:-10}"
 if [ -z "$domain" ]; then
   echo "Usage: $0 <crystalline-domain> [max-runs]" >&2
+  exit 2
+fi
+if ! [[ "$runs" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Usage: $0 <crystalline-domain> [max-runs]" >&2
+  echo "ingest-roger: max-runs must be a whole number of 1 or more, not \"$runs\"." >&2
   exit 2
 fi
 
@@ -31,7 +37,9 @@ for ((run = 1; run <= runs; run++)); do
     exit 1
   fi
   printf '%s\n' "$output"
-  result=$(printf '%s\n' "$output" | grep -E '^RESULT: ' | tail -n 1 || true)
+  # Only the last non-empty line counts: a RESULT line quoted earlier in
+  # the output (or in an entry's text) must not end the loop.
+  result=$(printf '%s\n' "$output" | awk '{ sub(/\r$/, "") } NF { last = $0 } END { sub(/[ \t\r]+$/, "", last); print last }')
   case "$result" in
     "RESULT: ok")
       exit 0
@@ -39,8 +47,12 @@ for ((run = 1; run <= runs; run++)); do
     "RESULT: ok more")
       continue
       ;;
+    "RESULT: failed"*)
+      echo "ingest-roger: $result in run $run" >&2
+      exit 1
+      ;;
     *)
-      echo "ingest-roger: ${result:-no RESULT line} in run $run" >&2
+      echo "ingest-roger: no RESULT line at the end of run $run" >&2
       exit 1
       ;;
   esac

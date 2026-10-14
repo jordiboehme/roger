@@ -128,6 +128,10 @@ struct RogerMCPEndToEndTests {
             let annotations = tool["annotations"] as? [String: Any]
             let readOnly = annotations?["readOnlyHint"] as? Bool
             #expect(readOnly == (tool["name"] as? String != "ack"))
+            if tool["name"] as? String == "ack" {
+                let properties = (tool["inputSchema"] as? [String: Any])?["properties"] as? [String: Any]
+                #expect(properties?["library"] != nil)
+            }
         }
 
         let call = try #require(server.response(id: 3)?["result"] as? [String: Any])
@@ -135,6 +139,7 @@ struct RogerMCPEndToEndTests {
         let text = try #require((call["content"] as? [[String: Any]])?.first?["text"] as? String)
         #expect(text.hasPrefix("from: 1\nupTo: 1\nmore: false\ncount: 1"))
         #expect(text.contains("Called the supplier"))
+        #expect(text.contains("\nlibrary: \(LibraryPath.canonical(root))\n"))
 
         let rejected = try #require(server.response(id: 4)?["result"] as? [String: Any])
         #expect(rejected["isError"] as? Bool == true)

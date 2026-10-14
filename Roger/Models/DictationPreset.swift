@@ -282,4 +282,17 @@ extension DictationPreset {
     static let builtInPresets: [DictationPreset] = [plain, polished, professional, code, caveman, yoda, emoji, log]
 
     static let defaultPresetID = polishedID
+
+    /// The preset files and meetings use: the stored one when it has no AI
+    /// steps, else the user's Plain (which may be renamed), else the
+    /// original Plain. These transcripts never reach an AI provider.
+    static func localPreset(id: UUID, in presets: [DictationPreset]) -> DictationPreset {
+        if let preset = presets.first(where: { $0.id == id }), !preset.requiresAI {
+            return preset
+        }
+        if let userPlain = presets.first(where: { $0.id == plainID }), !userPlain.requiresAI {
+            return userPlain
+        }
+        return plain
+    }
 }

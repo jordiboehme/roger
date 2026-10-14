@@ -37,7 +37,7 @@ public enum MeetingSessionScanner {
     /// True when the transcript's frontmatter has `mic_audio_failed: true`
     /// or `system_audio_failed: true`.
     public static func transcriptReportsFailedAudio(_ transcript: URL) -> Bool {
-        guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return false }
+        guard let text = try? TextFile.read(transcript) else { return false }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.first == "---" else { return false }
         for line in lines.dropFirst() {

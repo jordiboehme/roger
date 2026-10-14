@@ -107,4 +107,51 @@ struct ChangeLogTests {
         let written = try await ChangeLog(root: root, now: { fixed }).append([change(1)])
         #expect(written.first?.at == fixed)
     }
+
+    /// The root may be on a drive that is not connected: the log must not
+    /// create it (or anything above it).
+    @Test func changeLogNeverCreatesAMissingRoot() async throws {
+        let base = try TempDir.make()
+        defer { TempDir.remove(base) }
+        let log = ChangeLog(root: base.appendingPathComponent("Drive/Roger", isDirectory: true))
+        await #expect(throws: (any Error).self) { try await log.ensureFile() }
+        await #expect(throws: (any Error).self) {
+            try await log.append([PendingChange(event: .created, kind: .log, key: "Logs/x", path: "Logs/x.md")])
+        }
+        #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Drive").path))
+    }
+
+    /// The parse uses one decoder and two date formatters for every line.
+    /// Several readers at once (roger-mcp answers tool calls in parallel)
+    /// must all get every event.
+    @Test func parsingIsSafeFromSeveralTasks() async throws {
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        let lines = (1...2_000).map { seq in
+            ChangeEvent(seq: seq, at: at, event: .created, kind: .log, key: "Logs/2026/10/\(seq)", path: "Logs/2026/10/\(seq).md").jsonLine()
+        }
+        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+        let counts = await withTaskGroup(of: Int.self) { group in
+            for _ in 0..<8 { group.addTask { ChangeLogFile.parse(data).count } }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        #expect(counts == Array(repeating: 2_000, count: 8))
+        #expect(RFC3339.date("2026-10-13T14:32:41.250+02:00") != nil)
+    }
+
+    /// `ensureFile` on a log with events (also one cut by a crash) leaves
+    /// every byte as it is.
+    @Test func ensureFileLeavesAnExistingLogByteForByte() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let log = ChangeLog(root: root)
+        try await log.append([PendingChange(event: .created, kind: .log, key: "Logs/a", path: "Logs/a.md")])
+        let url = ChangeLogFile.url(root: root)
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(#"{"seq":2,"at":"#.utf8))
+        try handle.close()
+        let before = try Data(contentsOf: url)
+        try await log.ensureFile()
+        #expect(try Data(contentsOf: url) == before)
+    }
 }

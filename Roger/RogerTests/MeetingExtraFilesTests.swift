@@ -62,4 +62,19 @@ struct MeetingExtraFilesTests {
         let text = try String(contentsOf: url, encoding: .utf8)
         #expect(text.contains("  - { id: mic, resource: \"mic.m4a\" }\n  - { id: mic-leftover, resource: \"mic.leftover.m4a\" }\n"))
     }
+
+    /// A subfolder is one row that is never trashable, also when its name
+    /// looks like an extra file. It is no audio source.
+    @Test func subfoldersAreListedButNeverTrashable() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        try touch(folder, ["transcript.md", "mic.leftover.m4a"])
+        for name in ["Slides", "mic.previous.m4a", ".hidden"] {
+            try FileManager.default.createDirectory(at: folder.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let found = MeetingExtraFiles.find(in: folder)
+        #expect(found.map(\.url.lastPathComponent) == ["mic.leftover.m4a", "Slides", "mic.previous.m4a"])
+        #expect(found.map(\.kind.isTrashable) == [true, false, false])
+        #expect(MeetingExtraFiles.audioSources(in: folder).map(\.resource) == ["mic.leftover.m4a"])
+    }
 }

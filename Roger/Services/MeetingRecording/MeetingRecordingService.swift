@@ -41,14 +41,18 @@ final class MeetingRecordingService {
     private(set) var lastSession: MeetingSession?
 
     /// Called after `transcript.md` is on disk, on the first finalisation
-    /// and on every retry. The coordinator records the change for agents.
-    @ObservationIgnored var onTranscriptWritten: (@MainActor (URL) -> Void)?
+    /// and on every retry, with the library root the session was written
+    /// under. The coordinator records the change for agents.
+    @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL) -> Void)?
 
     private let appState: AppState
     private let transcriptionEngine: TranscriptionEngine
     private let diarization: DiarizationService
 
     private var session: MeetingSession?
+    /// The library root `start()` created the session under (recovery: the
+    /// root at the time of the retry).
+    @ObservationIgnored private var sessionRoot: URL?
     private var micTap: MicrophoneTap?
     private var systemTap: SystemAudioTap?
     private var micWriter: SegmentedAudioFileWriter?
@@ -100,15 +104,19 @@ final class MeetingRecordingService {
         state = .starting
 
         let startedAt = Date()
-        let parent = appState.libraryLayout.monthFolder(.meetings, for: startedAt)
+        let layout = appState.libraryLayout
         let session: MeetingSession
         do {
-            session = try MeetingSession.create(in: parent, startedAt: startedAt)
+            session = try MeetingSession.create(layout: layout, startedAt: startedAt)
         } catch {
-            state = .error(.audioWriterFailed(error.localizedDescription))
-            throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)
+            let failure: MeetingRecordingError = error is LibraryRootMissingError
+                ? .libraryMissing(error.localizedDescription)
+                : .audioWriterFailed(error.localizedDescription)
+            state = .error(failure)
+            throw failure
         }
         self.session = session
+        sessionRoot = layout.root
         checkpointStore = MeetingCheckpointStore(folder: session.folder, sessionStartedAt: session.startedAt)
         checkpointCount = 0
         pendingCheckpointTranscriptions = 0
@@ -236,6 +244,7 @@ final class MeetingRecordingService {
             return
         }
         self.session = session
+        sessionRoot = appState.libraryLayout.root
         // A live store left over from an earlier session must not lend its
         // markers or start time to this one; the pipeline loads the
         // session's own markers.json instead.
@@ -539,12 +548,15 @@ final class MeetingRecordingService {
         // reused from an earlier run, or kept as the longer file.
         let micPresent = FileManager.default.fileExists(atPath: micArchive.path)
         let systemPresent = FileManager.default.fileExists(atPath: systemArchive.path)
-        // Also true when the archive was written without some unreadable
-        // chunks: the chunks were kept and the session is offered again.
-        // A leftover file kept beside the archive also means the transcript
-        // does not cover all audio of that track.
-        let micAudioFailed = (micOutcome?.needsRetry ?? false) || micLeftover != nil
-        let systemAudioFailed = (systemOutcome?.needsRetry ?? false) || systemLeftover != nil
+        // A track's transcript is incomplete when chunks were kept for a
+        // retry (also when the archive was written without some unreadable
+        // chunks) or a leftover file stayed beside the archive.
+        let micTrack = MeetingFinalisationSteps.Track(
+            needsRetry: micOutcome?.needsRetry ?? false, leftover: micLeftover, archiveExisted: micPreexisting
+        )
+        let systemTrack = MeetingFinalisationSteps.Track(
+            needsRetry: systemOutcome?.needsRetry ?? false, leftover: systemLeftover, archiveExisted: systemPreexisting
+        )
 
         guard transcriptionEngine.isReady else {
             // Audio is on disk; transcription can be retried later. Surface
@@ -591,12 +603,7 @@ final class MeetingRecordingService {
         )
 
         let speakerCount = countSpeakers(paragraphs: paragraphs)
-        // Keep all audio when an archive existed before this run (it may be
-        // the only copy) or when a track failed (a retry needs the other
-        // track's archive). The transcript then lists exactly the files that
-        // stay on disk.
-        let audioKept = appState.keepMeetingAudio || micPreexisting || systemPreexisting
-            || micAudioFailed || systemAudioFailed
+        let audioKept = MeetingFinalisationSteps.keepsAudio(setting: appState.keepMeetingAudio, mic: micTrack, system: systemTrack)
         let metadata = MeetingTranscriptWriter.Metadata(
             session: session,
             durationSeconds: durationSeconds,
@@ -607,68 +614,31 @@ final class MeetingRecordingService {
             audioKept: audioKept,
             diarized: (micPresent && finalConfig.diarizeMic) || (systemPresent && finalConfig.diarizeSystem),
             diarizationFailed: output.diarizationFailed,
-            micAudioFailed: micAudioFailed,
-            systemAudioFailed: systemAudioFailed
+            micAudioFailed: micTrack.audioFailed,
+            systemAudioFailed: systemTrack.audioFailed
         )
 
-        // Screenshot checkpoints: rewrite every segment md from this
-        // authoritative full pass (replacing the live drafts; a segment that
-        // is already stable, maybe edited, is moved aside to
-        // <name>.previous.md first) and weave inline image references into
-        // transcript.md.
-        if !markers.isEmpty {
-            let effectiveStart = checkpointFile?.sessionStartedAt ?? session.startedAt
-            for chunk in MeetingCheckpointStore.chunks(sessionStartedAt: effectiveStart, markers: markers) {
-                let segmentParagraphs = paragraphs.filter { chunk.range.contains(Double($0.startTime)) }
-                guard !segmentParagraphs.isEmpty else {
-                    MeetingSegmentWriter.removeIfExists(chunkStart: chunk.start, folder: session.folder)
-                    continue
-                }
-                do {
-                    try MeetingSegmentWriter.write(
-                        paragraphs: segmentParagraphs,
-                        sessionStartedAt: effectiveStart,
-                        chunkStart: chunk.start,
-                        chunkEnd: effectiveStart.addingTimeInterval(
-                            chunk.range.upperBound.isFinite ? chunk.range.upperBound : Double(durationSeconds)
-                        ),
-                        folder: session.folder,
-                        provisional: false
-                    )
-                } catch {
-                    logger.warning("Segment write failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-        }
-
-        let transcriptURL: URL
-        do {
-            transcriptURL = try MeetingTranscriptWriter.write(paragraphs: paragraphs, metadata: metadata, markers: markers)
-        } catch {
-            failFinalisation(error.localizedDescription, session: session)
+        let root = sessionRoot ?? appState.libraryLayout.root
+        let outcome = MeetingFinalisationSteps.run(
+            MeetingFinalisationSteps.Input(
+                session: session,
+                paragraphs: paragraphs,
+                metadata: metadata,
+                markers: markers,
+                segmentStart: checkpointFile?.sessionStartedAt ?? session.startedAt,
+                durationSeconds: durationSeconds,
+                mic: micTrack,
+                system: systemTrack,
+                sleepInterrupted: sleepInterrupted
+            ),
+            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url, root) }
+        )
+        switch outcome {
+        case .failed(let reason):
+            failFinalisation(reason, session: session)
             return
-        }
-        onTranscriptWritten?(transcriptURL)
-
-        if !audioKept, !paragraphs.isEmpty {
-            // Only after the transcript exists: the CAF chunks are already gone,
-            // so these archives were the last copy of the audio.
-            try? FileManager.default.removeItem(at: micArchive)
-            try? FileManager.default.removeItem(at: systemArchive)
-        }
-
-        if let error = MeetingRecordingError.afterFinalisation(
-            micNeedsRetry: micOutcome?.needsRetry ?? false,
-            systemNeedsRetry: systemOutcome?.needsRetry ?? false,
-            setAside: [micLeftover, systemLeftover].compactMap { $0?.lastPathComponent }
-        ) {
-            // Kept chunks: the session shows up again for a retry. A
-            // leftover file only: the audio is safe there, nothing to retry.
-            state = .error(error)
-        } else if sleepInterrupted {
-            state = .error(.sleepInterrupted)
-        } else {
-            state = .idle
+        case .finished(_, let error):
+            state = error.map { .error($0) } ?? .idle
         }
         lastSession = session
         self.session = nil
@@ -731,7 +701,7 @@ final class MeetingRecordingService {
     /// `meetingTranscriptionPreset` is guaranteed to have no AI steps;
     /// `resolvedLanguage` enforces the model-vs-preset precedence (the
     /// English-only model always wins, matching the existing behaviour in
-    /// PresetsSettingsView's mismatch warning).
+    /// PresetsPane's language warning).
     private func currentPipelineConfig() -> MeetingTranscriptionPipeline.Config {
         let preset = appState.meetingTranscriptionPreset
         return MeetingTranscriptionPipeline.Config(

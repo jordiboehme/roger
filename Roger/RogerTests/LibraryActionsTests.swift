@@ -399,4 +399,96 @@ struct LibraryActionsTests {
         #expect(LibraryActions.trashFailureMessage(failed)
             == "Some files could not be moved to the Trash: a.md, s.")
     }
+
+    /// A legacy session in an extra folder whose transcript was saved with
+    /// CRLF by another editor is still recognised by its meeting tag.
+    @Test func crlfMeetingTranscriptIsRecognised() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let extra = root.appendingPathComponent("Notes", isDirectory: true)
+        let folder = extra.appendingPathComponent("Planning", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("---\r\ntags: [meeting, transcript]\r\n---\r\n# Meeting\r\n".utf8)
+            .write(to: folder.appendingPathComponent("transcript.md"))
+        #expect(LibraryActions.isRogerSessionFolder(folder, layout: layout(root.appendingPathComponent("Roger")), extraFolders: [extra]))
+    }
+
+    /// The Extra files section shows up for a session folder with a
+    /// subfolder, but the whole meeting still does not go to the Trash.
+    @Test func aSessionWithASubfolderListsExtraFilesButIsNotTrashed() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let session = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        try meetingTranscript(in: session)
+        try FileManager.default.createDirectory(at: session.appendingPathComponent("Slides"), withIntermediateDirectories: true)
+        let item = LibraryFixtures.item("transcript", kind: .meeting, folder: session.path)
+        #expect(LibraryActions.listsExtraFiles(item, layout: library, extraFolders: []))
+        let plan = LibraryActions.trashPlan(for: [item], layout: library, extraFolders: [], activeSessionFolder: nil)
+        #expect(plan.urls.isEmpty)
+        #expect(plan.skipped == [item])
+    }
+
+    /// "Finalise" is offered only where Trash would treat the folder as a
+    /// Roger meeting: a folder in an extra folder that merely holds a CAF
+    /// file is not one.
+    @Test func onlyRogerSessionFoldersAreFinalisable() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let extra = root.appendingPathComponent("Old Recordings", isDirectory: true)
+        let roger = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        let legacy = extra.appendingPathComponent("2025-01-02 10-00", isDirectory: true)
+        let foreign = extra.appendingPathComponent("Podcast edits", isDirectory: true)
+        let dismissed = library.root.appendingPathComponent("Meetings/2026/10/2026-10-14 09-00", isDirectory: true)
+        for folder in [roger, legacy, foreign, dismissed] {
+            try touch(folder.appendingPathComponent("mic-001.caf"))
+        }
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        let sessions = [roger, legacy, foreign, dismissed].map { MeetingSession(id: UUID(), folder: $0, startedAt: date) }
+        let offered = LibraryActions.finalisable(
+            sessions, layout: library, extraFolders: [extra],
+            dismissed: [dismissed.standardizedFileURL.path]
+        )
+        #expect(offered.map(\.folder) == [roger, legacy])
+    }
+
+    /// A folder the user added to an unfinished Roger meeting (for slides,
+    /// say) does not hide it: it can still be finalised. The subfolder rule
+    /// is for Trash only.
+    @Test func aRogerSessionWithASubfolderIsStillFinalisable() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let roger = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        try touch(roger.appendingPathComponent("mic-001.caf"))
+        try touch(roger.appendingPathComponent("Slides/deck.pdf"))
+        let session = MeetingSession(id: UUID(), folder: roger, startedAt: Date(timeIntervalSince1970: 1_790_000_000))
+        let offered = LibraryActions.finalisable([session], layout: library, extraFolders: [], dismissed: [])
+        #expect(offered.map(\.folder) == [roger])
+    }
+
+    /// The `.md` of a log stays (the move failed) while its `.m4a` went: the
+    /// log is not reported as deleted, and the message names the `.md`.
+    @Test func aFailedMarkdownAndAMovedAudioIsNoDeletion() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root)
+        let md = library.root.appendingPathComponent("Logs/2026/10/a.md")
+        let m4a = md.deletingPathExtension().appendingPathExtension("m4a")
+        try touch(md)
+        try touch(m4a)
+        let item = LibraryFixtures.item("a", folder: md.deletingLastPathComponent().path)
+        let plan = LibraryActions.trashPlan(for: [item], layout: library, extraFolders: [], activeSessionFolder: nil)
+        #expect(plan.urls.map(\.lastPathComponent) == ["a.md", "a.m4a"])
+        var moved: [URL] = []
+        let failed = LibraryActions.moveToTrash(plan.urls) { url in
+            if url.pathExtension == "md" { throw CocoaError(.fileWriteNoPermission) }
+            moved.append(url)
+        }
+        #expect(failed.map(\.lastPathComponent) == ["a.md"])
+        #expect(moved.map(\.lastPathComponent) == ["a.m4a"])
+        #expect(LibraryChangeRecorder.trashedItems([item], plan: plan, failed: failed).isEmpty)
+        #expect(LibraryActions.trashFailureMessage(failed) == "Some files could not be moved to the Trash: a.md.")
+    }
 }

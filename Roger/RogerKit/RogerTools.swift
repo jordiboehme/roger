@@ -42,8 +42,14 @@ public struct RogerTools: Sendable {
             }
         } catch let failure as ToolFailure {
             return .error(failure.message)
+        } catch let keyError as ItemKeyError {
+            return .error(keyError.localizedDescription)
+        } catch let nameError as ConsumerBookmarkError {
+            return .error(nameError.localizedDescription)
         } catch {
-            return .error(error.localizedDescription)
+            // Anything else is unexpected (a file system error): say which
+            // tool and which library, so the agent can tell the user.
+            return .error("\(name) failed in the library at \(location.root.path): \(error.localizedDescription)")
         }
     }
 
@@ -56,7 +62,16 @@ public struct RogerTools: Sendable {
             lines.append(TOON.field("message", .string(message)))
             return lines.joined(separator: "\n")
         }
-        let events = (try? ChangeLogFile.readEvents(root: location.root)) ?? []
+        let events: [ChangeEvent]
+        do {
+            events = try ChangeLogFile.readEvents(root: location.root)
+        } catch {
+            // Not "ready, 0 events": the agent must know the log is unreadable.
+            let path = ChangeLogFile.url(root: location.root).path
+            lines.append(TOON.field("state", .string("not readable")))
+            lines.append(TOON.field("message", .string("Roger cannot read the change log at \(path): \(error.localizedDescription)")))
+            return lines.joined(separator: "\n")
+        }
         let lastSeq = events.map(\.seq).max() ?? 0
         lines.append(TOON.field("state", .string("ready")))
         lines.append(TOON.field("lastSeq", .int(lastSeq)))
@@ -120,12 +135,22 @@ public struct RogerTools: Sendable {
         } else {
             throw ToolFailure("Pass exactly one start: consumer, since or from with upTo.")
         }
-        return ChangeQuery.run(events: events, start: start, kinds: kinds, summary: summary, root: location.root).render()
+        return ChangeQuery.run(events: events, start: start, kinds: kinds, summary: summary, root: location.root)
+            .render(library: LibraryPath.canonical(location.root))
     }
 
     private func ack(_ args: ToolArguments, _ location: LibraryLocation) throws -> String {
         guard let consumer = try args.string("consumer"), let upTo = try args.int("upTo") else {
             throw ToolFailure("ack needs consumer and upTo.")
+        }
+        // The library from get_changes: when Roger switched to another
+        // library since, this upTo belongs to the old one.
+        if let raw = try args.string("library") {
+            let library = Self.unquotedTOON(raw)
+            let given = URL(fileURLWithPath: (library as NSString).expandingTildeInPath, isDirectory: true)
+            guard LibraryPath.canonical(given) == LibraryPath.canonical(location.root) else {
+                throw ToolFailure("The library changed since get_changes. Call get_changes again.")
+            }
         }
         let lastSeq = try ChangeLogFile.readEvents(root: location.root).map(\.seq).max() ?? 0
         guard upTo >= 0 else { throw ToolFailure("upTo must be 0 or more.") }
@@ -137,6 +162,27 @@ public struct RogerTools: Sendable {
             return "Bookmark \(consumer) is now \(result.current) (was \(result.previous))."
         }
         return "Bookmark \(consumer) stays at \(result.current). upTo \(upTo) is not newer."
+    }
+
+    /// get_changes quotes a library path with `:`, `,`, `[` and the like.
+    /// A client may pass that value back verbatim: drop the quotes and undo
+    /// the `\\` and `\"` escapes.
+    static func unquotedTOON(_ value: String) -> String {
+        guard value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") else { return value }
+        var out = ""
+        var escaped = false
+        for character in value.dropFirst().dropLast() {
+            if escaped {
+                if character != "\\", character != "\"" { out.append("\\") }
+                out.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else {
+                out.append(character)
+            }
+        }
+        return out
     }
 
     private func getItem(_ args: ToolArguments, _ location: LibraryLocation) throws -> String {

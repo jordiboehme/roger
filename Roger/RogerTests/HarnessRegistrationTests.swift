@@ -113,6 +113,15 @@ struct HarnessRegistrationTests {
         #expect(HarnessRegistration.tomlCommand("[mcp_servers.other]\ncommand = \"x\"\n") == .absent)
     }
 
+    @Test func readsACRLFCodexConfig() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let config = home.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("model = \"gpt-5\"\r\n\r\n[mcp_servers.roger]\r\ncommand = \"\(exe)\"\r\n".utf8).write(to: config)
+        #expect(HarnessRegistration.connection(HarnessCatalog.spec(.codex), home: home, executable: exe) == .connected)
+    }
+
     @Test func connectionComparesTheCommand() throws {
         let (home, _) = try home(with: [])
         defer { TempFolder.remove(home) }
@@ -428,5 +437,24 @@ struct HarnessRegistrationTests {
         #expect(gemini.canUninstall == false)
         await controller.install(.gemini)
         #expect(runner.calls.last == ["gemini", "mcp", "add", "--scope", "user", "roger", try executable(controller)])
+    }
+
+    @Test func codexTOMLWithCommentsAndQuotedHeaders() {
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.roger]\ncommand = \"/a/roger-mcp\" # added by Roger\n") == .command("/a/roger-mcp"))
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.\"roger\"]\ncommand = \"/a/roger-mcp\"\n") == .command("/a/roger-mcp"))
+        #expect(HarnessRegistration.tomlCommand("[ mcp_servers . 'roger' ] # Roger\ncommand='/a/roger-mcp'\n") == .command("/a/roger-mcp"))
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.roger]\n# command = \"/old\"\ncommand = \"/a/#1/roger-mcp\"\n") == .command("/a/#1/roger-mcp"))
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.roger]\ncommand = \"/a/\\\"x\\\"/roger-mcp\"\n") == .command("/a/\"x\"/roger-mcp"))
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.\"roger.other\"]\ncommand = \"x\"\n") == .absent)
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.roger]\ncommand = \"/a/roger-mcp\" trailing\n") == .unreadable)
+        #expect(HarnessRegistration.tomlCommand("[mcp_servers.roger]\ncommand = [\"/a/roger-mcp\"]\n") == .unreadable)
+    }
+
+    @Test func tomlTableNames() {
+        #expect(HarnessRegistration.tomlTableName("[mcp_servers.roger]") == ["mcp_servers", "roger"])
+        #expect(HarnessRegistration.tomlTableName("[mcp_servers.\"roger\"] # x") == ["mcp_servers", "roger"])
+        #expect(HarnessRegistration.tomlTableName("[[mcp_servers]]") == nil)
+        #expect(HarnessRegistration.tomlTableName("[mcp_servers.roger] x") == nil)
+        #expect(HarnessRegistration.tomlTableName("[mcp_servers.\"roger]") == nil)
     }
 }

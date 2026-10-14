@@ -12,13 +12,25 @@ struct MeetingSession: Sendable, Equatable, Identifiable {
     let startedAt: Date
 
     /// Default name format: `YYYY-MM-DD HH-mm`. Single source of truth so
-    /// recovery and the Recordings tab agree on what to look for.
+    /// recovery and Library & Meetings agree on what to look for.
     static let folderNameFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd HH-mm"
         return f
     }()
+
+    /// Builds a fresh session in the library's month folder for `startedAt`.
+    /// Throws `LibraryRootMissingError` when the library root is missing and
+    /// is not the default root (nothing is created then).
+    static func create(
+        layout: LibraryLayout,
+        startedAt: Date = .now,
+        defaultRoot: URL = LibraryLayout.defaultRoot
+    ) throws -> MeetingSession {
+        try LibraryLayout.prepareRootForWriting(layout, defaultRoot: defaultRoot)
+        return try create(in: layout.monthFolder(.meetings, for: startedAt), startedAt: startedAt)
+    }
 
     /// Builds a fresh session under `parent`, creating its folder.
     static func create(in parent: URL, startedAt: Date = .now) throws -> MeetingSession {

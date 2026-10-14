@@ -67,14 +67,31 @@ struct LibraryQueryTests {
     }
 
     @Test func sortOrders() {
+        // Transcripts: their rows show the title (log rows show their text).
         let items = [
-            LibraryFixtures.item("Log 10", date: LibraryFixtures.date(2026, 10, 2), duration: 30),
-            LibraryFixtures.item("Log 2", date: LibraryFixtures.date(2026, 10, 3), duration: nil),
-            LibraryFixtures.item("Log 1", date: LibraryFixtures.date(2026, 10, 1), duration: 90),
+            LibraryFixtures.item("Log 10", kind: .transcript, date: LibraryFixtures.date(2026, 10, 2), duration: 30),
+            LibraryFixtures.item("Log 2", kind: .transcript, date: LibraryFixtures.date(2026, 10, 3), duration: nil),
+            LibraryFixtures.item("Log 1", kind: .transcript, date: LibraryFixtures.date(2026, 10, 1), duration: 90),
         ]
         #expect(titles(LibraryQuery(sort: .newestFirst), items) == ["Log 2", "Log 10", "Log 1"])
         #expect(titles(LibraryQuery(sort: .oldestFirst), items) == ["Log 1", "Log 10", "Log 2"])
         #expect(titles(LibraryQuery(sort: .title), items) == ["Log 1", "Log 2", "Log 10"])
         #expect(titles(LibraryQuery(sort: .duration), items) == ["Log 1", "Log 10", "Log 2"])
+    }
+
+    /// Log rows show their text, so title sort orders logs by that text.
+    @Test func titleSortUsesTheRowTextOfLogs() {
+        let zebra = LibraryFixtures.item("a", kind: .log, title: "Log 2026-10-13 09:00 - Zebra crossing", body: "Zebra crossing")
+        let apple = LibraryFixtures.item("b", kind: .log, title: "Log 2026-10-13 10:00 - Apple pie", body: "Apple pie")
+        let meeting = LibraryFixtures.item("c", kind: .meeting, title: "Meeting notes", body: "Budget")
+        let empty = LibraryFixtures.item("d", kind: .log, title: "Log 2026-10-13 11:00", body: "")
+        let sorted = LibraryQuery.sorted([zebra, apple, meeting, empty], by: .title)
+        #expect(sorted.map(\.id) == [apple.id, empty.id, meeting.id, zebra.id])
+    }
+
+    @Test func unfinishedHasNoFilters() {
+        #expect(!LibrarySidebarSelection.unfinished.usesFilters)
+        #expect(LibrarySidebarSelection.all.usesFilters)
+        #expect(LibrarySidebarSelection.kind(.log).usesFilters)
     }
 }

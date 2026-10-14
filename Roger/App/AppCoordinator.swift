@@ -105,7 +105,24 @@ final class AppCoordinator {
         libraryOpener?(url)
     }
 
+    /// Opens the settings window. Set by the AppDelegate, which owns the
+    /// window; nil in unit tests.
+    @ObservationIgnored var settingsOpener: (@MainActor (SettingsPane?) -> Void)?
+
+    /// Opens the settings window on `pane`, or on the last pane when nil.
+    func openSettings(_ pane: SettingsPane? = nil) {
+        settingsOpener?(pane)
+    }
+
+    #if DEBUG
+    /// How many coordinators this process built. The test host must build none.
+    private(set) static var instancesCreated = 0
+    #endif
+
     init() {
+        #if DEBUG
+        Self.instancesCreated += 1
+        #endif
         // FluidAudio's debug lines include recognised words. Keep transcripts
         // out of the console and the system log, even in Debug builds.
         AppLogger.minimumLevel = .info
@@ -124,8 +141,8 @@ final class AppCoordinator {
                 externalRegistry: .standard
             )
         }
-        meetingRecorder.onTranscriptWritten = { [weak self] url in
-            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting)
+        meetingRecorder.onTranscriptWritten = { [weak self] url, root in
+            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
         }
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
@@ -192,42 +209,31 @@ final class AppCoordinator {
     /// their meetings are still found.
     func runLibraryMigrationIfNeeded() {
         guard !appState.libraryMigrationDone, !meetingRecorder.isActive else { return }
-        defer {
-            appState.libraryMigrationDone = true
-            refreshPendingMeetingSessions()
-        }
-
-        var extras = appState.extraScanFolders
-        func addExtra(_ url: URL) {
-            if !extras.contains(where: { $0.standardizedFileURL == url.standardizedFileURL }) {
-                extras.append(url)
-            }
-        }
-        if let transcripts = appState.legacyFileTranscriptFolder {
-            addExtra(transcripts)
-        }
-
         let layout = appState.libraryLayout
-        let oldMeetings = appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
-        let sessions = MeetingSessionScanner.sessionFolders(in: oldMeetings, maxDepth: 1)
-        if !sessions.isEmpty, !LibraryMigration.isInsideLibrary(oldMeetings, layout: layout) {
+        let input = LibraryMigrationRun.Input(
+            layout: layout,
+            extraFolders: appState.extraScanFolders,
+            legacyTranscriptFolder: appState.legacyFileTranscriptFolder,
+            legacyMeetingsFolder: appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
+        )
+        let result = LibraryMigrationRun.run(input) { count, folder in
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "Move your meetings to the Roger library?"
-            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(sessions.count) \(sessions.count == 1 ? "meeting" : "meetings") from \(oldMeetings.path) there? If you keep them in place, Roger still finds them."
+            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(count) \(count == 1 ? "meeting" : "meetings") from \(folder.path) there? If you keep them in place, Roger still finds them."
             alert.addButton(withTitle: "Move")
             alert.addButton(withTitle: "Keep in Place")
-            if alert.runModal() == .alertFirstButtonReturn {
-                let result = LibraryMigration.execute(LibraryMigration.plan(sessionFolders: sessions, layout: layout))
-                logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failed.count) failed")
-                if !result.failed.isEmpty {
-                    addExtra(oldMeetings)
-                }
-            } else {
-                addExtra(oldMeetings)
-            }
+            return alert.runModal() == .alertFirstButtonReturn
         }
-        appState.extraScanFolders = extras
+        if !result.moved.isEmpty || result.failedCount > 0 {
+            logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failedCount) failed")
+        }
+        appState.extraScanFolders = result.extraFolders
+        // Not finished (library folder missing): offered again next launch.
+        if result.finished {
+            appState.libraryMigrationDone = true
+        }
+        refreshPendingMeetingSessions()
     }
 
     private func setupPermissionCallbacks() {
@@ -319,7 +325,7 @@ final class AppCoordinator {
         }
 
         guard transcriptionEngine.isReady else {
-            appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
+            appState.dictationState = .error("Speech model not ready. Download it in Settings > Speech Model.")
             return
         }
 
@@ -490,7 +496,7 @@ final class AppCoordinator {
                         if activePreset.output == .logEntry {
                             // A file surprises nobody: save the non-AI text.
                             await saveLogEntry(safeText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
-                                               language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                                               detectedLanguage: result.detectedLanguage, samples: samples)
                             return
                         }
                         appState.lastTranscription = safeText
@@ -512,7 +518,7 @@ final class AppCoordinator {
 
             if activePreset.output == .logEntry {
                 await saveLogEntry(processedText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
-                                   language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                                   detectedLanguage: result.detectedLanguage, samples: samples)
                 return
             }
 
@@ -555,37 +561,51 @@ final class AppCoordinator {
         logSavedGeneration += 1
     }
 
-    /// Writes a log entry instead of typing. On failure the text stays in
-    /// `lastTranscription` so nothing is lost.
+    /// Writes a log entry instead of typing (`LogEntrySaver`). On failure
+    /// the text stays in `lastTranscription` so nothing is lost.
     private func saveLogEntry(
         _ text: String,
         preset: DictationPreset,
         startedAt: Date,
         endedAt: Date,
-        language: String?,
+        detectedLanguage: String?,
         samples: [Float]?
     ) async {
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let layout = appState.libraryLayout
+        // The menu bar shows the new text while a long recording is encoded.
+        if !LogEntrySaver.isEmpty(text) { appState.lastTranscription = text }
+        let outcome = await LogEntrySaver(layout: layout).save(
+            text, preset: preset, startedAt: startedAt, endedAt: endedAt,
+            detectedLanguage: detectedLanguage, samples: samples
+        ) { [libraryChanges] url in
+            libraryChanges.recordWritten(markdownURL: url, kind: .log, root: layout.root)
+        }
+        switch outcome {
+        case .empty:
             logger.info("Log entry skipped: empty text after processing")
             appState.lastLogEntryURL = nil
             floatingPanel.hide()
             audioLevelMeter.reset()
             appState.dictationState = .error("No speech detected - try speaking louder or closer to the mic")
             return
-        }
-        appState.lastTranscription = text
-        let entry = LogEntry(text: text, startedAt: startedAt, endedAt: endedAt, presetName: preset.name, language: language)
-        do {
-            let url = try await LogEntryWriter.write(
-                entry,
-                layout: appState.libraryLayout,
-                audioSamples: preset.keepAudio ? samples : nil
-            )
+        case .saved(let url):
+            appState.lastTranscription = text
             appState.lastLogEntryURL = url
-            libraryChanges.recordWritten(markdownURL: url, kind: .log)
             logger.notice("Log entry saved: \(url.path, privacy: .public)")
-        } catch {
-            logger.error("Log entry write failed: \(error.localizedDescription, privacy: .public)")
+        case .libraryMissing(let message):
+            logger.error("Log entry write failed: \(message, privacy: .public)")
+            appState.lastTranscription = text
+            appState.lastLogEntryURL = nil
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            // The text must not be lost: it goes to the clipboard.
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            appState.dictationState = .error("\(message) The text is on the clipboard.")
+            return
+        case .failed(let message):
+            logger.error("Log entry write failed: \(message, privacy: .public)")
+            appState.lastTranscription = text
             appState.lastLogEntryURL = nil
             floatingPanel.hide()
             audioLevelMeter.reset()
@@ -726,7 +746,7 @@ final class AppCoordinator {
                 logger.info("Speech model still loading — queued: \(url.lastPathComponent, privacy: .public)")
                 pendingMediaFile = url
             } else {
-                appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
+                appState.dictationState = .error("Speech model not ready. Download it in Settings > Speech Model.")
             }
             return
         }
@@ -865,10 +885,11 @@ final class AppCoordinator {
                 return
             }
 
+            let layout = appState.libraryLayout
             let outputURL = try TranscriptOutputWriter.write(
                 source: job.sourceURL,
                 location: appState.fileTranscriptOutputLocation,
-                layout: appState.libraryLayout
+                layout: layout
             ) { destination in
                 MediaTranscriptFormatter.content(
                     source: job.sourceURL,
@@ -888,7 +909,7 @@ final class AppCoordinator {
                     logger.warning("Could not remember transcript path: \(error.localizedDescription, privacy: .public)")
                 }
             }
-            libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript)
+            libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript, root: layout.root)
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
             await finishFileTranscription(error: nil)
@@ -983,7 +1004,7 @@ final class AppCoordinator {
 
     /// Stops a meeting recording and runs finalisation off the main actor.
     /// The floating panel is dismissed on entering finalisation; the
-    /// Recordings tab will show the result.
+    /// library window will show the result.
     func stopMeetingRecording() async {
         guard meetingRecorder.isActive else { return }
         // Bring the overlay back so the standard "thinking / finalising"
@@ -1061,11 +1082,15 @@ final class AppCoordinator {
     }
 
     /// Also called by the library after it moved a meeting to the Trash, so
-    /// the popover banner and the Unfinished list drop it right away.
+    /// the popover banner and the Unfinished list drop it right away. Only
+    /// Roger's own session folders are offered (see `LibraryActions.finalisable`).
     func refreshPendingMeetingSessions() {
-        let dismissed = Set(appState.dismissedMeetingSessions)
-        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
-            .filter { !dismissed.contains($0.folder.standardizedFileURL.path) }
+        pendingMeetingSessions = LibraryActions.finalisable(
+            meetingRecorder.unfinalisedSessions(),
+            layout: appState.libraryLayout,
+            extraFolders: appState.extraScanFolders,
+            dismissed: Set(appState.dismissedMeetingSessions)
+        )
     }
 
     // MARK: - Error Management

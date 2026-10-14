@@ -97,7 +97,7 @@ final class AppState {
     }
 
     /// Older folders that still hold meetings or transcripts. Scanned for
-    /// unfinished meetings and listed in the Recordings settings.
+    /// unfinished meetings and listed in Settings > Library & Meetings.
     var extraScanFolders: [URL] {
         didSet { defaults.set(extraScanFolders.map(\.path), forKey: "extraScanFolders") }
     }
@@ -168,20 +168,14 @@ final class AppState {
     /// to have no AI steps enabled. Falls back to Plain if the stored
     /// preset was deleted or accidentally flipped to require AI.
     var meetingTranscriptionPreset: DictationPreset {
-        if let preset = presets.first(where: { $0.id == meetingTranscriptionPresetID }), !preset.requiresAI {
-            return preset
-        }
-        return DictationPreset.plain
+        DictationPreset.localPreset(id: meetingTranscriptionPresetID, in: presets)
     }
 
     /// Resolves `fileTranscriptionPresetID` to a live preset, guaranteeing no
     /// AI steps are enabled. Falls back to Plain if the configured preset was
     /// deleted or accidentally flipped to require AI.
     var fileTranscriptionPreset: DictationPreset {
-        if let preset = presets.first(where: { $0.id == fileTranscriptionPresetID }), !preset.requiresAI {
-            return preset
-        }
-        return DictationPreset.plain
+        DictationPreset.localPreset(id: fileTranscriptionPresetID, in: presets)
     }
 
     // MARK: - LLM Settings
@@ -252,10 +246,6 @@ final class AppState {
     var hasCompletedOnboarding: Bool {
         didSet { defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
     }
-
-    // MARK: - UI Navigation (runtime-only)
-
-    var pendingSettingsTab: SettingsTab?
 
     var activePreset: DictationPreset {
         presets.first { $0.id == activePresetID } ?? .polished
@@ -345,7 +335,16 @@ final class AppState {
         self.activationMode = ActivationMode(rawValue: defaults.string(forKey: "activationMode") ?? "") ?? .pushToTalk
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
-        self.maximumRecordingDuration = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval ?? 120
+        let storedMaximum = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval
+        let maximum = RecordingDurationMigration.migrated(
+            stored: storedMaximum,
+            migrated: defaults.bool(forKey: RecordingDurationMigration.migratedKey)
+        )
+        self.maximumRecordingDuration = maximum.value
+        if maximum.value != storedMaximum { defaults.set(maximum.value, forKey: "maximumRecordingDuration") }
+        if !defaults.bool(forKey: RecordingDurationMigration.migratedKey) {
+            defaults.set(true, forKey: RecordingDurationMigration.migratedKey)
+        }
         self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
@@ -484,10 +483,35 @@ enum ActivationMode: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    var displayName: String {
+    /// Segment title in Settings > General.
+    var title: String {
         switch self {
-        case .pushToTalk: return "Push to Talk (hold to listen)"
-        case .toggle: return "Toggle (press to start/stop)"
+        case .pushToTalk: return "Push to talk"
+        case .toggle: return "Toggle"
         }
+    }
+
+    /// Note under the Mode row.
+    var note: String {
+        switch self {
+        case .pushToTalk: return "Hold the dictation key while you speak."
+        case .toggle: return "Press the dictation key to start. Press it again to stop."
+        }
+    }
+}
+
+/// The default for the maximum recording duration went from 120 to 300
+/// seconds. The decision is a pure function so tests need no `AppState`.
+enum RecordingDurationMigration {
+    static let migratedKey = "maximumRecordingDurationMigrated300"
+    static let defaultDuration: TimeInterval = 300
+    private static let oldDefault: TimeInterval = 120
+
+    /// Nothing stored gets the default. A stored 120 (the old default)
+    /// becomes 300 once; any other value stays. `migrated` is true after.
+    static func migrated(stored: TimeInterval?, migrated: Bool) -> (value: TimeInterval, migrated: Bool) {
+        guard let stored else { return (defaultDuration, true) }
+        if !migrated, stored == oldDefault { return (defaultDuration, true) }
+        return (stored, true)
     }
 }
