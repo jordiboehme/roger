@@ -79,6 +79,7 @@
 		65446BE7F96162ED2CA7D589 /* LibraryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6818A8648621373E39DA643E /* LibraryListView.swift */; };
 		68D726C75B0321F9393BBD39 /* LibraryPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285B04BEBD9B6CE44D48901A /* LibraryPath.swift */; };
 		6CB21C458EC0B49CE990D65E /* OllamaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD62AA2204EFE4A8FF5B753A /* OllamaService.swift */; };
+		6D68B33D611C211D37B9F0F4 /* SkillInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93EEB54DF52ADDB55F5FFD8E /* SkillInstaller.swift */; };
 		6F545B2BB4802F812F29B9FE /* LibraryQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C7D9406B2BA7554AD527E0 /* LibraryQueryTests.swift */; };
 		72802E9233C7491CA0DD6F42 /* TranscriptOutputWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ACC9C36B2DA1F2D731176F9 /* TranscriptOutputWriterTests.swift */; };
 		7403D9ECB11C2FF7FE9F63A0 /* DictationPresetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1543662D18D7462086D4B748 /* DictationPresetTests.swift */; };
@@ -102,8 +103,10 @@
 		9275A12AC6ADED24A9E9B2ED /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1DD315528221EF6AD7053DA /* Assets.xcassets */; };
 		939A8262AFE22EE2683911A5 /* LibraryLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E29D2F1354B63FE063388A7 /* LibraryLayout.swift */; };
 		98EE8299F72999C131C4CD81 /* RogerMCPOptionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE11177A877E06D4A2488F /* RogerMCPOptionsTests.swift */; };
+		995B66F815E758BA1C7F462A /* SkillInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF88D1335D211AF7D1C15632 /* SkillInstallerTests.swift */; };
 		9BA0AB3BE2E9C08C8029E839 /* LibraryChangeRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BC499F007F0A4C0898AEF1 /* LibraryChangeRecorder.swift */; };
 		9C99F36067A5343BF7A5FBCE /* MeetingTranscriptWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A343AAF365104DA380498CD6 /* MeetingTranscriptWriter.swift */; };
+		9CB1101FD1609F43A16CFA78 /* Harness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE3A18597F1045D858CBD31 /* Harness.swift */; };
 		9CCFE22AD4EA6C7BEF74F76D /* LLMProviderType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BD03DEF1FE8D1DF6DC6727 /* LLMProviderType.swift */; };
 		9E56B6E9D4A6E20FE1C99CEC /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */; };
 		9F0F6705FE27D41D7FEFC1D1 /* MeetingExtraFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E934DFAFD184EE69C76740 /* MeetingExtraFiles.swift */; };
@@ -313,6 +316,7 @@
 		6C213257A5EE5B8CD0D84CB2 /* CoreAudioUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAudioUtils.swift; sourceTree = "<group>"; };
 		6D998DCA9B70478D879997C1 /* TranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionEngine.swift; sourceTree = "<group>"; };
 		6E135A3C5D28F1F5584ED81C /* MicrophoneTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneTap.swift; sourceTree = "<group>"; };
+		6EE3A18597F1045D858CBD31 /* Harness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harness.swift; sourceTree = "<group>"; };
 		6EEB6FE6094DB78537941E78 /* SpeakerAligner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAligner.swift; sourceTree = "<group>"; };
 		71AE4A23EB5A15BD513E0D35 /* KitFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitFixtures.swift; sourceTree = "<group>"; };
 		72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyComboBadge.swift; sourceTree = "<group>"; };
@@ -330,6 +334,7 @@
 		85B3BC139F8A14903D6CCFC6 /* LibraryUnfinishedListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryUnfinishedListView.swift; sourceTree = "<group>"; };
 		8AFDEF1504DA0C2369C5A71B /* MeetingCheckpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCheckpointStore.swift; sourceTree = "<group>"; };
 		8F44DB3FF7924D3EDCF36104 /* skills */ = {isa = PBXFileReference; lastKnownFileType = folder; name = skills; path = ../skills; sourceTree = SOURCE_ROOT; };
+		93EEB54DF52ADDB55F5FFD8E /* SkillInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillInstaller.swift; sourceTree = "<group>"; };
 		93F3DA0700AC3E3A517D32E0 /* MicrophoneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneSettingsView.swift; sourceTree = "<group>"; };
 		944D8CE8CCBD95F3346AB9C2 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		95C71D4FE122B3EB0B17E2F0 /* SendableAudioBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendableAudioBuffer.swift; sourceTree = "<group>"; };
@@ -355,6 +360,7 @@
 		ACF49F8F0C439EFF6AB3AF92 /* Roger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Roger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD0401FF3C26D3570A4B9327 /* PostProcessingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostProcessingError.swift; sourceTree = "<group>"; };
 		AD613932C4FD0AF74369FDF0 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		AF88D1335D211AF7D1C15632 /* SkillInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillInstallerTests.swift; sourceTree = "<group>"; };
 		B1DD315528221EF6AD7053DA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B303564AC2DC46440EF5F8B7 /* ToolValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolValue.swift; sourceTree = "<group>"; };
 		B3286A8F17D9B364E583E173 /* RogerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RogerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -497,8 +503,10 @@
 			children = (
 				11DCA45D578FEC65084393AF /* AgentsStatus.swift */,
 				3937C6078ACFD22EC92DAD5E /* BundledSkill.swift */,
+				6EE3A18597F1045D858CBD31 /* Harness.swift */,
 				CE14C6A132C6480034AA1B2E /* McpCommandFormatter.swift */,
 				1CFAFE4614B732A2CE1C0AFE /* RogerMCPLocation.swift */,
+				93EEB54DF52ADDB55F5FFD8E /* SkillInstaller.swift */,
 			);
 			path = Agents;
 			sourceTree = "<group>";
@@ -721,6 +729,7 @@
 				32D90E0AE7F50FF3C75927DF /* MeetingSessionTests.swift */,
 				A0B617F6E9777D296E85E273 /* MeetingTranscriptWriterTests.swift */,
 				BDB54DAA0AB47CAF121D907C /* RogerMCPEndToEndTests.swift */,
+				AF88D1335D211AF7D1C15632 /* SkillInstallerTests.swift */,
 				02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */,
 				851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */,
 				6ACC9C36B2DA1F2D731176F9 /* TranscriptOutputWriterTests.swift */,
@@ -984,6 +993,7 @@
 				03CA8086269DC0AA5D5E24E7 /* DiarizationService.swift in Sources */,
 				CF758B7AC9D461C123600C0E /* DictationPreset.swift in Sources */,
 				82B0FAB7E064AC13E8CCF11A /* FloatingPanel.swift in Sources */,
+				9CB1101FD1609F43A16CFA78 /* Harness.swift in Sources */,
 				BDC5E4A104A1D4B719B8B897 /* HotkeyManager.swift in Sources */,
 				D3166B29587CA700D443E718 /* KeyComboBadge.swift in Sources */,
 				A70033CDF03B5F0F6D4386CE /* KeychainManager.swift in Sources */,
@@ -1046,6 +1056,7 @@
 				AE71298EFE4B605EB4AB8775 /* SegmentedAudioFileWriter.swift in Sources */,
 				A3C07D1C478DB5D6260F64D8 /* SendableAudioBuffer.swift in Sources */,
 				08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */,
+				6D68B33D611C211D37B9F0F4 /* SkillInstaller.swift in Sources */,
 				A1F067AF806268EAB3E2D57B /* SpeakerAligner.swift in Sources */,
 				BFD316C28B9F22EFF725A440 /* SpeakerSegment.swift in Sources */,
 				211CB069998867F995E8873B /* SystemAudioTap.swift in Sources */,
@@ -1146,6 +1157,7 @@
 				EEE0C023AF75202D7F76C789 /* MeetingSessionTests.swift in Sources */,
 				EB9A06A78E3ED35002F9E301 /* MeetingTranscriptWriterTests.swift in Sources */,
 				FA13532335B7D7014E404BC0 /* RogerMCPEndToEndTests.swift in Sources */,
+				995B66F815E758BA1C7F462A /* SkillInstallerTests.swift in Sources */,
 				065B93FE7A30FEEE02F2A248 /* TempFolder.swift in Sources */,
 				2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */,
 				72802E9233C7491CA0DD6F42 /* TranscriptOutputWriterTests.swift in Sources */,
