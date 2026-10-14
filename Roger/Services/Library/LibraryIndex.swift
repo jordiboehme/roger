@@ -131,16 +131,16 @@ actor InMemoryLibraryIndex: LibraryIndex {
     }
 
     /// Maps one changed path to what must be read again. Nil for paths
-    /// outside the library.
+    /// outside the library and for hidden files and folders below a kind
+    /// folder or an extra folder (the full scan skips them too).
     func unit(forChangedPath raw: String) -> LibraryScanUnit? {
         let path = LibraryPath.canonical(URL(fileURLWithPath: raw))
         if let list = externalListPath, path == list { return .externalList }
         if externalIDs.contains(path) { return .file(path, .transcript) }
         if LibraryPath.isPath(root, inside: path) { return .everything }
-        // Hidden files are not scanned, so their changes do not matter.
-        if (path as NSString).lastPathComponent.hasPrefix("."), !extras.contains(path) { return nil }
         for (folder, kind) in [(logs, LibraryItemKind.log), (transcripts, .transcript)]
         where LibraryPath.isPath(path, inside: folder) {
+            guard !Self.hasHiddenPart(path, below: folder) else { return nil }
             let ext = (path as NSString).pathExtension.lowercased()
             if ext == "md" { return .file(path, kind) }
             // Audio next to a log entry: its .md says whether it has audio.
@@ -148,12 +148,14 @@ actor InMemoryLibraryIndex: LibraryIndex {
             return ext.isEmpty ? .tree(path, kind) : nil
         }
         if LibraryPath.isPath(path, inside: meetings) {
-            let parts = LibraryPath.components(of: path, below: meetings)
-            // Meetings/YYYY/MM/<session>/...
-            if parts.count >= 3 { return .session(([meetings] + parts.prefix(3)).joined(separator: "/")) }
-            return .tree(path, .meeting)
+            guard !Self.hasHiddenPart(path, below: meetings) else { return nil }
+            // Sessions sit up to three levels down (`YYYY/MM/<session>` or
+            // anywhere above), like the full scan finds them.
+            return sessionFolder(containing: path, below: meetings, maxDepth: 3).map(LibraryScanUnit.session)
+                ?? .tree(path, .meeting)
         }
         for extra in extras where LibraryPath.isPath(path, inside: extra) {
+            guard !Self.hasHiddenPart(path, below: extra) else { return nil }
             let parts = LibraryPath.components(of: path, below: extra)
             guard let first = parts.first else { return .extraFolder(extra) }
             if parts.count == 1 {
@@ -161,9 +163,32 @@ actor InMemoryLibraryIndex: LibraryIndex {
                 if ext == "md" { return .file(path, .transcript) }
                 if !ext.isEmpty { return nil }
             }
+            // Sessions sit directly in an extra folder.
             return .session(extra + "/" + first)
         }
         return nil
+    }
+
+    /// True when a part of `path` below `folder` starts with a dot.
+    private static func hasHiddenPart(_ path: String, below folder: String) -> Bool {
+        LibraryPath.components(of: path, below: folder).contains { $0.hasPrefix(".") }
+    }
+
+    /// The session folder that holds `path` (or is `path`): the shallowest
+    /// folder at most `maxDepth` levels below `base` that the index knows as
+    /// a meeting folder (also after it was deleted), else one that is a
+    /// session folder on disk.
+    private func sessionFolder(containing path: String, below base: String, maxDepth: Int) -> String? {
+        var candidates: [String] = []
+        var current = base
+        for part in LibraryPath.components(of: path, below: base).prefix(maxDepth) {
+            current = (current as NSString).appendingPathComponent(part)
+            candidates.append(current)
+        }
+        guard !candidates.isEmpty else { return nil }
+        let known = Set(itemsByID.values.filter { $0.kind == .meeting }.map(\.folderURL.path))
+        if let hit = candidates.first(where: known.contains) { return hit }
+        return candidates.first { MeetingSessionScanner.isSessionFolder(URL(fileURLWithPath: $0, isDirectory: true)) }
     }
 
     // MARK: - Watching

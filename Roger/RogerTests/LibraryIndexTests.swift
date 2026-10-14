@@ -231,4 +231,72 @@ struct LibraryIndexTests {
         #expect(await index.unit(forChangedPath: hiddenExtra.path) == .extraFolder(LibraryPath.canonical(hiddenExtra)))
         #expect(await index.unit(forChangedPath: hiddenExtra.appendingPathComponent(".DS_Store").path) == nil)
     }
+
+    @Test func hiddenPartsBelowKindFoldersAreIgnored() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let index = makeIndex(layout)
+        let month = layout.monthFolder(.logs, for: date)
+        #expect(await index.unit(forChangedPath: month.appendingPathComponent(".draft.md").path) == nil)
+        #expect(await index.unit(forChangedPath: month.appendingPathComponent(".trash/old.md").path) == nil)
+        #expect(await index.unit(forChangedPath: layout.kindFolder(.transcripts).appendingPathComponent(".cache/x.md").path) == nil)
+        #expect(await index.unit(forChangedPath: layout.kindFolder(.meetings).appendingPathComponent("2026/.tmp/s/transcript.md").path) == nil)
+    }
+
+    /// A log inside a hidden folder (`.trash/`) is skipped by the full scan
+    /// and by an update alike.
+    @Test func aLogInAHiddenFolderIsNotAddedByAnUpdate() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let visible = try writeLog(layout, at: date, text: "Visible")
+        let hidden = visible.deletingLastPathComponent().appendingPathComponent(".trash/old.md")
+        try FileManager.default.createDirectory(at: hidden.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: visible, to: hidden)
+        let index = makeIndex(layout)
+        #expect(await index.items().count == 1)
+        await index.apply(changedPaths: [hidden.path])
+        #expect(await index.items().map(\.id) == [LibraryPath.canonical(visible)])
+    }
+
+    /// A session directly in `Meetings/` (not at `YYYY/MM/`): editing its
+    /// transcript updates the item instead of dropping it.
+    @Test func aShallowSessionIsUpdatedInPlace() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let folder = try writeMeeting(in: layout.kindFolder(.meetings), name: "2026-09-21 09-00", text: "First")
+        let index = makeIndex(layout)
+        #expect(await index.items().first?.firstLine == "First")
+        try writeMeeting(in: layout.kindFolder(.meetings), name: "2026-09-21 09-00", text: "Second")
+        await index.apply(changedPaths: [folder.appendingPathComponent("transcript.md").path])
+        let items = await index.items()
+        #expect(items.count == 1)
+        #expect(items.first?.firstLine == "Second")
+    }
+
+    @Test func aNewSessionTwoLevelsDownIsFound() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let index = makeIndex(layout)
+        #expect(await index.items().isEmpty)
+        let year = layout.kindFolder(.meetings).appendingPathComponent("2026", isDirectory: true)
+        let folder = try writeMeeting(in: year, name: "2026-09-21 09-00", text: "Hello")
+        await index.apply(changedPaths: [folder.appendingPathComponent("transcript.md").path])
+        #expect(await index.items().map(\.folderURL.path) == [LibraryPath.canonical(folder)])
+    }
+
+    @Test func aTrashedShallowSessionIsDropped() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let folder = try writeMeeting(in: layout.kindFolder(.meetings), name: "s", text: "Bye")
+        let index = makeIndex(layout)
+        #expect(await index.items().count == 1)
+        try FileManager.default.removeItem(at: folder)
+        await index.apply(changedPaths: [folder.path])
+        #expect(await index.items().isEmpty)
+    }
 }
