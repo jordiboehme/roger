@@ -24,6 +24,7 @@
 		1D045EFFF569FF66CECAEEF9 /* LibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21E19C8E0D5536F3CAE2C08 /* LibraryModel.swift */; };
 		1D39079F61B25C0BE829CFD1 /* LibrarySidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BE40DFE76EFF5E60D0DBCC /* LibrarySidebarView.swift */; };
 		1D598CEA9055107E9CD2D001 /* LibraryDayGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBCBF2023B82DFBABE1FD871 /* LibraryDayGrouping.swift */; };
+		1EE4A1CA71B9252CC9B75A16 /* TOON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA820989B3678203F26D5FA /* TOON.swift */; };
 		1FC8E18E65D90B1903608AC3 /* libRogerKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DF74B19119A51472F796DC2 /* libRogerKit.a */; };
 		20DB81390ADDD91D75C08353 /* AppleIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3743725D72D2E40A31B42614 /* AppleIntelligenceService.swift */; };
 		211CB069998867F995E8873B /* SystemAudioTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D33F4EEC653AD13A176CAB /* SystemAudioTap.swift */; };
@@ -34,6 +35,7 @@
 		2779C841AA43D83B86A27510 /* MeetingTrackSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF53122F0718E32D09295C97 /* MeetingTrackSource.swift */; };
 		28AA4B0BEC83F311740FB918 /* MeetingSegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0609432308A2B9928260FDB7 /* MeetingSegmentWriter.swift */; };
 		2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
+		2E04BBB0D0BA3310A41CA6F2 /* TOONTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCD94E55AB41CB7D92D1C84B /* TOONTests.swift */; };
 		2E09420FA0E0BE4CFB446040 /* LibraryFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC882E1504155A714FA71A90 /* LibraryFixtures.swift */; };
 		2E5B862251733534156C41F2 /* LibraryIndexStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCDA8C59DF4A885647AEDD4 /* LibraryIndexStoreTests.swift */; };
 		2E961F9913DCFFE4E510DDC6 /* TranscriptFrontmatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 851EBAAC5A9B686279FE4A5E /* TranscriptFrontmatterTests.swift */; };
@@ -244,6 +246,7 @@
 		95C71D4FE122B3EB0B17E2F0 /* SendableAudioBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendableAudioBuffer.swift; sourceTree = "<group>"; };
 		993CA4C04B5681049185B199 /* LibraryDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDocumentTests.swift; sourceTree = "<group>"; };
 		9A163E0E54846AB6648FE20A /* LogEntryWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntryWriter.swift; sourceTree = "<group>"; };
+		9AA820989B3678203F26D5FA /* TOON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOON.swift; sourceTree = "<group>"; };
 		9AE0758E3834600495711EC7 /* LibraryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryToolbar.swift; sourceTree = "<group>"; };
 		9D5464C6881DAEC61315A0B3 /* Roger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Roger.entitlements; sourceTree = "<group>"; };
 		9D55CA270E047E71AA96A1D8 /* LibraryFolderWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFolderWatcherTests.swift; sourceTree = "<group>"; };
@@ -269,6 +272,7 @@
 		B97E53E2F1E7AB36765A6C95 /* MeetingMarkersSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingMarkersSummaryTests.swift; sourceTree = "<group>"; };
 		BBCBF2023B82DFBABE1FD871 /* LibraryDayGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDayGrouping.swift; sourceTree = "<group>"; };
 		BC882E1504155A714FA71A90 /* LibraryFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFixtures.swift; sourceTree = "<group>"; };
+		BCD94E55AB41CB7D92D1C84B /* TOONTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOONTests.swift; sourceTree = "<group>"; };
 		BDFE60C59AD7ADE5AE502E6B /* LibraryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryItem.swift; sourceTree = "<group>"; };
 		BEBB24E3E50C08AD0BBAF2FE /* LibraryLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryLayoutTests.swift; sourceTree = "<group>"; };
 		C0056C377990C8BAC51887C2 /* LibraryWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryWindowController.swift; sourceTree = "<group>"; };
@@ -378,6 +382,7 @@
 				B97E53E2F1E7AB36765A6C95 /* MeetingMarkersSummaryTests.swift */,
 				1FE99E3E17B7F766E21655ED /* SessionFolderNameTests.swift */,
 				F08E0C73B1B6D8BD8F3594FF /* TempDir.swift */,
+				BCD94E55AB41CB7D92D1C84B /* TOONTests.swift */,
 			);
 			path = RogerKitTests;
 			sourceTree = "<group>";
@@ -395,6 +400,7 @@
 				A4BE6BF19D0944EB64367E88 /* MeetingMarkersSummary.swift */,
 				E4ECB3E0632257D714C456F6 /* MeetingSessionScanner.swift */,
 				73449844E1E3155BB53E405D /* SessionFolderName.swift */,
+				9AA820989B3678203F26D5FA /* TOON.swift */,
 			);
 			path = RogerKit;
 			sourceTree = "<group>";
@@ -849,6 +855,7 @@
 				15655329E17F5F7E4E82C40F /* MeetingMarkersSummary.swift in Sources */,
 				500C8372CF4CC41DFD8390A8 /* MeetingSessionScanner.swift in Sources */,
 				B2B2C0D495152F6D6CA12C5F /* SessionFolderName.swift in Sources */,
+				1EE4A1CA71B9252CC9B75A16 /* TOON.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -860,6 +867,7 @@
 				BC752E5F0A5F750A95CDC359 /* LibraryScannerTests.swift in Sources */,
 				63A129886E04D1A788F4BE57 /* MeetingMarkersSummaryTests.swift in Sources */,
 				55A8CC4444CD8D330399B63E /* SessionFolderNameTests.swift in Sources */,
+				2E04BBB0D0BA3310A41CA6F2 /* TOONTests.swift in Sources */,
 				C2ED5CB0F6D6FB7249ED870E /* TempDir.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
