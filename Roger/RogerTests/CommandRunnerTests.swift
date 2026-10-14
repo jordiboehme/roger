@@ -30,7 +30,9 @@ struct CommandRunnerTests {
         // A killed child may stay a zombie for a moment until launchd reaps it.
         var gone = false
         for _ in 0..<40 {
-            if kill(-group, 0) == -1, errno == ESRCH {
+            let groupGone = kill(-group, 0) == -1 && errno == ESRCH
+            let shellGone = kill(group, 0) == -1 && errno == ESRCH
+            if groupGone, shellGone {
                 gone = true
                 break
             }
@@ -73,5 +75,23 @@ struct CommandRunnerTests {
         #expect(CLILocator.searchPath(loginShellPATH: "/Users/x/.local/bin:relative:/usr/bin:/opt/homebrew/bin")
                 == ["/Users/x/.local/bin", "/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"])
         #expect(CLILocator.searchPath(loginShellPATH: nil) == ["/opt/homebrew/bin", "/usr/local/bin"])
+    }
+
+    @Test func searchPathAddsTheHomeLocalBin() {
+        let home = URL(fileURLWithPath: "/Users/x", isDirectory: true)
+        #expect(CLILocator.searchPath(loginShellPATH: "/usr/bin", home: home)
+                == ["/usr/bin", "/Users/x/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"])
+        #expect(CLILocator.searchPath(loginShellPATH: "/Users/x/.local/bin", home: home)
+                == ["/Users/x/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"])
+    }
+
+    @Test func loginShellPATHIgnoresProfileOutput() async {
+        let marker = CLILocator.pathMarker
+        let runner = FakeRunner([CommandResult(status: .exited(0), stdout: "Welcome!\n\(marker)/a/bin:/usr/bin\(marker)bye\n", stderr: "")])
+        let path = await CLILocator.loginShellPATH(runner: runner, home: tmp)
+        #expect(path == "/a/bin:/usr/bin")
+        #expect(runner.calls.first?.last?.contains(marker) == true)
+        #expect(CLILocator.pathBetweenMarkers("no markers") == nil)
+        #expect(CLILocator.pathBetweenMarkers("\(marker)\(marker)") == "")
     }
 }

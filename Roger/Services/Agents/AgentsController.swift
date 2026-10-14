@@ -33,11 +33,14 @@ final class AgentsController {
 
         var id: HarnessID { spec.id }
 
+        /// An unreadable config counts as not connected: Roger cannot tell.
+        private var serverAbsent: Bool { connection == .notConnected || connection == .unknown }
+
         /// "Install" while the row has nothing of its own, "Update" when
         /// something is out of date, nil when all is well.
         var primaryAction: String? {
             let skillFresh = coveredBy != nil || skillState == .notInstalled
-            if skillFresh, connection == .notConnected { return "Install" }
+            if skillFresh, serverAbsent { return "Install" }
             let skillOK = coveredBy != nil || skillState == .upToDate
             if !skillOK || connection != .connected { return "Update" }
             return nil
@@ -45,7 +48,7 @@ final class AgentsController {
 
         /// A covered row leaves the skill to the covering row.
         var canUninstall: Bool {
-            (coveredBy == nil && skillState != .notInstalled) || connection != .notConnected
+            (coveredBy == nil && skillState != .notInstalled) || !serverAbsent
         }
     }
 
@@ -56,6 +59,8 @@ final class AgentsController {
     @ObservationIgnored let installer: SkillInstaller
     @ObservationIgnored private let runner: any CommandRunner
     @ObservationIgnored private var searchPath: [String]?
+    /// Drops a refresh that finished after a newer one.
+    @ObservationIgnored private var refreshGeneration = 0
 
     init(home: URL, installer: SkillInstaller, runner: any CommandRunner, appBundle: URL, searchPath: [String]? = nil, links: [String] = RogerMCPLocation.homebrewLinks) {
         self.home = home
@@ -81,22 +86,44 @@ final class AgentsController {
         return nil
     }
 
-    /// Reads detection, skill states and config files again. Messages and
-    /// busy flags stay, so another row's work keeps its spinner.
-    func refresh() {
-        let plans = SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home), home: home)
+    /// What `refresh()` reads from disk for one row.
+    private struct Snapshot: Sendable {
+        let plan: HarnessInstallPlan
+        let skillState: SkillRowState
+        let connection: ServerConnection
+    }
+
+    /// Reads detection, skill states and config files again, off the main
+    /// actor (`~/.claude.json` can be large). Messages and busy flags stay,
+    /// so another row's work keeps its spinner.
+    func refresh() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let home = self.home
+        let installer = self.installer
+        let executable = self.executable
+        let snapshots = await Task.detached(priority: .userInitiated) {
+            SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home), home: home).map { plan in
+                Snapshot(
+                    plan: plan,
+                    skillState: installer.state(of: plan.skillFolder),
+                    connection: HarnessRegistration.connection(plan.harness, home: home, executable: executable)
+                )
+            }
+        }.value
+        guard generation == refreshGeneration else { return }
         let previous = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-        rows = plans.map { plan in
-            let skillState = installer.state(of: plan.skillFolder)
+        rows = snapshots.map { snapshot in
+            let id = snapshot.plan.harness.id
             return Row(
-                spec: plan.harness,
-                plan: plan,
-                skillState: skillState,
-                coveredBy: skillState == .notInstalled ? nil : plan.coveredBy,
-                connection: executable.map { HarnessRegistration.connection(plan.harness, home: home, executable: $0) } ?? .unknown,
-                message: previous[plan.harness.id]?.message,
-                manualCommand: previous[plan.harness.id]?.manualCommand,
-                isBusy: previous[plan.harness.id]?.isBusy ?? false
+                spec: snapshot.plan.harness,
+                plan: snapshot.plan,
+                skillState: snapshot.skillState,
+                coveredBy: snapshot.skillState == .notInstalled ? nil : snapshot.plan.coveredBy,
+                connection: snapshot.connection,
+                message: previous[id]?.message,
+                manualCommand: previous[id]?.manualCommand,
+                isBusy: previous[id]?.isBusy ?? false
             )
         }
     }
@@ -126,7 +153,7 @@ final class AgentsController {
         } else if case .unusable(let reason) = executableChoice {
             notes.append(reason)
         }
-        finish(id, message: notes.isEmpty ? nil : notes.joined(separator: " "), command: command)
+        await finish(id, message: notes.isEmpty ? nil : notes.joined(separator: " "), command: command)
     }
 
     /// False when a changed skill needs a confirmation first; call again
@@ -152,7 +179,7 @@ final class AgentsController {
                 command = outcome.command
             }
         }
-        finish(id, message: notes.isEmpty ? nil : notes.joined(separator: " "), command: command)
+        await finish(id, message: notes.isEmpty ? nil : notes.joined(separator: " "), command: command)
         return true
     }
 
@@ -161,7 +188,7 @@ final class AgentsController {
     private func registrar() async -> HarnessRegistrar {
         if searchPath == nil {
             let path = await CLILocator.loginShellPATH(runner: runner, home: home)
-            searchPath = CLILocator.searchPath(loginShellPATH: path)
+            searchPath = CLILocator.searchPath(loginShellPATH: path, home: home)
         }
         return HarnessRegistrar(home: home, runner: runner, searchPath: searchPath ?? CLILocator.extraDirectories)
     }
@@ -170,8 +197,8 @@ final class AgentsController {
         if let index = rows.firstIndex(where: { $0.id == id }) { rows[index].isBusy = busy }
     }
 
-    private func finish(_ id: HarnessID, message: String?, command: String?) {
-        refresh()
+    private func finish(_ id: HarnessID, message: String?, command: String?) async {
+        await refresh()
         if let index = rows.firstIndex(where: { $0.id == id }) {
             rows[index].message = message
             rows[index].manualCommand = command

@@ -61,14 +61,17 @@ enum HarnessRegistration {
         return McpCommandFormatter.jsonSnippet(executable: executable)
     }
 
-    /// Reads (never writes) the harness's config files in order.
-    static func connection(_ spec: HarnessSpec, home: URL, executable: String) -> ServerConnection {
+    /// Reads (never writes) the harness's config files in order. Without an
+    /// executable to compare (Roger runs from a temporary place), any roger
+    /// entry is `.otherCommand`.
+    static func connection(_ spec: HarnessSpec, home: URL, executable: String?) -> ServerConnection {
         var sawUnreadable = false
         for file in spec.configFiles {
             guard let data = try? Data(contentsOf: home.appendingPathComponent(file)) else { continue }
             let lookup = spec.id == .codex ? tomlCommand(String(decoding: data, as: UTF8.self)) : jsonCommand(data)
             switch lookup {
             case .command(let command):
+                guard let executable else { return .otherCommand(command) }
                 return sameExecutable(command, executable) ? .connected : .otherCommand(command)
             case .absent:
                 continue

@@ -7,7 +7,9 @@ struct AgentsSettingsView: View {
     @State private var status: AgentsLibraryStatus?
     @State private var consumerAction: ConsumerAction?
     @State private var actionError: String?
-    @State private var agents = AgentsController.live()
+    /// Built once in `.task`, not on every view init.
+    @State private var agents: AgentsController?
+    @State private var agentsLoaded = false
     @State private var confirmUninstall: HarnessID?
 
     enum ConsumerAction: Identifiable, Equatable {
@@ -52,7 +54,11 @@ struct AgentsSettingsView: View {
         }
         .task {
             reload()
-            agents?.refresh()
+            if !agentsLoaded {
+                agents = AgentsController.live()
+                agentsLoaded = true
+            }
+            await agents?.refresh()
         }
         .confirmationDialog(
             consumerAction.map(confirmationTitle) ?? "",
@@ -122,7 +128,7 @@ struct AgentsSettingsView: View {
                     harnessRow(row, agents: agents)
                     if row.id != agents.rows.last?.id { Divider() }
                 }
-            } else {
+            } else if agentsLoaded {
                 Text("This copy of Roger has no ingest skill.")
                     .foregroundStyle(.secondary)
             }

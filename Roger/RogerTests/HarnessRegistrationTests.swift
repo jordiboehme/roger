@@ -231,12 +231,46 @@ struct HarnessRegistrationTests {
         let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
         let runner = FakeRunner([ok])
         let controller = AgentsController(home: home, installer: installer, runner: runner, appBundle: app, searchPath: [bin.path], links: [])
-        controller.refresh()
+        await controller.refresh()
         #expect(controller.rows.map(\.id) == [.claudeCode])
         await controller.install(.claudeCode)
         #expect(installer.state(of: home.appendingPathComponent(".claude/skills")) == .upToDate)
         #expect(runner.calls.first?.prefix(3) == ["claude", "mcp", "add"])
         #expect(controller.rows.first?.manualCommand == nil)
+    }
+
+    @MainActor
+    @Test func unusableExecutableStillReadsTheConfig() async throws {
+        let (home, bin) = try home(with: ["claude"])
+        defer { TempFolder.remove(home) }
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let dmg = URL(fileURLWithPath: "/Volumes/Roger/Roger.app", isDirectory: true)
+        let controller = AgentsController(home: home, installer: installer, runner: FakeRunner([ok]), appBundle: dmg, searchPath: [bin.path], links: [])
+        guard case .unusable = controller.executableChoice else {
+            Issue.record("expected an unusable executable")
+            return
+        }
+        await controller.refresh()
+        var row = try #require(controller.rows.first)
+        #expect(row.connection == .notConnected)
+        #expect(row.primaryAction == "Install")
+        #expect(row.canUninstall == false)
+
+        let config = home.appendingPathComponent(".claude.json")
+        try Data(#"{"mcpServers":{"roger":{"command":"/Applications/Roger.app/Contents/MacOS/roger-mcp"}}}"#.utf8).write(to: config)
+        await controller.refresh()
+        row = try #require(controller.rows.first)
+        #expect(row.connection == .otherCommand("/Applications/Roger.app/Contents/MacOS/roger-mcp"))
+        #expect(row.canUninstall)
+
+        try Data("{ nope".utf8).write(to: config)
+        await controller.refresh()
+        row = try #require(controller.rows.first)
+        #expect(row.connection == .unknown)
+        #expect(row.primaryAction == "Install")
+        #expect(row.canUninstall == false)
     }
 
     @MainActor
@@ -251,7 +285,7 @@ struct HarnessRegistrationTests {
         let runner = GateRunner(gating: "claude")
         let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
         let controller = AgentsController(home: home, installer: installer, runner: runner, appBundle: app, searchPath: [bin.path], links: [])
-        controller.refresh()
+        await controller.refresh()
         let claude = Task { await controller.install(.claudeCode) }
         while !runner.calls.contains("claude") { await Task.yield() }
         await controller.install(.kiro)
@@ -269,7 +303,7 @@ struct HarnessRegistrationTests {
     }
 
     @MainActor
-    private func codexAndGemini() throws -> (home: URL, controller: AgentsController, installer: SkillInstaller, runner: FakeRunner) {
+    private func codexAndGemini() async throws -> (home: URL, controller: AgentsController, installer: SkillInstaller, runner: FakeRunner) {
         let (home, bin) = try home(with: ["codex", "gemini"])
         for folder in [".codex", ".gemini"] {
             try FileManager.default.createDirectory(at: home.appendingPathComponent(folder), withIntermediateDirectories: true)
@@ -279,13 +313,13 @@ struct HarnessRegistrationTests {
         let runner = FakeRunner([ok])
         let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
         let controller = AgentsController(home: home, installer: installer, runner: runner, appBundle: app, searchPath: [bin.path], links: [])
-        controller.refresh()
+        await controller.refresh()
         return (home, controller, installer, runner)
     }
 
     @MainActor
     @Test func coveredRowInstallsTheSkillWhileTheCoverHasNone() async throws {
-        let (home, controller, installer, runner) = try codexAndGemini()
+        let (home, controller, installer, runner) = try await codexAndGemini()
         defer { TempFolder.remove(home) }
         let gemini = try #require(controller.rows.first { $0.id == .gemini })
         #expect(gemini.plan.coveredBy == .codex)
@@ -299,7 +333,7 @@ struct HarnessRegistrationTests {
 
     @MainActor
     @Test func coveredRowShowsTheCoverOnceItsSkillIsThere() async throws {
-        let (home, controller, _, runner) = try codexAndGemini()
+        let (home, controller, _, runner) = try await codexAndGemini()
         defer { TempFolder.remove(home) }
         await controller.install(.codex)
         let gemini = try #require(controller.rows.first { $0.id == .gemini })

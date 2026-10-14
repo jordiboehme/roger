@@ -109,17 +109,23 @@ struct ProcessCommandRunner: CommandRunner {
 }
 
 /// Where harness CLIs are looked for: the login shell's `PATH` (a GUI app
-/// gets a short one) plus Homebrew's folders.
+/// gets a short one), `~/.local/bin` (the native Claude Code installer)
+/// and Homebrew's folders.
 enum CLILocator {
     static let extraDirectories = ["/opt/homebrew/bin", "/usr/local/bin"]
+    /// Relative to the home folder.
+    static let homeDirectories = [".local/bin"]
+    /// Printed around `PATH`, so profile output before or after it is ignored.
+    static let pathMarker = "__ROGER_PATH__"
 
-    static func searchPath(loginShellPATH: String?) -> [String] {
+    static func searchPath(loginShellPATH: String?, home: URL? = nil) -> [String] {
         let fromShell = (loginShellPATH ?? "")
             .split(separator: ":")
             .map(String.init)
             .filter { $0.hasPrefix("/") }
+        let fromHome = home.map { home in homeDirectories.map { home.appendingPathComponent($0).path } } ?? []
         var seen = Set<String>()
-        return (fromShell + extraDirectories).filter { seen.insert($0).inserted }
+        return (fromShell + fromHome + extraDirectories).filter { seen.insert($0).inserted }
     }
 
     static func find(_ name: String, in directories: [String]) -> URL? {
@@ -133,13 +139,19 @@ enum CLILocator {
         let shell = getpwuid(getuid()).flatMap { $0.pointee.pw_shell.map { String(cString: $0) } } ?? "/bin/zsh"
         let result = await runner.run(
             URL(fileURLWithPath: shell),
-            ["-l", "-c", "printf '%s' \"$PATH\""],
+            ["-l", "-c", "printf '\(pathMarker)%s\(pathMarker)' \"$PATH\""],
             environment: ["HOME": home.path, "USER": NSUserName()],
             currentDirectory: home,
             timeout: .seconds(5)
         )
         guard result.succeeded else { return nil }
-        // Profile scripts may print first; PATH is the last line.
-        return result.stdout.split(separator: "\n").last.map(String.init)
+        return pathBetweenMarkers(result.stdout)
+    }
+
+    /// The text between the first two markers. Nil when they are missing.
+    static func pathBetweenMarkers(_ output: String) -> String? {
+        let parts = output.components(separatedBy: pathMarker)
+        guard parts.count >= 3 else { return nil }
+        return parts[1]
     }
 }
