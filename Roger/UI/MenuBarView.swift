@@ -575,7 +575,7 @@ private struct PresetCheatSheetRow: View {
     var body: some View {
         HStack(spacing: 10) {
             KeyComboBadge(modifier: modifier)
-            Text(preset.name)
+            Text(preset.displayName)
                 .font(.system(size: 13, weight: isPrimary ? .semibold : .regular))
                 .foregroundStyle(.primary)
             Spacer()

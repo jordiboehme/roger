@@ -45,6 +45,18 @@ struct PresetEditingTests {
         #expect(copy.original == nil)
     }
 
+    @Test func emptyNameShowsUntitled() {
+        var preset = DictationPreset.newCustom()
+        preset.name = "   "
+        #expect(preset.trimmedName == "")
+        #expect(preset.displayName == "Untitled")
+        preset.name = "  Notes "
+        #expect(preset.trimmedName == "Notes")
+        #expect(preset.displayName == "Notes")
+        preset.name = ""
+        #expect(preset.duplicated().name == "Untitled Copy")
+    }
+
     @Test func dictionarySummaryCountsWords() {
         var preset = DictationPreset.newCustom()
         #expect(preset.dictionarySummary == "No words")
@@ -68,5 +80,16 @@ struct PresetLanguageWarningTests {
         var cloud = DictationPreset.polished
         cloud.language = "fi"
         #expect(PresetsPane.languageWarning(preset: cloud, provider: .claude) == nil)
+    }
+
+    @Test func warnsWhenAppleIntelligenceLacksThePinnedLanguage() throws {
+        let unsupported = try #require(
+            WhisperLanguage.all.first { !AppleIntelligenceLanguageSupport.supports(languageCode: $0.code) }
+        )
+        var preset = DictationPreset.polished
+        preset.language = unsupported.code
+        let warning = try #require(PresetsPane.languageWarning(preset: preset, provider: .appleIntelligence))
+        #expect(warning.contains(WhisperLanguage.displayName(for: unsupported.code)))
+        #expect(warning.contains("text model"))
     }
 }

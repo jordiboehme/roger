@@ -24,7 +24,7 @@ extension DictationPreset {
     func duplicated(id: UUID = UUID()) -> DictationPreset {
         var copy = self
         copy.id = id
-        copy.name = "\(name) Copy"
+        copy.name = "\(displayName) Copy"
         copy.isBuiltIn = false
         return copy
     }
@@ -44,6 +44,19 @@ extension DictationPreset {
             rewritePrompt: "",
             dictionaryEntries: []
         )
+    }
+
+    /// Shown for a preset whose name is empty.
+    static let untitledName = "Untitled"
+
+    /// The name without leading and trailing spaces.
+    var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The name to show: trimmed, "Untitled" when empty.
+    var displayName: String {
+        trimmedName.isEmpty ? DictationPreset.untitledName : trimmedName
     }
 
     /// "No words", "1 word", "3 words".

@@ -25,7 +25,7 @@ struct PresetsPane: View {
             }
         }
         .confirmationDialog(
-            "Delete \"\(pendingDelete?.name ?? "")\"?",
+            "Delete \"\(pendingDelete?.displayName ?? "")\"?",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
             presenting: pendingDelete
         ) { preset in
@@ -35,7 +35,7 @@ struct PresetsPane: View {
             Text("You cannot undo this.")
         }
         .confirmationDialog(
-            "Reset \"\(pendingReset?.name ?? "")\"?",
+            "Reset \"\(pendingReset?.displayName ?? "")\"?",
             isPresented: Binding(get: { pendingReset != nil }, set: { if !$0 { pendingReset = nil } }),
             presenting: pendingReset
         ) { preset in
@@ -51,14 +51,14 @@ struct PresetsPane: View {
     private var presetList: some View {
         VStack(spacing: 0) {
             List(selection: $selectedPresetID) {
-                ForEach(coordinator.appState.presets) { preset in
-                    PresetListRow(
-                        preset: preset,
-                        isMain: preset.id == coordinator.appState.activePresetID,
-                        modifier: coordinator.appState.modifier(for: preset.id)
-                    )
-                    .tag(preset.id)
-                    .contextMenu { contextMenu(for: preset) }
+                Section("Built-in") {
+                    rows(coordinator.appState.presets.filter(\.isBuiltIn))
+                }
+                let custom = coordinator.appState.presets.filter { !$0.isBuiltIn }
+                if !custom.isEmpty {
+                    Section("Custom") {
+                        rows(custom)
+                    }
                 }
             }
             Divider()
@@ -73,6 +73,29 @@ struct PresetsPane: View {
         }
     }
 
+    private func rows(_ presets: [DictationPreset]) -> some View {
+        ForEach(presets) { preset in
+            PresetListRow(
+                preset: preset,
+                isMain: preset.id == coordinator.appState.activePresetID,
+                modifier: coordinator.appState.modifier(for: preset.id)
+            )
+            .tag(preset.id)
+            .contextMenu { contextMenu(for: preset) }
+        }
+    }
+
+    /// A menu item with a checkmark when it is the current choice. No
+    /// empty symbol name, so macOS logs nothing.
+    @ViewBuilder
+    private func checkLabel(_ title: String, checked: Bool) -> some View {
+        if checked {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
+    }
+
     @ViewBuilder
     private func contextMenu(for preset: DictationPreset) -> some View {
         let state = coordinator.appState
@@ -83,7 +106,7 @@ struct PresetsPane: View {
             state.activePresetID = preset.id
             state.clearBinding(for: preset.id)
         } label: {
-            Label("Set as main preset", systemImage: isMain ? "checkmark" : "")
+            checkLabel("Set as main preset", checked: isMain)
         }
 
         Divider()
@@ -91,7 +114,7 @@ struct PresetsPane: View {
         Button {
             state.clearBinding(for: preset.id)
         } label: {
-            Label("No modifier", systemImage: !isMain && currentModifier == nil ? "checkmark" : "")
+            checkLabel("No modifier", checked: !isMain && currentModifier == nil)
         }
         .disabled(isMain)
 
@@ -99,7 +122,7 @@ struct PresetsPane: View {
             Button {
                 state.bindModifier(modifier, to: preset.id)
             } label: {
-                Label("\(modifier.symbol) \(modifier.displayName)", systemImage: currentModifier == modifier ? "checkmark" : "")
+                checkLabel("\(modifier.symbol) \(modifier.displayName)", checked: currentModifier == modifier)
             }
             .disabled(isMain)
         }
@@ -215,11 +238,11 @@ private struct PresetListRow: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(preset.name)
+            Text(preset.displayName)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .layoutPriority(1)
-                .help(preset.name)
+                .help(preset.displayName)
             Spacer(minLength: 4)
             Group {
                 if preset.output == .logEntry {
@@ -268,18 +291,26 @@ private struct PresetDetailForm: View {
     let onReset: () -> Void
     let onDelete: () -> Void
     @State private var advancedExpanded = false
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         SettingsForm {
             Section("Preset") {
-                TextField("Name", text: $preset.name)
+                TextField("Name", text: $preset.name, prompt: Text(DictationPreset.untitledName))
+                    .focused($nameFocused)
+                    .onSubmit(trimName)
+                    .onChange(of: nameFocused) { _, focused in
+                        if !focused { trimName() }
+                    }
+                    // Switching to another preset ends editing too.
+                    .onDisappear(perform: trimName)
                 Picker(selection: $preset.language) {
                     Text("Automatic").tag(String?.none)
                     ForEach(WhisperLanguage.all, id: \.code) { entry in
                         Text(entry.displayName).tag(Optional(entry.code))
                     }
                 } label: {
-                    SettingsLabel(title: "Language", note: "Pin it for short phrases.")
+                    SettingsLabel(title: "Language", note: "Stops misheard short phrases.")
                 }
                 if let warning = PresetsPane.languageWarning(preset: preset, provider: provider) {
                     Label(warning, systemImage: "exclamationmark.triangle.fill")
@@ -367,6 +398,14 @@ private struct PresetDetailForm: View {
                     Text("Built-in presets can be changed. Reset brings back the original.")
                 }
             }
+        }
+    }
+
+    /// Trims the name when editing ends. Only writes when it changes.
+    private func trimName() {
+        let trimmed = preset.trimmedName
+        if trimmed != preset.name {
+            preset.name = trimmed
         }
     }
 
