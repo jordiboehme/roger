@@ -131,6 +131,38 @@ struct SettingsPaneLifecycleTests {
         #expect(events.list == ["appear", "disappear", "appear"])
     }
 
+    @Test func closeForTerminationEndsThePaneThroughWindowWillClose() throws {
+        var policies: [NSApplication.ActivationPolicy] = []
+        let events = Events()
+        let controller = SettingsWindowController(
+            presence: AppWindowPresence { policies.append($0) },
+            memory: .none,
+            frameAutosaveName: nil,
+            present: { $0.contentView?.layoutSubtreeIfNeeded() },
+            makeContent: { navigation in
+                AnyView(SettingsWhileVisible(navigation: navigation) { Probe(events: events) })
+            }
+        )
+        controller.show(.aiProvider)
+        controller.closeForTermination()
+        #expect(events.list == ["appear", "disappear"])
+        #expect(!controller.isOpen)
+        #expect(!controller.navigation.isVisible)
+        #expect(policies == [.regular, .accessory])
+
+        // A second call, or one with the window already closed, does nothing.
+        controller.closeForTermination()
+        #expect(events.list == ["appear", "disappear"])
+        #expect(policies == [.regular, .accessory])
+    }
+
+    @Test func closeForTerminationWithoutAWindowDoesNothing() {
+        let controller = make(Events())
+        controller.closeForTermination()
+        #expect(controller.window == nil)
+        #expect(!controller.isOpen)
+    }
+
     @Test func closeEndsEditingInTheWindow() throws {
         let controller = make(Events())
         controller.show()

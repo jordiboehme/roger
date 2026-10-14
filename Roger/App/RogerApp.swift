@@ -146,7 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// relaunch ("Relaunch Roger") starts its helper only after that.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let mayQuit = libraryWindowController?.confirmUnsavedEdit() ?? true
-        return AppRelauncher.terminateReply(mayQuit: mayQuit)
+        let reply = AppRelauncher.terminateReply(mayQuit: mayQuit)
+        // Only once the quit really goes ahead: close Settings so its pane
+        // saves what was typed (an API key saves on disappear).
+        if reply == .terminateNow { settingsWindowController?.closeForTermination() }
+        return reply
     }
 
     // MARK: - Open With / Services

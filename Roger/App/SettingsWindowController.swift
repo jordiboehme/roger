@@ -101,6 +101,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         presence.leave(.settings)
     }
 
+    /// Roger is about to quit: closes the window the same way as its close
+    /// button, so windowWillClose ends the pane and its onDisappear saves a
+    /// typed API key. Does nothing when the window is not open.
+    func closeForTermination() {
+        guard isOpen, let window else { return }
+        window.close()
+    }
+
     private func makeWindow() -> NSWindow {
         let hosting = NSHostingController(rootView: makeContent(navigation))
         hosting.sceneBridgingOptions = [.toolbars, .title]
