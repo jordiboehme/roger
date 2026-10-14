@@ -29,7 +29,7 @@ struct GeneralPaneTextTests {
         #expect(GeneralPane.missingPermissionsMessage(microphone: true, accessibility: false)
             == "Roger needs Accessibility access to type your text and to see the dictation key.")
         #expect(GeneralPane.missingPermissionsMessage(microphone: false, accessibility: false)
-            == "Roger needs access to the microphone and Accessibility access.")
+            == "Roger needs access to the microphone and to Accessibility.")
     }
 
     @Test func dictationKeyFollowsTheRemap() {

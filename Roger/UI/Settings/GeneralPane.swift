@@ -83,6 +83,10 @@ struct GeneralPane: View {
             permissions.checkPermissions()
         }
         .task { capsLockActive = await CapsLockRemap.isActiveNow() }
+        // Hides the banner soon after access is granted in System Settings.
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            permissions.checkPermissions()
+        }
         .onChange(of: state.activationMode) { _, newMode in
             coordinator.hotkeyManager.activationMode = newMode
         }
@@ -92,7 +96,7 @@ struct GeneralPane: View {
     static func missingPermissionsMessage(microphone: Bool, accessibility: Bool) -> String? {
         switch (microphone, accessibility) {
         case (true, true): return nil
-        case (false, false): return "Roger needs access to the microphone and Accessibility access."
+        case (false, false): return "Roger needs access to the microphone and to Accessibility."
         case (false, true): return "Roger needs access to the microphone to hear you."
         case (true, false): return "Roger needs Accessibility access to type your text and to see the dictation key."
         }

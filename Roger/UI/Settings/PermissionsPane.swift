@@ -13,6 +13,8 @@ struct PermissionsPane: View {
     @State private var systemAudioTestRunning = false
     /// nil while hidutil is asked.
     @State private var capsLockActive: Bool?
+    /// Result of "Keep at Login": the note text and whether it worked.
+    @State private var keepAtLoginResult: (text: String, succeeded: Bool)?
 
     var body: some View {
         let pm = coordinator.permissionManager
@@ -85,7 +87,7 @@ struct PermissionsPane: View {
 
             Section {
                 SettingsRow(
-                    title: "Dictation key",
+                    title: "Hotkey listener",
                     note: hotkeyTestResult ?? "Roger listens for F18. Press Test, then the key.",
                     noteColor: SettingsResultColor.color(for: hotkeyTestResult)
                 ) {
@@ -106,20 +108,22 @@ struct PermissionsPane: View {
                 }
                 SettingsRow(
                     title: "Caps Lock",
-                    note: "Makes Caps Lock send F18. Keep at Login sets it up again after every restart."
+                    note: keepAtLoginResult?.text
+                        ?? "Makes Caps Lock send F18. Keep at Login sets it up again after every restart.",
+                    noteColor: keepAtLoginResult.map { $0.succeeded ? .green : .red } ?? .secondary
                 ) {
                     HStack {
                         SettingsStatus(
                             level: capsLockActive == true ? .good : (capsLockActive == false ? .bad : .unknown),
                             text: capsLockActive == true ? "Sends F18" : (capsLockActive == false ? "Not set up" : "Checking")
                         )
-                        Button("Turn On") {
-                            HotkeyManager.remapCapsLockToF18()
-                            Task { capsLockActive = await CapsLockRemap.isActiveNow() }
+                        if capsLockActive != true {
+                            Button("Turn On") {
+                                HotkeyManager.remapCapsLockToF18()
+                                Task { capsLockActive = await CapsLockRemap.isActiveNow() }
+                            }
                         }
-                        Button("Keep at Login") {
-                            try? HotkeyManager.installRemapLaunchAgent()
-                        }
+                        Button("Keep at Login") { keepAtLogin() }
                     }
                 }
             } header: {
@@ -130,6 +134,15 @@ struct PermissionsPane: View {
         .task { capsLockActive = await CapsLockRemap.isActiveNow() }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             pm.checkPermissions()
+        }
+    }
+
+    private func keepAtLogin() {
+        do {
+            try HotkeyManager.installRemapLaunchAgent()
+            keepAtLoginResult = ("Caps Lock is set up again after every restart.", true)
+        } catch {
+            keepAtLoginResult = ("Roger could not set this up: \(error.localizedDescription)", false)
         }
     }
 

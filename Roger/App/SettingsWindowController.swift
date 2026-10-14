@@ -57,10 +57,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private func widenSidebarOnce() {
         guard !sidebarWidened, let content = window?.contentView else { return }
         DispatchQueue.main.async {
-            guard let split = Self.firstSplitView(in: content), split.arrangedSubviews.count > 1,
-                  split.arrangedSubviews[0].frame.width < Self.sidebarWidth else { return }
-            split.setPosition(Self.sidebarWidth, ofDividerAt: 0)
+            guard let split = Self.firstSplitView(in: content), split.arrangedSubviews.count > 1 else { return }
+            // Once the split view exists, never touch it again, so a drag
+            // by the user is kept.
             self.sidebarWidened = true
+            if split.arrangedSubviews[0].frame.width < Self.sidebarWidth {
+                split.setPosition(Self.sidebarWidth, ofDividerAt: 0)
+            }
         }
     }
 
