@@ -33,7 +33,12 @@ final class LibraryModel {
     var sort: LibrarySort = .newestFirst {
         didSet { if sort != oldValue { scheduleReload() } }
     }
-    var selection: Set<LibraryItem.ID> = []
+    var selection: Set<LibraryItem.ID> = [] {
+        didSet {
+            // Selecting anything else ends the pin.
+            if let pinnedID, selection != [pinnedID] { self.pinnedID = nil }
+        }
+    }
     /// The item whose body the detail pane is editing. The list is locked
     /// meanwhile, and the detail pane keeps showing this item even when a
     /// filter or a refresh hides it, so unsaved text is never dropped.
@@ -77,6 +82,10 @@ final class LibraryModel {
     private(set) var appliedSearch = ""
 
     @ObservationIgnored private var pendingSelectionID: String?
+    /// The entry that was just saved or renamed. It stays in `results`
+    /// (and selected) even when it no longer matches the search or the
+    /// filters, until the selection changes.
+    @ObservationIgnored private var pinnedID: String?
     /// A `select(url:)` that arrived while a body was edited.
     @ObservationIgnored private var deferredSelectionURL: URL?
     @ObservationIgnored private var changeTask: Task<Void, Never>?
@@ -207,6 +216,7 @@ final class LibraryModel {
         guard LibraryDocumentEditor.canEdit(item, activeSessionFolder: activeSessionFolder) else { return .notEditable }
         switch try LibraryDocumentEditor.saveBody(draft, of: base, overwrite: overwrite) {
         case .saved:
+            pinnedID = item.id
             editingItem = nil
             return .saved
         case .changedOnDisk:
@@ -232,6 +242,15 @@ final class LibraryModel {
         searchText = ""
         appliedSearch = ""
         scheduleReload()
+    }
+
+    /// Roger wrote this entry's file (rename or save). The index reads it
+    /// now, so the header and the row show the new text at once, and the
+    /// entry stays listed and selected.
+    func didWrite(_ item: LibraryItem) async {
+        pinnedID = item.id
+        await index.refresh(paths: [item.url.path])
+        await reload()
     }
 
     /// Roger became active: the library folder may have come back.
@@ -260,9 +279,18 @@ final class LibraryModel {
         counts = Dictionary(grouping: all, by: \.kind).mapValues(\.count)
         totalCount = all.count
         libraryMissing = missing
-        results = found
+        var shown = found
+        if let pinned = pinnedID, !found.contains(where: { $0.id == pinned }) {
+            if let item = all.first(where: { $0.id == pinned }) {
+                shown = LibraryQuery.sorted(found + [item], by: query.sort)
+            } else {
+                // Gone from the index (moved or deleted).
+                pinnedID = nil
+            }
+        }
+        results = shown
         isLoading = false
-        let ids = Set(found.map(\.id))
+        let ids = Set(shown.map(\.id))
         // While editing, the selection and any pending one stay as they are.
         guard !isEditing else { return }
         if let pending = pendingSelectionID, ids.contains(pending) {

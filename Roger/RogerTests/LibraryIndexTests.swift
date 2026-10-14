@@ -324,4 +324,18 @@ struct LibraryIndexTests {
         #expect(await index.items().count == 1)
         #expect(await index.watchedPaths() == [LibraryPath.canonical(layout.root)])
     }
+
+    /// After a rename the index reads the file at once, not when the folder
+    /// watcher reports it.
+    @Test func refreshReadsAFileNow() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let url = try writeLog(layout, at: date, text: "Before")
+        let index = makeIndex(layout)
+        #expect(await index.items().first?.firstLine == "Before")
+        try writeLog(layout, at: date, text: "After")
+        await index.refresh(paths: [url.path])
+        #expect(await index.items().first?.firstLine == "After")
+    }
 }

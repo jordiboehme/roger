@@ -6,6 +6,7 @@ private final class FakeLibraryIndex: LibraryIndex, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [LibraryItem]
     private var missing = false
+    private var refreshed: [String] = []
     let changes: AsyncStream<Void>
     private let continuation: AsyncStream<Void>.Continuation
 
@@ -20,6 +21,9 @@ private final class FakeLibraryIndex: LibraryIndex, @unchecked Sendable {
     func search(_ query: LibraryQuery) async -> [LibraryItem] { query.apply(to: lock.withLock { stored }) }
 
     func libraryRootMissing() async -> Bool { lock.withLock { missing } }
+
+    func refresh(paths: [String]) async { lock.withLock { refreshed += paths } }
+    var refreshedPaths: [String] { lock.withLock { refreshed } }
 
     func setMissing(_ value: Bool) {
         lock.withLock { missing = value }
@@ -346,5 +350,60 @@ struct LibraryModelTests {
         fake.setMissing(false)
         await model.recheckLibraryRoot()
         #expect(!model.libraryMissing)
+    }
+
+    /// After a save the entry stays listed and selected although the new
+    /// text no longer matches the search, until another entry is selected.
+    @Test func aSavedEntryStaysListedUntilAnotherIsSelected() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let file = folder.appendingPathComponent("note.md")
+        try "---\ntitle: \"note\"\n---\n# note\nsupplier call\n".write(to: file, atomically: true, encoding: .utf8)
+        let note = LibraryFixtures.item("note", body: "supplier call", folder: folder.path)
+        let other = LibraryFixtures.item("other", body: "supplier invoice")
+        let fake = FakeLibraryIndex([note, other])
+        let model = LibraryModel(index: fake)
+        model.searchText = "supplier"
+        await model.commitSearch()
+        model.selection = [note.id]
+
+        model.beginEditing(note, document: try LibraryDocument.load(file))
+        model.draft = "# note\nwarehouse visit\n"
+        #expect(try model.saveEdit(overwrite: false, activeSessionFolder: nil) == .saved)
+        let saved = LibraryFixtures.item("note", body: "warehouse visit", folder: folder.path)
+        fake.set([saved, other])
+        await model.reload()
+        #expect(model.results.map(\.id).contains(note.id))
+        #expect(model.results.first { $0.id == note.id }?.firstLine == "warehouse visit")
+        #expect(model.selection == [note.id])
+
+        model.selection = [other.id]
+        await model.reload()
+        #expect(model.results.map(\.id) == [other.id])
+        model.stop()
+    }
+
+    @Test func didWriteRefreshesTheIndexAndKeepsTheEntry() async {
+        let fake = FakeLibraryIndex(items)
+        let model = LibraryModel(index: fake)
+        model.sidebar = .kind(.meeting)
+        await model.reload()
+        model.selection = [items[0].id]
+        await model.didWrite(items[0])
+        #expect(fake.refreshedPaths == [items[0].url.path])
+        #expect(Set(model.results.map(\.id)) == [items[0].id, items[2].id])
+        #expect(model.selection == [items[0].id])
+    }
+
+    @Test func aPinnedEntryThatIsGoneIsDropped() async {
+        let fake = FakeLibraryIndex(items)
+        let model = LibraryModel(index: fake)
+        model.sidebar = .kind(.meeting)
+        model.selection = [items[0].id]
+        await model.didWrite(items[0])
+        fake.set([items[2]])
+        await model.reload()
+        #expect(model.results.map(\.id) == [items[2].id])
+        #expect(model.selection.isEmpty)
     }
 }

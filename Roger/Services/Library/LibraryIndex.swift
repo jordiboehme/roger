@@ -21,11 +21,15 @@ protocol LibraryIndex: Sendable {
     /// Looks at the root again; reads everything again when it appeared or
     /// went away.
     func recheckRoot() async
+    /// Reads these files again now, without waiting for the folder watcher
+    /// (after Roger wrote them).
+    func refresh(paths: [String]) async
 }
 
 extension LibraryIndex {
     func libraryRootMissing() async -> Bool { false }
     func recheckRoot() async {}
+    func refresh(paths: [String]) async {}
 }
 
 /// What must be read again after a file system change. Paths are canonical.
@@ -126,6 +130,10 @@ actor InMemoryLibraryIndex: LibraryIndex {
         logger.info("Library index built: \(count) items in \(milliseconds) ms")
         continuation.yield()
         if watchesFileSystem { restartWatcherIfNeeded() }
+    }
+
+    func refresh(paths: [String]) async {
+        apply(changedPaths: paths)
     }
 
     /// Reads again what `paths` touched. Paths may be spelled as FSEvents

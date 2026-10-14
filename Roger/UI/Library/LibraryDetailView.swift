@@ -39,8 +39,7 @@ struct LibraryItemDetail: View {
 
     @State private var document: LibraryDocument?
     @State private var loadError: String?
-    @State private var isRenaming = false
-    @State private var titleDraft = ""
+    @State private var rename = LibraryRenameState()
     @State private var showsConflict = false
     @State private var actionError: String?
     @FocusState private var titleFocused: Bool
@@ -54,17 +53,27 @@ struct LibraryItemDetail: View {
             header
                 .padding(16)
             Divider()
-            if model.isEditing {
-                TextEditor(text: $model.draft)
-                    .font(.system(.body, design: .monospaced))
-                    .padding(8)
-            } else {
-                preview
+            Group {
+                if model.isEditing {
+                    TextEditor(text: $model.draft)
+                        .font(.system(.body, design: .monospaced))
+                        .padding(8)
+                } else {
+                    preview
+                }
             }
+            // A click below the header ends a rename, like in Finder.
+            .simultaneousGesture(TapGesture().onEnded { endRenameByClick() })
         }
         .task(id: item) { await load() }
         .onAppear { consumeRenameRequest() }
         .onChange(of: model.renameRequest) { _, _ in consumeRenameRequest() }
+        .onChange(of: titleFocused) { _, focused in
+            // Focus moved away (a click in the list, the sidebar or the
+            // search field): commit, like Finder. After Return or Esc this
+            // does nothing.
+            if !focused { commitRename() }
+        }
         .alert("This file changed on disk", isPresented: $showsConflict) {
             Button("Overwrite", role: .destructive) { save(overwrite: true) }
             Button("Discard my changes") {
@@ -89,13 +98,13 @@ struct LibraryItemDetail: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if isRenaming {
-                TextField("Title", text: $titleDraft)
+            if rename.isActive {
+                TextField("Title", text: $rename.draft)
                     .textFieldStyle(.roundedBorder)
                     .font(.title2.weight(.semibold))
                     .focused($titleFocused)
                     .onSubmit(commitRename)
-                    .onExitCommand { isRenaming = false }
+                    .onExitCommand { rename.cancel() }
             } else {
                 Text(item.title)
                     .font(.title2.weight(.semibold))
@@ -213,7 +222,7 @@ struct LibraryItemDetail: View {
     /// shows, which may be older.
     private func startEditing() {
         guard canEdit, !model.isEditing else { return }
-        isRenaming = false
+        rename.cancel()
         reloadNow()
         guard let document else { return }
         model.beginEditing(item, document: document)
@@ -237,6 +246,8 @@ struct LibraryItemDetail: View {
                 // The new modification date, or the next save sees this
                 // write as a change by another app.
                 reloadNow()
+                let written = item
+                Task { await model.didWrite(written) }
             case .changedOnDisk:
                 showsConflict = true
             case .missing, .notEditable:
@@ -256,24 +267,31 @@ struct LibraryItemDetail: View {
 
     private func startRename() {
         guard canEdit, !model.isEditing else { return }
-        titleDraft = item.title
-        isRenaming = true
+        rename.begin(title: item.title)
         titleFocused = true
     }
 
+    private func endRenameByClick() {
+        guard rename.isActive else { return }
+        commitRename()
+        titleFocused = false
+    }
+
     /// Checks the active meeting folder again, like `save`: a recording
-    /// may have started in this folder since the rename began.
+    /// may have started in this folder since the rename began. Runs at
+    /// most once per rename (`LibraryRenameState`).
     private func commitRename() {
-        isRenaming = false
-        guard titleDraft != item.title else { return }
+        guard let title = rename.commit() else { return }
         guard canEdit else {
             actionError = LibraryModel.EditSaveOutcome.notEditable.failureMessage
             return
         }
         do {
-            try LibraryDocumentEditor.rename(fileAt: item.url, to: titleDraft)
+            try LibraryDocumentEditor.rename(fileAt: item.url, to: title)
             coordinator.libraryChanges.recordWritten(markdownURL: item.url, kind: item.kind)
             reloadNow()
+            let written = item
+            Task { await model.didWrite(written) }
         } catch {
             actionError = error.localizedDescription
         }
