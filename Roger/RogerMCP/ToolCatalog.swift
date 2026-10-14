@@ -28,6 +28,10 @@ enum ToolCatalog {
         .object(["type": .string(type), "description": .string(description)])
     }
 
+    /// Claude Code keeps tool answers up to this size inline instead of
+    /// moving them into a file. Without it the limit is 50,000 characters.
+    private static let largeResult = Metadata(additionalFields: ["anthropic/maxResultSizeChars": .int(500_000)])
+
     private static let kindValues: Value = .array([.string("log"), .string("meeting"), .string("transcript")])
 
     static let tools: [Tool] = [
@@ -53,7 +57,8 @@ enum ToolCatalog {
                 "kinds": .object(["type": .string("array"), "items": .object(["type": .string("string"), "enum": kindValues])]),
                 "summary": property("boolean", "Leave out the Markdown. Default false."),
             ]),
-            annotations: readOnly
+            annotations: readOnly,
+            _meta: largeResult
         ),
         Tool(
             name: "ack",
@@ -70,7 +75,8 @@ enum ToolCatalog {
             title: "Get item",
             description: "Returns one item by its key: the whole Markdown file, then its absolute file paths (Markdown, audio and meeting screenshots). Keys come from get_changes, list_items or search.",
             inputSchema: schema(["key": property("string", "An item key such as Logs/2026/10/2026-10-13 14-32-05.")], required: ["key"]),
-            annotations: readOnly
+            annotations: readOnly,
+            _meta: largeResult
         ),
         Tool(
             name: "list_items",

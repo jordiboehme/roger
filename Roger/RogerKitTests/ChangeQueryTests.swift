@@ -99,6 +99,23 @@ struct ChangeQueryTests {
         #expect(!answer.more)
     }
 
+    /// Claude Code moves a tool answer over 50,000 characters into a file,
+    /// so a summary stops at 45,000.
+    @Test func summaryStaysBelowFiftyThousandCharacters() throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let padding = String(repeating: "x", count: 150)
+        let events = (1...1_000).map { seq in
+            ChangeEvent(seq: seq, at: base.addingTimeInterval(Double(seq)), event: .deleted, kind: .log,
+                        key: "Logs/2026/10/\(padding)-\(seq)", path: "Logs/2026/10/\(padding)-\(seq).md")
+        }
+        let answer = ChangeQuery.run(events: events, start: .afterSeq(0), kinds: nil, summary: true, root: root)
+        #expect(ChangeQuery.summaryLimit == 45_000)
+        #expect(answer.more)
+        #expect(answer.render().count < 50_000)
+        #expect(answer.render().count > 40_000)
+    }
+
     @Test func upToDateConsumerGetsAnEmptyAnswer() throws {
         let root = try TempDir.make()
         defer { TempDir.remove(root) }

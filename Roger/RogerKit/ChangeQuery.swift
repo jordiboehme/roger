@@ -64,7 +64,7 @@ public struct ChangeAnswer: Equatable, Sendable {
 /// still comes whole).
 public enum ChangeQuery {
     public static let textLimit = 30_000
-    public static let summaryLimit = 300_000
+    public static let summaryLimit = 45_000
 
     public static func run(
         events: [ChangeEvent],
