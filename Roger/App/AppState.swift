@@ -102,6 +102,11 @@ final class AppState {
         didSet { defaults.set(extraScanFolders.map(\.path), forKey: "extraScanFolders") }
     }
 
+    /// App version for which the "agent skill outdated" popover hint was closed.
+    var agentSkillHintDismissedVersion: String? {
+        didSet { defaults.set(agentSkillHintDismissedVersion, forKey: "agentSkillHintDismissedVersion") }
+    }
+
     /// When false, mic.m4a and system.m4a are deleted once the meeting
     /// transcript is written.
     var keepMeetingAudio: Bool {
@@ -353,6 +358,7 @@ final class AppState {
         self.libraryRoot = defaults.string(forKey: "libraryRoot").map { URL(fileURLWithPath: $0, isDirectory: true) }
         self.extraScanFolders = (defaults.stringArray(forKey: "extraScanFolders") ?? [])
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        self.agentSkillHintDismissedVersion = defaults.string(forKey: "agentSkillHintDismissedVersion")
         self.keepMeetingAudio = defaults.object(forKey: "keepMeetingAudio") as? Bool ?? true
         self.libraryMigrationDone = defaults.bool(forKey: "libraryMigrationDone")
         self.dismissedMeetingSessions = defaults.stringArray(forKey: "dismissedMeetingSessions") ?? []

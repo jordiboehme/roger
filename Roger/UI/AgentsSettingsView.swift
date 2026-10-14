@@ -7,6 +7,8 @@ struct AgentsSettingsView: View {
     @State private var status: AgentsLibraryStatus?
     @State private var consumerAction: ConsumerAction?
     @State private var actionError: String?
+    @State private var agents = AgentsController.live()
+    @State private var confirmUninstall: HarnessID?
 
     enum ConsumerAction: Identifiable, Equatable {
         case startOver(String)
@@ -38,6 +40,7 @@ struct AgentsSettingsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 libraryCard
+                harnessesCard
                 manualSetupCard
                 consumersCard
                 Text(Self.documentsHint)
@@ -47,7 +50,10 @@ struct AgentsSettingsView: View {
             }
             .padding()
         }
-        .task { reload() }
+        .task {
+            reload()
+            agents?.refresh()
+        }
         .confirmationDialog(
             consumerAction.map(confirmationTitle) ?? "",
             isPresented: Binding(get: { consumerAction != nil }, set: { if !$0 { consumerAction = nil } }),
@@ -62,6 +68,21 @@ struct AgentsSettingsView: View {
             Button("OK") {}
         } message: {
             Text(actionError ?? "")
+        }
+        .confirmationDialog(
+            "Move your changed skill to the Trash?",
+            isPresented: Binding(get: { confirmUninstall != nil }, set: { if !$0 { confirmUninstall = nil } }),
+            presenting: confirmUninstall
+        ) { id in
+            Button("Move to Trash", role: .destructive) {
+                Task {
+                    _ = await agents?.uninstall(id, confirmChanged: true)
+                    coordinator.checkAgentSkills()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("You changed this skill after Roger installed it. Roger moves it to the Trash, so you can still get it back.")
         }
     }
 
@@ -84,6 +105,90 @@ struct AgentsSettingsView: View {
                 Text("The change list is not set up yet. Roger sets it up when it starts.")
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var harnessesCard: some View {
+        settingsCard(icon: "terminal", title: "Coding agents") {
+            if let agents {
+                if case .unusable(let reason) = agents.executableChoice {
+                    Text(reason).foregroundStyle(.orange)
+                }
+                if agents.rows.isEmpty {
+                    Text("No coding agent found. Roger looks for Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI and Kiro in your home folder.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(agents.rows) { row in
+                    harnessRow(row, agents: agents)
+                    if row.id != agents.rows.last?.id { Divider() }
+                }
+            } else {
+                Text("This copy of Roger has no ingest skill.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func harnessRow(_ row: AgentsController.Row, agents: AgentsController) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.spec.name).font(.body.weight(.medium))
+                    Text(skillText(row) + " · " + serverText(row.connection))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if row.isBusy {
+                    ProgressView().controlSize(.small)
+                } else {
+                    if let label = row.primaryAction {
+                        Button(label) {
+                            Task {
+                                await agents.install(row.id)
+                                coordinator.checkAgentSkills()
+                            }
+                        }
+                    }
+                    if row.canUninstall {
+                        Button("Uninstall") {
+                            Task {
+                                if await agents.uninstall(row.id, confirmChanged: false) == false {
+                                    confirmUninstall = row.id
+                                }
+                                coordinator.checkAgentSkills()
+                            }
+                        }
+                    }
+                }
+            }
+            if let message = row.message {
+                Text(message).font(.caption).foregroundStyle(.orange)
+            }
+            if let command = row.manualCommand {
+                copyableBlock(command)
+            }
+        }
+    }
+
+    private func skillText(_ row: AgentsController.Row) -> String {
+        if let cover = row.coveredBy {
+            return "Skill covered by \(HarnessCatalog.spec(cover).name)"
+        }
+        switch row.skillState {
+        case .notInstalled: return "Skill not installed"
+        case .upToDate: return "Skill up to date"
+        case .outdated: return "Skill outdated"
+        case .changedByYou: return "Skill changed by you"
+        }
+    }
+
+    private func serverText(_ connection: ServerConnection) -> String {
+        switch connection {
+        case .connected: return "Server connected"
+        case .otherCommand: return "Server points to another roger-mcp"
+        case .notConnected: return "Server not connected"
+        case .unknown: return "Server state unknown"
         }
     }
 

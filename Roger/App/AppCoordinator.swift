@@ -63,6 +63,18 @@ final class AppCoordinator {
     let diarizationService = DiarizationService()
     /// Writes change-log events so agents see new and changed items.
     let libraryChanges = LibraryChangeRecorder()
+    /// An installed ingest skill is older than the one in this app.
+    private(set) var agentSkillOutdated = false
+
+    /// Reads the installed skills (a few small files) off the main actor.
+    func checkAgentSkills() {
+        guard let skill = BundledSkill.load() else { return }
+        let installer = SkillInstaller.live(skill: skill)
+        Task {
+            let outdated = await Task.detached { installer.anyOutdated() }.value
+            agentSkillOutdated = outdated
+        }
+    }
 
     /// Meeting recording orchestrator. Builds on Core Audio Process Taps
     /// (macOS 14.4+, below the macOS 15 deployment floor).
