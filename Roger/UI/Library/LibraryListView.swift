@@ -135,7 +135,10 @@ struct LibraryListView: View {
         ForEach(items) { item in
             LibraryItemRow(item: item, showsDate: !model.sort.isByDate)
                 .tag(item.id)
-                .onDrag {
+                // itemProvider, not onDrag: onDrag puts a gesture on the
+                // row content that swallows clicks on its text and icon,
+                // so only the row background selected the entry.
+                .itemProvider {
                     NSItemProvider(object: item.url as NSURL)
                 }
         }
