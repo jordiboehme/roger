@@ -355,4 +355,54 @@ struct LibraryIndexTests {
         #expect(await index.items() == before)
         #expect(await index.changeCount == reported + 1)
     }
+
+    /// While a meeting records, its chunks are written all the time. That
+    /// must not reload the list; only that folder's change count grows, so
+    /// only an Extra files section showing that folder lists it again.
+    @MainActor @Test func aWriteInAMeetingFolderDoesNotReloadTheList() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let month = layout.monthFolder(.meetings, for: date)
+        let shown = try writeMeeting(in: month, name: "a", text: "Alpha")
+        let recording = try writeMeeting(in: month, name: "b", text: "Beta")
+        let chunk = recording.appendingPathComponent("notes.txt")
+        try Data("one".utf8).write(to: chunk)
+        let index = makeIndex(layout)
+        let model = LibraryModel(index: index)
+        await model.reload()
+        _ = await index.takeChange()   // the first build
+        let results = model.results
+        let reloads = model.reloadCount
+
+        try Data("one two".utf8).write(to: chunk)
+        await index.apply(changedPaths: [chunk.path])
+        await model.handleIndexChange()
+        #expect(model.reloadCount == reloads)
+        #expect(model.results == results)
+        #expect(model.sessionFolderChangeCount(for: recording) == 1)
+        #expect(model.sessionFolderChangeCount(for: shown) == 0)
+
+        let leftover = shown.appendingPathComponent("mic.leftover.m4a")
+        try Data().write(to: leftover)
+        await index.apply(changedPaths: [leftover.path])
+        await model.handleIndexChange()
+        #expect(model.reloadCount == reloads)
+        #expect(model.sessionFolderChangeCount(for: shown) == 1)
+    }
+
+    @MainActor @Test func aChangedItemStillReloadsTheList() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let url = try writeLog(layout, at: date, text: "Before")
+        let index = makeIndex(layout)
+        let model = LibraryModel(index: index)
+        await model.reload()
+        _ = await index.takeChange()
+        try writeLog(layout, at: date, text: "After")
+        await index.apply(changedPaths: [url.path])
+        await model.handleIndexChange()
+        #expect(model.results.first?.firstLine == "After")
+    }
 }

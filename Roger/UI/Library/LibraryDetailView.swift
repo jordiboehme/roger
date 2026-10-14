@@ -105,6 +105,9 @@ struct LibraryItemDetail: View {
                     .focused($titleFocused)
                     .onSubmit(commitRename)
                     .onExitCommand { rename.cancel() }
+                    // Safety net when the field goes away without losing
+                    // focus first; after Return or Esc this does nothing.
+                    .onDisappear { commitRename() }
             } else {
                 Text(item.title)
                     .font(.title2.weight(.semibold))
@@ -174,7 +177,7 @@ struct LibraryItemDetail: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if item.kind == .meeting {
-                        LibraryExtraFilesSection(item: item, reloadCount: model.reloadCount)
+                        LibraryExtraFilesSection(item: item, model: model)
                     }
                     let baseURL = item.url.deletingLastPathComponent()
                     LibraryMarkdownView(

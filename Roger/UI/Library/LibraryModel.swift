@@ -80,9 +80,13 @@ final class LibraryModel {
     private(set) var libraryMissing = false
     /// The search text in effect.
     private(set) var appliedSearch = ""
-    /// Grows with every reload that was applied. The Extra files section
-    /// lists its folder again when it changes.
+    /// Grows with every reload that was applied (tests check that a write
+    /// in a meeting folder does not reload the list).
     private(set) var reloadCount = 0
+    /// Per canonical session folder: how often the index reported a change
+    /// inside it. Only the Extra files section showing that folder reads
+    /// it, so a recording does not redraw the list or the detail body.
+    private(set) var sessionFolderChanges: [String: Int] = [:]
 
     @ObservationIgnored private var pendingSelectionID: String?
     /// The entry that was just saved or renamed. It stays in `results`
@@ -129,7 +133,7 @@ final class LibraryModel {
             for await _ in stream {
                 guard let self else { return }
                 if self.isPaused { continue }
-                await self.reload()
+                await self.handleIndexChange()
             }
         }
         scheduleReload()
@@ -160,11 +164,15 @@ final class LibraryModel {
         pause()
     }
 
-    /// The window opens again: follow changes and load once.
+    /// The window opens again: follow changes and load once. Meeting
+    /// folders that changed while it was closed are counted too.
     func resume() {
         guard isPaused else { return }
         isPaused = false
-        scheduleReload()
+        reloadTask?.cancel()
+        reloadTask = Task { [weak self] in
+            await self?.handleIndexChange(reloadingAlways: true)
+        }
     }
 
     /// The library folder or the extra folders changed.
@@ -248,12 +256,29 @@ final class LibraryModel {
     }
 
     /// Roger wrote this entry's file (rename or save). The index reads it
-    /// now, so the header and the row show the new text at once, and the
-    /// entry stays listed and selected.
+    /// now, so the header and the row show the new text at once. The entry
+    /// stays listed only while it is still the selection: a rename that a
+    /// click on another entry ended pins nothing.
     func didWrite(_ item: LibraryItem) async {
-        pinnedID = item.id
+        if selection == [item.id] { pinnedID = item.id }
         await index.refresh(paths: [item.url.path])
         await reload()
+    }
+
+    func sessionFolderChangeCount(for folder: URL) -> Int {
+        sessionFolderChanges[LibraryPath.canonical(folder), default: 0]
+    }
+
+    /// The index reported a change. The list reloads only when items
+    /// changed; a write in a meeting folder only counts for that folder.
+    func handleIndexChange(reloadingAlways: Bool = false) async {
+        let change = await index.takeChange()
+        if !change.sessionFolders.isEmpty {
+            var counts = sessionFolderChanges
+            for folder in change.sessionFolders { counts[folder, default: 0] += 1 }
+            sessionFolderChanges = counts
+        }
+        if change.itemsChanged || reloadingAlways { await reload() }
     }
 
     /// Roger became active: the library folder may have come back.
@@ -280,9 +305,11 @@ final class LibraryModel {
         guard generation == indexGeneration, !Task.isCancelled, reloadNumber > lastAppliedReload else { return }
         lastAppliedReload = reloadNumber
         reloadCount += 1
-        counts = Dictionary(grouping: all, by: \.kind).mapValues(\.count)
-        totalCount = all.count
-        libraryMissing = missing
+        // Only changed values are set, so an equal reload redraws nothing.
+        let newCounts = Dictionary(grouping: all, by: \.kind).mapValues(\.count)
+        if counts != newCounts { counts = newCounts }
+        if totalCount != all.count { totalCount = all.count }
+        if libraryMissing != missing { libraryMissing = missing }
         var shown = found
         if let pinned = pinnedID, !found.contains(where: { $0.id == pinned }) {
             if let item = all.first(where: { $0.id == pinned }) {
@@ -292,8 +319,8 @@ final class LibraryModel {
                 pinnedID = nil
             }
         }
-        results = shown
-        isLoading = false
+        if results != shown { results = shown }
+        if isLoading { isLoading = false }
         let ids = Set(shown.map(\.id))
         // While editing, the selection and any pending one stay as they are.
         guard !isEditing else { return }

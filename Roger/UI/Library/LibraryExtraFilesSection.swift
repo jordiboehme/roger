@@ -8,10 +8,14 @@ import SwiftUI
 struct LibraryExtraFilesSection: View {
     @Environment(AppCoordinator.self) private var coordinator
     let item: LibraryItem
-    /// `LibraryModel.reloadCount`: the folder is listed again when it changes.
-    let reloadCount: Int
+    /// Its `sessionFolderChangeCount` for this folder lists the folder
+    /// again. Only this section reads it, not the detail body.
+    let model: LibraryModel
     @State private var files: [MeetingExtraFiles.File] = []
     @State private var confirmsCleanUp = false
+    /// What Clean Up asks about, taken when the button is clicked, so the
+    /// count in the question and the files moved are the same.
+    @State private var cleanUpURLs: [URL] = []
     @State private var errorText: String?
 
     private var isLocked: Bool {
@@ -38,7 +42,10 @@ struct LibraryExtraFilesSection: View {
                             .font(.headline)
                         Spacer()
                         if !item.isUnfinished, !trashable.isEmpty {
-                            Button("Clean Up…") { confirmsCleanUp = true }
+                            Button("Clean Up…") {
+                                cleanUpURLs = trashable.map(\.url)
+                                confirmsCleanUp = true
+                            }
                                 .disabled(isLocked)
                         }
                     }
@@ -84,13 +91,13 @@ struct LibraryExtraFilesSection: View {
             }
         }
         .task(id: item) { refresh() }
-        .onChange(of: reloadCount) { _, _ in refresh() }
+        .onChange(of: model.sessionFolderChangeCount(for: item.folderURL)) { _, _ in refresh() }
         .confirmationDialog(
-            trashable.count == 1 ? "Move 1 extra file to the Trash?" : "Move \(trashable.count) extra files to the Trash?",
+            cleanUpURLs.count == 1 ? "Move 1 extra file to the Trash?" : "Move \(cleanUpURLs.count) extra files to the Trash?",
             isPresented: $confirmsCleanUp,
             titleVisibility: .visible
         ) {
-            Button("Move to Trash", role: .destructive) { trash(trashable.map(\.url)) }
+            Button("Move to Trash", role: .destructive) { trash(cleanUpURLs) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You can put them back from the Trash.")

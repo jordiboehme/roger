@@ -388,6 +388,8 @@ struct LibraryModelTests {
         let model = LibraryModel(index: fake)
         model.sidebar = .kind(.meeting)
         await model.reload()
+        // items[0] is a log: the meeting filter hides it until it is pinned.
+        #expect(!model.results.map(\.id).contains(items[0].id))
         model.selection = [items[0].id]
         await model.didWrite(items[0])
         #expect(fake.refreshedPaths == [items[0].url.path])
@@ -413,5 +415,19 @@ struct LibraryModelTests {
         await model.reload()
         await model.reload()
         #expect(model.reloadCount == 2)
+    }
+
+    /// A rename that ends with a click on another entry writes after the
+    /// selection moved. The renamed entry is not pinned then.
+    @Test func aWriteAfterTheSelectionMovedDoesNotPin() async {
+        let fake = FakeLibraryIndex(items)
+        let model = LibraryModel(index: fake)
+        model.searchText = "supplier"
+        await model.commitSearch()
+        model.selection = [items[1].id]
+        model.selection = [items[0].id]
+        await model.didWrite(items[1])
+        #expect(model.results.map(\.id) == [items[0].id])
+        #expect(model.selection == [items[0].id])
     }
 }

@@ -24,12 +24,18 @@ protocol LibraryIndex: Sendable {
     /// Reads these files again now, without waiting for the folder watcher
     /// (after Roger wrote them).
     func refresh(paths: [String]) async
+    /// What changed since the last call, then starts over. Read it after
+    /// `changes` yielded.
+    func takeChange() async -> LibraryIndexChange
 }
 
 extension LibraryIndex {
     func libraryRootMissing() async -> Bool { false }
     func recheckRoot() async {}
     func refresh(paths: [String]) async {}
+    func takeChange() async -> LibraryIndexChange {
+        LibraryIndexChange(itemsChanged: true, sessionFolders: [])
+    }
 }
 
 /// What must be read again after a file system change. Paths are canonical.
@@ -46,6 +52,15 @@ enum LibraryScanUnit: Hashable, Sendable {
     case externalList
     /// The library root or one of its parents changed.
     case everything
+}
+
+/// What changed in an index since the last `takeChange()`.
+struct LibraryIndexChange: Equatable, Sendable {
+    /// The items changed or were read again: the list must reload.
+    var itemsChanged: Bool
+    /// Canonical paths of the meeting session folders something changed in,
+    /// also when their meeting item stayed the same.
+    var sessionFolders: Set<String>
 }
 
 /// Scans `Logs/`, `Meetings/`, `Transcripts/`, the extra scan folders and
@@ -70,6 +85,9 @@ actor InMemoryLibraryIndex: LibraryIndex {
     /// How often `changes` yielded. For tests: a missing yield would make
     /// them wait forever on the stream.
     private(set) var changeCount = 0
+    /// Collected for `takeChange()`.
+    private var pendingItemsChanged = false
+    private var pendingSessionFolders: Set<String> = []
     /// Set by every full build: the root is not a folder.
     private var rootMissing = false
     private let watchesFileSystem: Bool
@@ -131,6 +149,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let count = itemsByID.count
         let milliseconds = Int(Date().timeIntervalSince(start) * 1000)
         logger.info("Library index built: \(count) items in \(milliseconds) ms")
+        pendingItemsChanged = true
         notifyChange()
         if watchesFileSystem { restartWatcherIfNeeded() }
     }
@@ -155,8 +174,21 @@ actor InMemoryLibraryIndex: LibraryIndex {
         for unit in units { reload(unit) }
         // A change inside a meeting folder is reported even when the meeting
         // item stayed the same: the Extra files section lists the folder again.
-        let touchedSession = units.contains { if case .session = $0 { return true } else { return false } }
-        if itemsByID != before || touchedSession { notifyChange() }
+        let sessions = units.compactMap { unit -> String? in
+            if case .session(let folder) = unit { return folder } else { return nil }
+        }
+        let itemsChanged = itemsByID != before
+        if itemsChanged { pendingItemsChanged = true }
+        pendingSessionFolders.formUnion(sessions)
+        if itemsChanged || !sessions.isEmpty { notifyChange() }
+    }
+
+    func takeChange() async -> LibraryIndexChange {
+        defer {
+            pendingItemsChanged = false
+            pendingSessionFolders = []
+        }
+        return LibraryIndexChange(itemsChanged: pendingItemsChanged, sessionFolders: pendingSessionFolders)
     }
 
     private func notifyChange() {

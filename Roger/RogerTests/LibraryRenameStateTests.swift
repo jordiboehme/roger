@@ -40,4 +40,29 @@ struct LibraryRenameStateTests {
         var rename = LibraryRenameState()
         #expect(rename.commit() == nil)
     }
+
+    /// Spaces around the title are no change: nothing is written.
+    @Test func aWhitespaceOnlyChangeIsNotWritten() {
+        var rename = LibraryRenameState()
+        rename.begin(title: "Old")
+        rename.draft = "  Old \n"
+        #expect(rename.commit() == nil)
+    }
+
+    /// The title is written as it is saved: one line, trimmed.
+    @Test func theCommittedTitleIsTrimmed() {
+        var rename = LibraryRenameState()
+        rename.begin(title: "Old")
+        rename.draft = "  New title "
+        #expect(rename.commit() == "New title")
+    }
+
+    /// An empty title goes quietly back to the old one: no write, no error.
+    @Test func anEmptyDraftIsNotWritten() {
+        var rename = LibraryRenameState()
+        rename.begin(title: "Old")
+        rename.draft = "   "
+        #expect(rename.commit() == nil)
+        #expect(!rename.isActive)
+    }
 }

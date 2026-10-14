@@ -16,11 +16,13 @@ struct LibraryRenameState: Equatable, Sendable {
         original = title
     }
 
-    /// The title to write, or nil: not renaming, ended already or unchanged.
+    /// The title to write (one line, trimmed), or nil: not renaming, ended
+    /// already, unchanged or empty. An empty title quietly keeps the old one.
     mutating func commit() -> String? {
         guard isActive else { return nil }
         isActive = false
-        return draft == original ? nil : draft
+        guard let title = LibraryDocumentEditor.normalisedTitle(draft), title != original else { return nil }
+        return title
     }
 
     mutating func cancel() {
