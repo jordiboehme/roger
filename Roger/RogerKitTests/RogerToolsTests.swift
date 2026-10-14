@@ -317,4 +317,37 @@ struct RogerToolsTests {
         defer { TempDir.remove(root) }
         #expect(tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(1)]).text == "Bookmark crystalline is now 1 (was 0).")
     }
+
+    /// `changes.jsonl` that opens but cannot be read (here: a folder).
+    private func unreadableLog() async throws -> URL {
+        let root = try TempDir.make()
+        let log = ChangeLogFile.url(root: root)
+        try FileManager.default.createDirectory(at: log, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func statusReportsAnUnreadableChangeLog() async throws {
+        let root = try await unreadableLog()
+        defer { TempDir.remove(root) }
+        let status = tools(root).call("status", arguments: [:])
+        #expect(!status.isError)
+        #expect(status.text.contains("state: not readable"))
+        #expect(status.text.contains("message: \"Roger cannot read the change log at \(ChangeLogFile.url(root: root).path): "))
+        #expect(!status.text.contains("lastSeq"))
+    }
+
+    @Test func anUnexpectedErrorNamesTheToolAndTheLibrary() async throws {
+        let root = try await unreadableLog()
+        defer { TempDir.remove(root) }
+        let output = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline")])
+        #expect(output.isError)
+        #expect(output.text.hasPrefix("get_changes failed in the library at \(root.path): "))
+    }
+
+    @Test func expectedErrorsKeepTheirOwnText() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        #expect(tools(root).call("get_item", arguments: ["key": .string("Logs/2026/01/none")]).text == "No item with the key \"Logs/2026/01/none\".")
+        #expect(tools(root).call("ack", arguments: ["consumer": .string("A"), "upTo": .int(1)]).text.hasPrefix("\"A\" is not a valid consumer name."))
+    }
 }
