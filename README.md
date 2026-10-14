@@ -116,7 +116,7 @@ Without Homebrew, use `/Applications/Roger.app/Contents/MacOS/roger-mcp`. For Cu
 
 The first time an agent reads the library, macOS may ask whether Terminal (or the app that runs the agent) may access your Documents folder. Allow it. You can change it later in System Settings › Privacy & Security › Files and Folders.
 
-The skill `skills/ingest-roger/SKILL.md` files everything into [Crystalline](https://github.com/jordiboehme/crystalline): `/ingest-roger <domain>`. Log entries become observations, a meeting becomes one engram with decisions and action items and a file transcript becomes a source summary. To run it on a schedule, use `scripts/ingest-roger.sh <domain>`. It runs Claude Code with only the Roger and Crystalline tools allowed and stops with exit code 1 when something fails, so the next run tries the same range again. Example LaunchAgent, saved as `~/Library/LaunchAgents/com.example.ingest-roger.plist` and loaded with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.ingest-roger.plist`:
+The skill `skills/ingest-roger/SKILL.md` files everything into [Crystalline](https://github.com/jordiboehme/crystalline): `/ingest-roger <domain>`. Log entries become observations, a meeting becomes one engram with decisions and action items and a file transcript becomes a source summary. To run it on a schedule, use `scripts/ingest-roger.sh <domain>`. It runs Claude Code with only the Roger and Crystalline tools allowed and stops with exit code 1 when something fails, so the next run tries the same range again. Run the script once by hand in Terminal first, so macOS can ask for access to your Documents folder. A LaunchAgent cannot show that prompt. The native Claude Code installer puts `claude` in `~/.local/bin`, so the example adds it to `PATH`. If `claude` is somewhere else, set `CLAUDE_BIN` to its full path. Example LaunchAgent, saved as `~/Library/LaunchAgents/com.example.ingest-roger.plist` and loaded with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.ingest-roger.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -134,7 +134,7 @@ The skill `skills/ingest-roger/SKILL.md` files everything into [Crystalline](htt
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>/Users/you/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
   <key>StartCalendarInterval</key>
   <dict>

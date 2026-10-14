@@ -48,10 +48,7 @@ enum ToolCatalog {
             description: "Returns what changed in the library, one entry per item with its latest state. Pass exactly one start: consumer (after that consumer's bookmark, unknown names start at 0), since (a seq, a date YYYY-MM-DD, an RFC 3339 time or a duration like 30m, 12h or 3d) or from with upTo (a fixed range). Ingest loop: call get_changes with your consumer, ingest every entry, then call ack with the same consumer and the answer's upTo. Repeat while more is true. With since, pass the previous upTo as since. On updated read the entry again as a whole. On deleted remove what you made from it. summary: true leaves out the Markdown, so you can plan first and then fetch groups with from and upTo (optionally with kinds). Only ack the upTo of a call without kinds.",
             inputSchema: schema([
                 "consumer": property("string", "Your consumer name: a-z, 0-9 and -, at most 64 characters."),
-                "since": .object([
-                    "type": .array([.string("integer"), .string("string")]),
-                    "description": .string("A seq, a date YYYY-MM-DD, an RFC 3339 time or a duration like 30m, 12h or 3d."),
-                ]),
+                "since": property("string", "A seq like 42, a date YYYY-MM-DD, an RFC 3339 time or a duration like 30m, 12h or 3d."),
                 "from": .object(["type": .string("integer"), "minimum": .int(1)]),
                 "upTo": .object(["type": .string("integer"), "minimum": .int(1)]),
                 "kinds": .object(["type": .string("array"), "items": .object(["type": .string("string"), "enum": kindValues])]),

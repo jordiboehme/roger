@@ -10,6 +10,7 @@
 #
 # Only the tools of these two servers are allowed. Exits 0 when everything
 # was ingested, 1 when a run failed (the next run repeats the same range).
+# Also exits 0 when max-runs ran out and there is still more: the next call goes on.
 # Installs nothing.
 set -euo pipefail
 

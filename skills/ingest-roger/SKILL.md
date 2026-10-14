@@ -29,8 +29,8 @@ The consumer name is always `crystalline`.
    - log entries of the same day and the same topic go together,
    - every meeting is its own group,
    - every file transcript is its own group.
-3. Fetch each kind once. For every kind in the summary, call `get_changes(from: <from>, upTo: <upTo>, kinds: [<kind>])` with `from` and `upTo` from step 1. If that answer has `more: true`, call again with `from` set to its `upTo + 1` and the same `upTo` until `more` is false. Keep these entries and take every group of that kind from them. Do not fetch the range again for each group. For meetings, open the screenshots through their paths when they show something that matters.
-4. Ingest the group (see "What to write").
+3. Fetch each kind once. For every kind in the summary, call `get_changes(from: <from>, upTo: <upTo>, kinds: [<kind>])` with `from` and `upTo` from step 1. If that answer has `more: true`, call again with `from` set to its `upTo + 1` and the same `upTo` until `more` is false. Keep these entries and take every group of that kind from them. Do not fetch the range again for each group. For meetings, you may open the screenshots through their paths when they show something that matters. Screenshots are optional: if a screenshot path cannot be read, go on without it.
+4. Ingest each group (see "What to write"). If any write or edit returns an error, do not ack. End with `RESULT: failed: <reason>`.
 5. Only when every group of the range succeeded, call `ack(consumer: "crystalline", upTo: <upTo from step 1>)`. Never ack the `upTo` of a call with `kinds`.
 6. If `more` in step 1 was true, start again at step 1. Do at most 5 rounds in one run.
 
