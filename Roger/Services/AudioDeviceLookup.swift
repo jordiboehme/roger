@@ -77,6 +77,36 @@ enum AudioDeviceLookup {
         return stringProperty(id, kAudioObjectPropertyName)
     }
 
+    /// How the device is connected, for example "USB". nil when Core Audio
+    /// does not say.
+    static func transportName(of id: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr else { return nil }
+        return transportName(forType: value)
+    }
+
+    static func transportName(forType type: UInt32) -> String? {
+        switch type {
+        case kAudioDeviceTransportTypeBuiltIn: return "Built-in"
+        case kAudioDeviceTransportTypeUSB: return "USB"
+        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: return "Bluetooth"
+        case kAudioDeviceTransportTypeThunderbolt: return "Thunderbolt"
+        case kAudioDeviceTransportTypeHDMI: return "HDMI"
+        case kAudioDeviceTransportTypeDisplayPort: return "DisplayPort"
+        case kAudioDeviceTransportTypeAirPlay: return "AirPlay"
+        case kAudioDeviceTransportTypeContinuityCaptureWired, kAudioDeviceTransportTypeContinuityCaptureWireless: return "iPhone"
+        case kAudioDeviceTransportTypeAggregate, kAudioDeviceTransportTypeAutoAggregate: return "Aggregate device"
+        case kAudioDeviceTransportTypeVirtual: return "Virtual device"
+        default: return nil
+        }
+    }
+
     private static func hasInputChannels(_ id: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,

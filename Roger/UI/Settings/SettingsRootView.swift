@@ -61,17 +61,16 @@ struct SettingsPaneIcon: View {
 
 /// The pane for a sidebar entry.
 struct SettingsPaneContent: View {
-    @Environment(AppCoordinator.self) private var coordinator
     let pane: SettingsPane
 
     var body: some View {
         switch pane {
         case .general: GeneralPane()
         case .presets: PresetsPane()
-        case .microphone: MicrophoneSettingsView()
-        case .model: ModelSettingsView()
-        case .aiProvider: AIProviderSettingsView()
-        case .files: FileTranscriptionSettingsView(state: coordinator.appState)
+        case .microphone: MicrophonePane()
+        case .model: ModelPane()
+        case .aiProvider: AIProviderPane()
+        case .files: FilesPane()
         case .library: RecordingsSettingsView()
         case .agents: AgentsSettingsView()
         case .permissions: PermissionsPane()

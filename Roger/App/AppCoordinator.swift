@@ -325,7 +325,7 @@ final class AppCoordinator {
         }
 
         guard transcriptionEngine.isReady else {
-            appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
+            appState.dictationState = .error("Speech model not ready. Download it in Settings > Speech Model.")
             return
         }
 
@@ -746,7 +746,7 @@ final class AppCoordinator {
                 logger.info("Speech model still loading — queued: \(url.lastPathComponent, privacy: .public)")
                 pendingMediaFile = url
             } else {
-                appState.dictationState = .error("Speech model not ready. Download it in Settings > Model.")
+                appState.dictationState = .error("Speech model not ready. Download it in Settings > Speech Model.")
             }
             return
         }

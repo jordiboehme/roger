@@ -40,7 +40,7 @@ struct SettingsPaneTests {
         #expect(groups.map(\.0) == [nil, "Transcription", "Library", nil])
         #expect(groups.map(\.1) == [
             ["General", "Presets", "Microphone"],
-            ["Model", "AI Provider", "Files"],
+            ["Speech Model", "Text Model", "Files"],
             ["Library & Meetings", "Agents"],
             ["Permissions", "About"],
         ])

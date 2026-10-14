@@ -165,3 +165,48 @@ struct SettingsShortcutRecorder: View {
             }
     }
 }
+
+/// Preset menu for meetings and files: presets with AI steps are shown
+/// but cannot be picked, so these transcripts never reach an AI provider.
+struct LocalPresetMenu: View {
+    let title: String
+    var note: String? = nil
+    let presets: [DictationPreset]
+    @Binding var selection: UUID
+    /// The preset in use (the fallback when the stored one needs AI).
+    let currentName: String
+
+    var body: some View {
+        let checked = Self.effectiveID(selection: selection, presets: presets)
+        SettingsRow(title: title, note: note) {
+            Menu(currentName) {
+                ForEach(presets) { preset in
+                    Button {
+                        if !preset.requiresAI { selection = preset.id }
+                    } label: {
+                        if preset.id == checked {
+                            Label(menuTitle(preset), systemImage: "checkmark")
+                        } else {
+                            Text(menuTitle(preset))
+                        }
+                    }
+                    .disabled(preset.requiresAI)
+                }
+            }
+            .fixedSize()
+        }
+    }
+
+    /// The preset in use: the stored one when it exists and needs no AI,
+    /// else Plain (the same fallback as the AppState resolvers).
+    static func effectiveID(selection: UUID, presets: [DictationPreset]) -> UUID {
+        if let preset = presets.first(where: { $0.id == selection }), !preset.requiresAI {
+            return preset.id
+        }
+        return DictationPreset.plain.id
+    }
+
+    private func menuTitle(_ preset: DictationPreset) -> String {
+        preset.requiresAI ? "\(preset.name) (needs AI)" : preset.name
+    }
+}
