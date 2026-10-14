@@ -52,7 +52,8 @@ jobs:
             CONFIGURATION_BUILD_DIR=${{ github.workspace }}/build \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64
 
       - name: Test
         run: |
@@ -63,5 +64,5 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Verify app bundle
-        run: test -d build/Roger.app
+      - name: Check app bundle
+        run: bash scripts/bundle-check.sh build/Roger.app
