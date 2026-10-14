@@ -192,8 +192,11 @@ final class AppCoordinator {
     /// their meetings are still found.
     func runLibraryMigrationIfNeeded() {
         guard !appState.libraryMigrationDone, !meetingRecorder.isActive else { return }
+        // Stays false when the move was skipped (library folder missing) or
+        // failed to start: it is offered again at the next launch.
+        var finished = true
         defer {
-            appState.libraryMigrationDone = true
+            if finished { appState.libraryMigrationDone = true }
             refreshPendingMeetingSessions()
         }
 
@@ -213,10 +216,9 @@ final class AppCoordinator {
         if !sessions.isEmpty, !LibraryMigration.isInsideLibrary(oldMeetings, layout: layout) {
             // A missing custom library folder (drive not connected) is never
             // created: keep the meetings in place and still find them.
-            do {
-                try LibraryLayout.prepareRootForWriting(layout)
-            } catch {
-                logger.warning("Library migration skipped: \(error.localizedDescription, privacy: .public)")
+            guard LibraryMigration.isReadyToMigrate(layout: layout) else {
+                logger.warning("Library migration skipped: the library folder \(layout.root.path, privacy: .public) is missing")
+                finished = false
                 addExtra(oldMeetings)
                 appState.extraScanFolders = extras
                 return
@@ -236,6 +238,7 @@ final class AppCoordinator {
                     }
                 } catch {
                     logger.warning("Library migration skipped: \(error.localizedDescription, privacy: .public)")
+                    finished = false
                     addExtra(oldMeetings)
                 }
             } else {

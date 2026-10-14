@@ -87,4 +87,14 @@ struct LibraryMigrationTests {
         #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Drive").path))
         #expect(FileManager.default.fileExists(atPath: old.path))
     }
+
+    @Test func migrationWaitsForAMissingCustomRoot() throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let custom = base.appendingPathComponent("Drive/Roger")
+        let defaultRoot = base.appendingPathComponent("Documents/Roger")
+        #expect(!LibraryMigration.isReadyToMigrate(layout: LibraryLayout(root: custom), defaultRoot: defaultRoot))
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        #expect(LibraryMigration.isReadyToMigrate(layout: LibraryLayout(root: custom), defaultRoot: defaultRoot))
+    }
 }
