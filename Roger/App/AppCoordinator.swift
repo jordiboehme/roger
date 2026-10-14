@@ -105,6 +105,15 @@ final class AppCoordinator {
         libraryOpener?(url)
     }
 
+    /// Opens the settings window. Set by the AppDelegate, which owns the
+    /// window; nil in unit tests.
+    @ObservationIgnored var settingsOpener: (@MainActor (SettingsPane?) -> Void)?
+
+    /// Opens the settings window on `pane`, or on the last pane when nil.
+    func openSettings(_ pane: SettingsPane? = nil) {
+        settingsOpener?(pane)
+    }
+
     #if DEBUG
     /// How many coordinators this process built. The test host must build none.
     private(set) static var instancesCreated = 0

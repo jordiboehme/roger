@@ -7,7 +7,7 @@ struct LibraryEmptyStateTests {
         let state = LibraryEmptyState.make(sidebar: .kind(.log), searchText: "supplier", dateFilter: .today)
         #expect(state.title == "No Results")
         #expect(state.message == "Nothing matches \"supplier\".")
-        #expect(!state.showsPresetsButton)
+        #expect(state.settingsButton == nil)
     }
 
     @Test func dateFilterComesNext() {
@@ -19,7 +19,7 @@ struct LibraryEmptyStateTests {
         let state = LibraryEmptyState.make(sidebar: .kind(.log), searchText: "", dateFilter: .any)
         #expect(state.title == "No Log Entries")
         #expect(state.message == "No log entries yet. Bind the Log preset to Caps+⌥ in Settings → Presets.")
-        #expect(state.showsPresetsButton)
+        #expect(state.settingsButton == .presets)
     }
 
     @Test func otherKindsHaveHints() {
@@ -37,7 +37,7 @@ struct LibraryEmptyStateTests {
             missingRoot: URL(fileURLWithPath: "/Volumes/Drive/Roger")
         )
         #expect(state.title == "Library folder not found")
-        #expect(state.message == "Roger cannot find /Volumes/Drive/Roger. Connect the drive that holds it or choose another folder in Settings > Recordings.")
-        #expect(!state.showsPresetsButton)
+        #expect(state.message == "Roger cannot find /Volumes/Drive/Roger. Connect the drive that holds it or choose another folder in Settings > Library & Meetings.")
+        #expect(state.settingsButton == .library)
     }
 }

@@ -97,7 +97,7 @@ final class AppState {
     }
 
     /// Older folders that still hold meetings or transcripts. Scanned for
-    /// unfinished meetings and listed in the Recordings settings.
+    /// unfinished meetings and listed in Settings > Library & Meetings.
     var extraScanFolders: [URL] {
         didSet { defaults.set(extraScanFolders.map(\.path), forKey: "extraScanFolders") }
     }
@@ -252,10 +252,6 @@ final class AppState {
     var hasCompletedOnboarding: Bool {
         didSet { defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
     }
-
-    // MARK: - UI Navigation (runtime-only)
-
-    var pendingSettingsTab: SettingsTab?
 
     var activePreset: DictationPreset {
         presets.first { $0.id == activePresetID } ?? .polished

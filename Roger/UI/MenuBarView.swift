@@ -97,7 +97,9 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.plain)
 
-                SettingsLink {
+                Button {
+                    coordinator.openSettings()
+                } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "gear")
                             .frame(width: 16)
@@ -111,9 +113,6 @@ struct MenuBarView: View {
                     .padding(.vertical, 5)
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded {
-                    activateSettingsWindow()
-                })
 
                 Button {
                     NSApp.terminate(nil)
@@ -154,16 +153,14 @@ struct MenuBarView: View {
         HStack(spacing: 8) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
                 .foregroundStyle(.secondary)
-            SettingsLink {
+            Button {
+                coordinator.openSettings(.agents)
+            } label: {
                 Text("Agent skill outdated - update in Settings")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .simultaneousGesture(TapGesture().onEnded {
-                coordinator.appState.pendingSettingsTab = .agents
-                activateSettingsWindow()
-            })
             Spacer()
             Button {
                 coordinator.appState.agentSkillHintDismissedVersion = AgentsHint.appVersion
@@ -368,7 +365,9 @@ struct MenuBarView: View {
                     .textCase(.uppercase)
                     .tracking(0.6)
                 Spacer()
-                SettingsLink {
+                Button {
+                    coordinator.openSettings(.presets)
+                } label: {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -377,10 +376,6 @@ struct MenuBarView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded {
-                    coordinator.appState.pendingSettingsTab = .presets
-                    activateSettingsWindow()
-                })
                 .help("Edit presets")
             }
             .padding(.horizontal, 16)
@@ -452,22 +447,6 @@ struct MenuBarView: View {
         case .listening: .red
         case .transcribing, .processing, .inserting: .orange
         case .error: .red
-        }
-    }
-
-    private func dismissPopover() {
-        if let panel = NSApp.keyWindow as? NSPanel {
-            panel.close()
-        }
-    }
-
-    private func activateSettingsWindow() {
-        dismissPopover()
-        DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
-            for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
-                window.makeKeyAndOrderFront(nil)
-            }
         }
     }
 }

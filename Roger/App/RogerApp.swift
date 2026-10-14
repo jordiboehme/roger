@@ -6,9 +6,9 @@ import UniformTypeIdentifiers
 import os
 
 extension KeyboardShortcuts.Name {
-    /// Global hotkey to start/stop a meeting recording. User-configurable
-    /// from the Recordings settings tab. Unset by default — Roger only takes
-    /// the hotkey if the user explicitly assigns one.
+    /// Global hotkey to start/stop a meeting recording. Set in Settings >
+    /// General. Unset by default, Roger only takes the hotkey if the user
+    /// explicitly assigns one.
     static let meetingRecordingToggle = Self("meetingRecordingToggle")
 
     /// Global hotkey to open the library window. Unset by default, set in
@@ -33,17 +33,18 @@ struct RogerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
+        // Settings live in their own window (SettingsWindowController). This
+        // empty scene is never shown. It only carries the Settings command,
+        // which Roger's main menu has while a window makes it a regular app.
         Settings {
-            // Under tests the settings must not build the coordinator: it
-            // reads the real settings and the library folder.
-            if AppLaunch.isRunningTests {
-                EmptyView()
-            } else {
-                SettingsView()
-                    .environment(sharedCoordinator)
+            EmptyView()
+        }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { appDelegate.showSettings() }
+                    .keyboardShortcut(",", modifiers: .command)
             }
         }
-        .windowResizability(.contentMinSize)
     }
 }
 
@@ -51,6 +52,7 @@ struct RogerApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
     private var libraryWindowController: LibraryWindowController?
+    private var settingsWindowController: SettingsWindowController?
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var dropView: StatusBarDropView?
@@ -89,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.libraryOpener = { [weak self] url in
             self?.openLibrary(selecting: url)
         }
+        coordinator.settingsOpener = { [weak self] pane in
+            self?.showSettings(pane)
+        }
 
         // Check permissions
         coordinator.permissionManager.checkPermissions()
@@ -110,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.startHotkey()
 
         // Wire the meeting-recording global hotkey. Only fires when the
-        // user has assigned a key combo from the Recordings settings tab.
+        // user has assigned a key combo in Settings > General.
         KeyboardShortcuts.onKeyDown(for: .meetingRecordingToggle) {
             Task { @MainActor in
                 await sharedCoordinator.toggleMeetingRecording()
@@ -331,6 +336,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.show(selecting: url)
     }
 
+    // MARK: - Settings
+
+    /// Shows the settings window on `pane`, or on the last pane when nil.
+    func showSettings(_ pane: SettingsPane? = nil) {
+        popover?.performClose(nil)
+        let controller = settingsWindowController ?? makeSettingsWindowController()
+        settingsWindowController = controller
+        controller.show(pane)
+    }
+
+    private func makeSettingsWindowController(
+        memory: SettingsPaneMemory = .standard,
+        frameAutosaveName: String? = SettingsWindowController.frameName
+    ) -> SettingsWindowController {
+        SettingsWindowController(
+            presence: .shared,
+            memory: memory,
+            frameAutosaveName: frameAutosaveName,
+            makeContent: { navigation in
+                AnyView(SettingsRootView(navigation: navigation).environment(sharedCoordinator))
+            }
+        )
+    }
+
     private func makeLibraryIndexStore() -> LibraryIndexStore {
         #if DEBUG
         if LibrarySnapshotRunner.requestedFolder != nil { return LibrarySnapshotRunner.indexStore() }
@@ -361,10 +390,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     #endif
 
-    /// Clicking the Dock icon (only there while the library is open) brings
-    /// the library to the front.
+    /// Clicking the Dock icon (only there while the library or the settings
+    /// window is open) brings that window to the front, the library first.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if let controller = libraryWindowController, controller.isOpen {
+            controller.show()
+        } else if let controller = settingsWindowController, controller.isOpen {
             controller.show()
         }
         return false
