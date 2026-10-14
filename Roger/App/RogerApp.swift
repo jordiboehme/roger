@@ -70,7 +70,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         #if DEBUG
         if let folder = LibrarySnapshotRunner.requestedFolder {
-            startSnapshotRun(into: folder)
+            if SettingsSnapshotRunner.isRequested {
+                startSettingsSnapshotRun(into: folder)
+            } else {
+                startSnapshotRun(into: folder)
+            }
             return
         }
         #endif
@@ -385,6 +389,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         Task {
             await LibrarySnapshotRunner.run(controller: controller, coordinator: coordinator, folder: folder)
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// Settings snapshot mode: only the settings window, without the launch
+    /// work. Remembers no pane and no window frame.
+    private func startSettingsSnapshotRun(into folder: URL) {
+        let controller = makeSettingsWindowController(memory: .none, frameAutosaveName: nil)
+        settingsWindowController = controller
+        sharedCoordinator.settingsOpener = { [weak self] pane in
+            self?.showSettings(pane)
+        }
+        Task {
+            await SettingsSnapshotRunner.run(controller: controller, folder: folder)
             NSApp.terminate(nil)
         }
     }

@@ -138,7 +138,7 @@ enum LibrarySnapshotRunner {
         model.selection = item.map { [$0.id] } ?? []
     }
 
-    private static func settle(seconds: Double = 1) async {
+    static func settle(seconds: Double = 1) async {
         try? await Task.sleep(for: .seconds(seconds))
     }
 
@@ -154,7 +154,7 @@ enum LibrarySnapshotRunner {
     }
 
     /// The whole window, title bar and toolbar included, at its backing scale.
-    private static func render(_ window: NSWindow, _ name: String, into folder: URL) {
+    static func render(_ window: NSWindow, _ name: String, into folder: URL) {
         window.displayIfNeeded()
         guard let frameView = window.contentView?.superview,
               let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else {

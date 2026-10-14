@@ -124,6 +124,7 @@
 		9275A12AC6ADED24A9E9B2ED /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1DD315528221EF6AD7053DA /* Assets.xcassets */; };
 		939A8262AFE22EE2683911A5 /* LibraryLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E29D2F1354B63FE063388A7 /* LibraryLayout.swift */; };
 		9540DF1CFE94553E35AE78ED /* SettingsNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD17C510508002262A6C3B3B /* SettingsNavigation.swift */; };
+		9748D97218D96B0DFD878973 /* SettingsSnapshotRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 727168E3F85CFFCDF5E61818 /* SettingsSnapshotRunner.swift */; };
 		98EE8299F72999C131C4CD81 /* RogerMCPOptionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE11177A877E06D4A2488F /* RogerMCPOptionsTests.swift */; };
 		995B66F815E758BA1C7F462A /* SkillInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF88D1335D211AF7D1C15632 /* SkillInstallerTests.swift */; };
 		9BA0AB3BE2E9C08C8029E839 /* LibraryChangeRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BC499F007F0A4C0898AEF1 /* LibraryChangeRecorder.swift */; };
@@ -368,6 +369,7 @@
 		6EE3A18597F1045D858CBD31 /* Harness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harness.swift; sourceTree = "<group>"; };
 		6EEB6FE6094DB78537941E78 /* SpeakerAligner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAligner.swift; sourceTree = "<group>"; };
 		71AE4A23EB5A15BD513E0D35 /* KitFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitFixtures.swift; sourceTree = "<group>"; };
+		727168E3F85CFFCDF5E61818 /* SettingsSnapshotRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSnapshotRunner.swift; sourceTree = "<group>"; };
 		72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyComboBadge.swift; sourceTree = "<group>"; };
 		73449844E1E3155BB53E405D /* SessionFolderName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFolderName.swift; sourceTree = "<group>"; };
 		7537C29BAFB36147CD1A87DE /* LibraryMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMigrationTests.swift; sourceTree = "<group>"; };
@@ -533,6 +535,7 @@
 				C0056C377990C8BAC51887C2 /* LibraryWindowController.swift */,
 				3781C2D3C0D65D52F9F304DD /* RogerApp.swift */,
 				43F2C854E0F522385C59532F /* RogerKitExports.swift */,
+				727168E3F85CFFCDF5E61818 /* SettingsSnapshotRunner.swift */,
 				54350DBC63A7410F5740729D /* SettingsWindowController.swift */,
 			);
 			path = App;
@@ -1186,6 +1189,7 @@
 				9540DF1CFE94553E35AE78ED /* SettingsNavigation.swift in Sources */,
 				14AD1F346E47E30C1415404B /* SettingsPane.swift in Sources */,
 				BFD8D7FE562641476F310179 /* SettingsRootView.swift in Sources */,
+				9748D97218D96B0DFD878973 /* SettingsSnapshotRunner.swift in Sources */,
 				08FD30A44BADC6CA8B9FFD42 /* SettingsView.swift in Sources */,
 				3D373E4CE78850BF325A531F /* SettingsWindowController.swift in Sources */,
 				6D68B33D611C211D37B9F0F4 /* SkillInstaller.swift in Sources */,
