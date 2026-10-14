@@ -24,8 +24,13 @@ struct RogerToolsTests {
     }
 
     /// Two logs and a meeting, caught up into the change log (seq 1 to 3).
-    private func library() async throws -> URL {
-        let root = try TempDir.make()
+    /// With `folder`, the library is that subfolder of a temp folder.
+    private func library(folder: String? = nil) async throws -> URL {
+        var root = try TempDir.make()
+        if let folder {
+            root = root.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        }
         let layout = LibraryLayout(root: root)
         try KitFixtures.log(in: layout, at: KitFixtures.base, text: "Called the supplier", audio: true)
         try KitFixtures.log(in: layout, at: KitFixtures.base.addingTimeInterval(60), text: "Invoice arrived")
@@ -309,6 +314,18 @@ struct RogerToolsTests {
         try #require(canonical.hasPrefix("/private/var/"))
         let spelling = String(canonical.dropFirst("/private".count)) + "/"
         let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(2), "library": .string(spelling)])
+        #expect(ack.text == "Bookmark crystalline is now 2 (was 0).")
+    }
+
+    /// TOON quotes a path with a comma; the value is passed back verbatim.
+    @Test func ackAcceptsTheQuotedLibraryOfGetChanges() async throws {
+        let root = try await library(folder: "Notes, \"Roger\"")
+        defer { TempDir.remove(root.deletingLastPathComponent()) }
+        let text = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline")]).text
+        let line = try #require(text.split(separator: "\n").first { $0.hasPrefix("library: ") })
+        let value = String(line.dropFirst("library: ".count))
+        #expect(value.hasPrefix("\"") && value.hasSuffix("\""))
+        let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(2), "library": .string(value)])
         #expect(ack.text == "Bookmark crystalline is now 2 (was 0).")
     }
 

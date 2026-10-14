@@ -145,7 +145,8 @@ public struct RogerTools: Sendable {
         }
         // The library from get_changes: when Roger switched to another
         // library since, this upTo belongs to the old one.
-        if let library = try args.string("library") {
+        if let raw = try args.string("library") {
+            let library = Self.unquotedTOON(raw)
             let given = URL(fileURLWithPath: (library as NSString).expandingTildeInPath, isDirectory: true)
             guard LibraryPath.canonical(given) == LibraryPath.canonical(location.root) else {
                 throw ToolFailure("The library changed since get_changes. Call get_changes again.")
@@ -161,6 +162,27 @@ public struct RogerTools: Sendable {
             return "Bookmark \(consumer) is now \(result.current) (was \(result.previous))."
         }
         return "Bookmark \(consumer) stays at \(result.current). upTo \(upTo) is not newer."
+    }
+
+    /// get_changes quotes a library path with `:`, `,`, `[` and the like.
+    /// A client may pass that value back verbatim: drop the quotes and undo
+    /// the `\\` and `\"` escapes.
+    static func unquotedTOON(_ value: String) -> String {
+        guard value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") else { return value }
+        var out = ""
+        var escaped = false
+        for character in value.dropFirst().dropLast() {
+            if escaped {
+                if character != "\\", character != "\"" { out.append("\\") }
+                out.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else {
+                out.append(character)
+            }
+        }
+        return out
     }
 
     private func getItem(_ args: ToolArguments, _ location: LibraryLocation) throws -> String {
