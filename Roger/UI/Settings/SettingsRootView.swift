@@ -66,7 +66,7 @@ struct SettingsPaneContent: View {
 
     var body: some View {
         switch pane {
-        case .general: GeneralSettingsView(state: coordinator.appState)
+        case .general: GeneralPane()
         case .presets: PresetsSettingsView()
         case .microphone: MicrophoneSettingsView()
         case .model: ModelSettingsView()
@@ -74,7 +74,7 @@ struct SettingsPaneContent: View {
         case .files: FileTranscriptionSettingsView(state: coordinator.appState)
         case .library: RecordingsSettingsView()
         case .agents: AgentsSettingsView()
-        case .permissions: PermissionsSettingsView()
+        case .permissions: PermissionsPane()
         case .about: AboutView()
         }
     }

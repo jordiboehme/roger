@@ -19,7 +19,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// True from `show` until the window closes (also while minimized).
     private(set) var isOpen = false
 
-    /// `frameAutosaveName` nil keeps no frame (tests, snapshot runs).
+    /// `frameAutosaveName` nil keeps no frame and no restorable state
+    /// (tests, snapshot runs).
     /// `present` puts the window on screen; tests pass a no-op.
     init(
         presence: AppWindowPresence,
@@ -55,11 +56,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// first layout; the user can still drag it.
     private func widenSidebarOnce() {
         guard !sidebarWidened, let content = window?.contentView else { return }
-        sidebarWidened = true
         DispatchQueue.main.async {
             guard let split = Self.firstSplitView(in: content), split.arrangedSubviews.count > 1,
                   split.arrangedSubviews[0].frame.width < Self.sidebarWidth else { return }
             split.setPosition(Self.sidebarWidth, ofDividerAt: 0)
+            self.sidebarWidened = true
         }
     }
 
@@ -103,6 +104,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.collectionBehavior.insert(.fullScreenNone)
         window.delegate = self
         window.contentMinSize = Self.minimumSize
+        if frameAutosaveName == nil { window.isRestorable = false }
         if let name = frameAutosaveName, window.setFrameUsingName(name) {
             window.setFrameAutosaveName(name)
         } else {

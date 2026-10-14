@@ -2,7 +2,7 @@
 # Builds Roger (Debug) and renders every settings pane into PNG files:
 # settings-<pane>.png (light), settings-<pane>-dark.png and
 # settings-<pane>-min.png (minimum window size). Roger quits on its own.
-# The run changes no setting.
+# The run changes no setting except the one-time duration migration.
 #
 # Usage: scripts/settings-snapshots.sh <folder>
 # The folder must not exist yet, or be empty.

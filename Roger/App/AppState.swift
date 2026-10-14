@@ -489,10 +489,19 @@ enum ActivationMode: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    var displayName: String {
+    /// Segment title in Settings > General.
+    var title: String {
         switch self {
-        case .pushToTalk: return "Push to Talk (hold to listen)"
-        case .toggle: return "Toggle (press to start/stop)"
+        case .pushToTalk: return "Push to talk"
+        case .toggle: return "Toggle"
+        }
+    }
+
+    /// Note under the Mode row.
+    var note: String {
+        switch self {
+        case .pushToTalk: return "Hold the dictation key while you speak."
+        case .toggle: return "Press the dictation key to start. Press it again to stop."
         }
     }
 }

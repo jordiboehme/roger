@@ -11,7 +11,8 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Setti
 /// `settings-<pane>.png` (light, tall enough for the whole pane),
 /// `settings-<pane>-dark.png` and `settings-<pane>-min.png` (the minimum
 /// window size, to see what gets cut off). The run remembers no pane and
-/// no window frame, and it changes no setting.
+/// no window frame, and it changes no setting except the one-time
+/// duration migration.
 @MainActor
 enum SettingsSnapshotRunner {
     static let tallSize = NSSize(width: 720, height: 1000)
@@ -55,7 +56,6 @@ enum SettingsSnapshotRunner {
             logger.error("Settings snapshot run: no settings window")
             return
         }
-        window.isRestorable = false
         // The first layout of the window takes longer.
         await LibrarySnapshotRunner.settle(seconds: 2)
 
