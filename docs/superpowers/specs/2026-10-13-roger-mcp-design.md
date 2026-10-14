@@ -102,7 +102,7 @@ All output is text. Lists are TOON. Documents are Markdown. The server instructi
 - Within the selected range, events are grouped by `key` and only the latest event per key is returned, at that event's `seq` position.
 - Entry fields: `seq`, `event`, `kind`, `key`, `title`, `date`, `duration`, `paths` (absolute paths of the `.md`, an `.m4a` if present, `mic.m4a`/`system.m4a` and screenshots for meetings), then the full Markdown unless `summary` is true. A `deleted` entry has no text and no paths.
 - If the item file is missing for a `created` or `updated` event, the entry says `missing: true` with no text.
-- Size: entries are added until the text reaches about 30,000 characters, then cut at the item boundary. `upTo` is the last included `seq` and `more` tells whether events remain. A single entry larger than the limit is still returned whole. With `summary: true` the limit is 300,000 characters.
+- Size: entries are added until the text reaches about 30,000 characters, then cut at the item boundary. `upTo` is the last included `seq` and `more` tells whether events remain. A single entry larger than the limit is still returned whole. With `summary: true` the limit is 45,000 characters, below the 50,000 characters Claude Code shows inline. `get_changes` and `get_item` also declare `_meta["anthropic/maxResultSizeChars"]: 500000`, so a single large entry still arrives inline.
 - Tool description spells out the loop: `get_changes(consumer)`, ingest, `ack(consumer, upTo)`, repeat while `more`. With `since`, the next call passes the previous `upTo` as `since`.
 
 ### ack
