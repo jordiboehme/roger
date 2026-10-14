@@ -1086,11 +1086,15 @@ final class AppCoordinator {
     }
 
     /// Also called by the library after it moved a meeting to the Trash, so
-    /// the popover banner and the Unfinished list drop it right away.
+    /// the popover banner and the Unfinished list drop it right away. Only
+    /// Roger's own session folders are offered (see `LibraryActions.finalisable`).
     func refreshPendingMeetingSessions() {
-        let dismissed = Set(appState.dismissedMeetingSessions)
-        pendingMeetingSessions = meetingRecorder.unfinalisedSessions()
-            .filter { !dismissed.contains($0.folder.standardizedFileURL.path) }
+        pendingMeetingSessions = LibraryActions.finalisable(
+            meetingRecorder.unfinalisedSessions(),
+            layout: appState.libraryLayout,
+            extraFolders: appState.extraScanFolders,
+            dismissed: Set(appState.dismissedMeetingSessions)
+        )
     }
 
     // MARK: - Error Management

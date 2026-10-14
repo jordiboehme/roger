@@ -428,4 +428,28 @@ struct LibraryActionsTests {
         #expect(plan.urls.isEmpty)
         #expect(plan.skipped == [item])
     }
+
+    /// "Finalise" is offered only where Trash would treat the folder as a
+    /// Roger meeting: a folder in an extra folder that merely holds a CAF
+    /// file is not one.
+    @Test func onlyRogerSessionFoldersAreFinalisable() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let extra = root.appendingPathComponent("Old Recordings", isDirectory: true)
+        let roger = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        let legacy = extra.appendingPathComponent("2025-01-02 10-00", isDirectory: true)
+        let foreign = extra.appendingPathComponent("Podcast edits", isDirectory: true)
+        let dismissed = library.root.appendingPathComponent("Meetings/2026/10/2026-10-14 09-00", isDirectory: true)
+        for folder in [roger, legacy, foreign, dismissed] {
+            try touch(folder.appendingPathComponent("mic-001.caf"))
+        }
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        let sessions = [roger, legacy, foreign, dismissed].map { MeetingSession(id: UUID(), folder: $0, startedAt: date) }
+        let offered = LibraryActions.finalisable(
+            sessions, layout: library, extraFolders: [extra],
+            dismissed: [dismissed.standardizedFileURL.path]
+        )
+        #expect(offered.map(\.folder) == [roger, legacy])
+    }
 }

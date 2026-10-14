@@ -174,6 +174,21 @@ enum LibraryActions {
         return LibraryFrontmatterParser.parse(text)?.tags.contains("meeting") ?? false
     }
 
+    /// The unfinished sessions Roger offers to finalise: only folders that
+    /// `isRogerSessionFolder` accepts (the check Trash uses) and that the
+    /// user did not dismiss (`dismissed` holds standardized paths).
+    static func finalisable(
+        _ sessions: [MeetingSession],
+        layout: LibraryLayout,
+        extraFolders: [URL],
+        dismissed: Set<String>
+    ) -> [MeetingSession] {
+        sessions.filter { session in
+            !dismissed.contains(session.folder.standardizedFileURL.path)
+                && isRogerSessionFolder(session.folder, layout: layout, extraFolders: extraFolders)
+        }
+    }
+
     enum MediaOpening: Equatable {
         /// Open it in the default app.
         case open
