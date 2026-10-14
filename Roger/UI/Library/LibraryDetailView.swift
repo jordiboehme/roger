@@ -294,8 +294,8 @@ struct LibraryItemDetail: View {
         do {
             try LibraryDocumentEditor.rename(fileAt: item.url, to: title)
             coordinator.libraryChanges.recordWritten(
-                    markdownURL: item.url, kind: item.kind, root: coordinator.appState.libraryLayout.root
-                )
+                markdownURL: item.url, kind: item.kind, root: coordinator.appState.libraryLayout.root
+            )
             reloadNow()
             let written = item
             Task { await model.didWrite(written) }
