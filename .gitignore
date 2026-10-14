@@ -12,7 +12,6 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # Code signing
 *.p12
