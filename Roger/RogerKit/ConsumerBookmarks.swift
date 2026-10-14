@@ -78,9 +78,14 @@ public struct ConsumerBookmarks: Sendable {
     }
 
     /// Moves the bookmark to `upTo` when that is higher. Never backwards.
+    /// An `upTo` that is not newer writes nothing, not even the folder or
+    /// the lock file (the file is replaced by `rename`, so reading it
+    /// without the lock is safe).
     @discardableResult
     public func ack(_ name: String, upTo: Int, now: Date = Date()) throws -> AckResult {
         try validate(name)
+        let seen = Self.read(fileURL(name))?.seq ?? 0
+        guard upTo > seen else { return AckResult(previous: seen, current: seen) }
         return try withLock {
             let previous = Self.read(fileURL(name))?.seq ?? 0
             guard upTo > previous else { return AckResult(previous: previous, current: previous) }

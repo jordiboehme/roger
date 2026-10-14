@@ -350,4 +350,46 @@ struct RogerToolsTests {
         #expect(tools(root).call("get_item", arguments: ["key": .string("Logs/2026/01/none")]).text == "No item with the key \"Logs/2026/01/none\".")
         #expect(tools(root).call("ack", arguments: ["consumer": .string("A"), "upTo": .int(1)]).text.hasPrefix("\"A\" is not a valid consumer name."))
     }
+
+    /// A library that was set up but has no items yet: no tool writes
+    /// anything (no bookmark for an ack of 0, no lock file, no folder).
+    @Test func theSixToolsWriteNothingInAnEmptyLibrary() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        try await ChangeLog(root: root).ensureFile()
+        func snapshot() throws -> [String: Date] {
+            var result: [String: Date] = [:]
+            let keys: [URLResourceKey] = [.contentModificationDateKey]
+            let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys)
+            while let url = enumerator?.nextObject() as? URL {
+                result[url.path] = try url.resourceValues(forKeys: Set(keys)).contentModificationDate
+            }
+            return result
+        }
+        let before = try snapshot()
+        for (name, arguments) in [
+            ("status", [String: ToolValue]()),
+            ("get_changes", ["consumer": .string("crystalline")]),
+            ("ack", ["consumer": .string("crystalline"), "upTo": .int(0)]),
+            ("get_item", ["key": .string("Logs/2026/10/none")]),
+            ("list_items", [:]),
+            ("search", ["query": .string("supplier")]),
+        ] {
+            _ = tools(root).call(name, arguments: arguments)
+        }
+        #expect(try snapshot() == before)
+    }
+
+    @Test func searchClampsTheLimitTo100() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let layout = LibraryLayout(root: root)
+        for i in 0..<101 {
+            try KitFixtures.log(in: layout, at: KitFixtures.base.addingTimeInterval(Double(i) * 60), text: "Supplier note \(i)")
+        }
+        try await ChangeLog(root: root).ensureFile()
+        let output = tools(root).call("search", arguments: ["query": .string("supplier"), "limit": .int(9_999)])
+        #expect(!output.isError)
+        #expect(output.text.hasPrefix("results[100]{key,kind,title,date,snippet}:"))
+    }
 }

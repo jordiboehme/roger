@@ -467,4 +467,28 @@ struct LibraryActionsTests {
         let offered = LibraryActions.finalisable([session], layout: library, extraFolders: [], dismissed: [])
         #expect(offered.map(\.folder) == [roger])
     }
+
+    /// The `.md` of a log stays (the move failed) while its `.m4a` went: the
+    /// log is not reported as deleted, and the message names the `.md`.
+    @Test func aFailedMarkdownAndAMovedAudioIsNoDeletion() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root)
+        let md = library.root.appendingPathComponent("Logs/2026/10/a.md")
+        let m4a = md.deletingPathExtension().appendingPathExtension("m4a")
+        try touch(md)
+        try touch(m4a)
+        let item = LibraryFixtures.item("a", folder: md.deletingLastPathComponent().path)
+        let plan = LibraryActions.trashPlan(for: [item], layout: library, extraFolders: [], activeSessionFolder: nil)
+        #expect(plan.urls.map(\.lastPathComponent) == ["a.md", "a.m4a"])
+        var moved: [URL] = []
+        let failed = LibraryActions.moveToTrash(plan.urls) { url in
+            if url.pathExtension == "md" { throw CocoaError(.fileWriteNoPermission) }
+            moved.append(url)
+        }
+        #expect(failed.map(\.lastPathComponent) == ["a.md"])
+        #expect(moved.map(\.lastPathComponent) == ["a.m4a"])
+        #expect(LibraryChangeRecorder.trashedItems([item], plan: plan, failed: failed).isEmpty)
+        #expect(LibraryActions.trashFailureMessage(failed) == "Some files could not be moved to the Trash: a.md.")
+    }
 }

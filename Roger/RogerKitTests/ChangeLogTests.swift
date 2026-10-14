@@ -137,4 +137,21 @@ struct ChangeLogTests {
         #expect(counts == Array(repeating: 2_000, count: 8))
         #expect(RFC3339.date("2026-10-13T14:32:41.250+02:00") != nil)
     }
+
+    /// `ensureFile` on a log with events (also one cut by a crash) leaves
+    /// every byte as it is.
+    @Test func ensureFileLeavesAnExistingLogByteForByte() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let log = ChangeLog(root: root)
+        try await log.append([PendingChange(event: .created, kind: .log, key: "Logs/a", path: "Logs/a.md")])
+        let url = ChangeLogFile.url(root: root)
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(#"{"seq":2,"at":"#.utf8))
+        try handle.close()
+        let before = try Data(contentsOf: url)
+        try await log.ensureFile()
+        #expect(try Data(contentsOf: url) == before)
+    }
 }
