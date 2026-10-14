@@ -67,7 +67,7 @@ struct SettingsPaneContent: View {
     var body: some View {
         switch pane {
         case .general: GeneralPane()
-        case .presets: PresetsSettingsView()
+        case .presets: PresetsPane()
         case .microphone: MicrophoneSettingsView()
         case .model: ModelSettingsView()
         case .aiProvider: AIProviderSettingsView()

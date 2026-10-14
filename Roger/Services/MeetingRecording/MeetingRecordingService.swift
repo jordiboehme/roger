@@ -701,7 +701,7 @@ final class MeetingRecordingService {
     /// `meetingTranscriptionPreset` is guaranteed to have no AI steps;
     /// `resolvedLanguage` enforces the model-vs-preset precedence (the
     /// English-only model always wins, matching the existing behaviour in
-    /// PresetsSettingsView's mismatch warning).
+    /// PresetsPane's language warning).
     private func currentPipelineConfig() -> MeetingTranscriptionPipeline.Config {
         let preset = appState.meetingTranscriptionPreset
         return MeetingTranscriptionPipeline.Config(
