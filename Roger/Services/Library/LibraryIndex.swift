@@ -361,13 +361,12 @@ actor InMemoryLibraryIndex: LibraryIndex {
         case .tree(let path, let kind):
             removeAll { LibraryPath.isPath($0.url.path, inside: path) || LibraryPath.isPath($0.folderURL.path, inside: path) }
             insert(LibraryScanner.scanTree(path, kind: kind))
-        case .extraFolder(let path):
-            removeAll { LibraryPath.isPath($0.url.path, inside: path) }
-            insert(LibraryScanner.scanExtraFolder(path))
+        case .extraFolder:
+            // Rare (the extra folder itself appeared, went or was renamed).
+            // A full read keeps the scanner's rule for a file found twice.
+            itemsByID = scanAll()
         case .externalList:
-            let previous = externalIDs
-            removeAll { previous.contains($0.id) }
-            insert(scanExternal())
+            itemsByID = scanAll()
             // A new external transcript may live in a folder nobody watches yet.
             if watchesFileSystem { restartWatcherIfNeeded() }
         case .everything:
@@ -383,20 +382,16 @@ actor InMemoryLibraryIndex: LibraryIndex {
         for item in items { itemsByID[item.id] = item }
     }
 
+    /// The scanner's order and rule: Logs, Transcripts, Meetings, extra
+    /// folders, external list; a file found twice keeps its first item.
+    /// `externalIDs` holds only the files first found through the list: a
+    /// file found twice keeps the kind of its first find after a later edit.
     private func scanAll() -> [String: LibraryItem] {
-        var found = LibraryScanner.scanTree(logs, kind: .log)
-        found += LibraryScanner.scanTree(transcripts, kind: .transcript)
-        found += LibraryScanner.scanTree(meetings, kind: .meeting)
-        for extra in extras { found += LibraryScanner.scanExtraFolder(extra) }
-        found += scanExternal()
-        var result: [String: LibraryItem] = [:]
-        for item in found { result[item.id] = item }
-        return result
-    }
-
-    private func scanExternal() -> [LibraryItem] {
-        let items = LibraryScanner.scanExternal(externalFiles())
-        externalIDs = Set(items.map(\.id))
-        return items
+        var items = LibraryScanner.scanAll(scope: scope, externalFiles: [])
+        var seen = Set(items.map(\.id))
+        let external = LibraryScanner.scanExternal(externalFiles()).filter { seen.insert($0.id).inserted }
+        externalIDs = Set(external.map(\.id))
+        items += external
+        return Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 }

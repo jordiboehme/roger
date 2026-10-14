@@ -198,6 +198,52 @@ struct LibraryIndexTests {
         #expect(await index.items().map(\.title) == ["talk"])
     }
 
+    /// An extra folder that is also a Logs month folder: a file without tags
+    /// is found twice. The index keeps what `LibraryScanner` keeps (the
+    /// first find, a log), also after the extra folder or the external list
+    /// changed and after a later edit of the file.
+    @Test func aFileFoundTwiceKeepsItsFirstItem() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let month = layout.monthFolder(.logs, for: date)
+        try FileManager.default.createDirectory(at: month, withIntermediateDirectories: true)
+        let note = month.appendingPathComponent("note.md")
+        try "# Note\n\nNo tags here\n".write(to: note, atomically: true, encoding: .utf8)
+        let registry = ExternalTranscriptRegistry(fileURL: base.appendingPathComponent("Support/external-transcripts.json"))
+        try registry.add(note)
+        let scope = LibraryScanScope(layout: layout, extraFolders: [month])
+        #expect(LibraryScanner.scanAll(scope: scope, externalFiles: [note]).map(\.kind) == [.log])
+
+        let index = makeIndex(layout, extras: [month], external: { registry.existingFiles() }, listURL: registry.fileURL)
+        #expect(await index.items().map(\.kind) == [.log])
+        await index.apply(changedPaths: [registry.fileURL.path])
+        #expect(await index.items().map(\.kind) == [.log])
+        try "# Note\n\nNo tags, edited\n".write(to: note, atomically: true, encoding: .utf8)
+        await index.apply(changedPaths: [note.path])
+        #expect(await index.items().map(\.kind) == [.log])
+    }
+
+    /// An extra folder outside Logs, Meetings and Transcripts: a change of
+    /// the folder itself reads everything again and keeps the other items.
+    @Test func anExtraFolderChangeReadsEverythingAgain() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        try writeLog(layout, at: date, text: "A log")
+        let old = base.appendingPathComponent("Roger Recordings", isDirectory: true)
+        try writeTranscript(old.appendingPathComponent("legacy.mp3.md"), title: "legacy")
+        let index = makeIndex(layout, extras: [old])
+        #expect(await index.items().count == 2)
+
+        try writeTranscript(old.appendingPathComponent("second.mp3.md"), title: "second")
+        await index.apply(changedPaths: [old.path])
+        let items = await index.items()
+        #expect(items.count == 3)
+        #expect(items.filter { $0.kind == .transcript }.count == 2)
+        #expect(items.filter { $0.kind == .log }.count == 1)
+    }
+
     @Test func changesYieldAfterBuildAndAfterRealChanges() async throws {
         let base = try TempFolder.make()
         defer { TempFolder.remove(base) }
