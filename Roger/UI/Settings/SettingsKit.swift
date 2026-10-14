@@ -143,6 +143,12 @@ struct SettingsDurationStepper: View {
     }
 }
 
+/// What to do when a microphone test ran but macOS sent no audio (the
+/// coreaudiod wedge). Shared by the Microphone and Permissions panes.
+enum SettingsStuckAudio {
+    static let advice = "Relaunch Roger. If it happens again, run sudo killall coreaudiod in Terminal or restart the Mac."
+}
+
 /// The outcome of a Test button: a short sentence and whether it worked.
 struct SettingsTestResult: Equatable {
     let text: String

@@ -49,7 +49,7 @@ struct MicrophonePane: View {
                     }
                 }
                 if starved {
-                    SettingsRow(title: "The audio system is stuck", note: AudioCaptureService.halStarvedAdvice) {
+                    SettingsRow(title: "The audio system is stuck", note: SettingsStuckAudio.advice) {
                         // Goes through the relaunch gate: unsaved edits are asked about first.
                         Button("Relaunch Roger") { coordinator.relaunchApp() }
                     }

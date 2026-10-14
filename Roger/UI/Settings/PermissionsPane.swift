@@ -229,9 +229,6 @@ struct PermissionsPane: View {
         }
     }
 
-    /// The microphone test ran but macOS sent no audio (the coreaudiod wedge).
-    static let stuckAudioText = "The audio system of macOS is stuck. Relaunch Roger. If it happens again, restart the Mac."
-
     private func testMicrophone() {
         micTestResult = nil
         let service = coordinator.audioCaptureService
@@ -242,7 +239,7 @@ struct PermissionsPane: View {
                     let peak = samples.map { abs($0) }.max() ?? 0
                     micTestResult = .success("Works. Loudest level \(String(format: "%.3f", peak)).")
                 } else if result.health == .halStarved {
-                    micTestResult = .failure(Self.stuckAudioText)
+                    micTestResult = .failure("The audio system of macOS is stuck. \(SettingsStuckAudio.advice)")
                 } else {
                     micTestResult = .failure("Roger got no sound from the microphone.")
                 }
