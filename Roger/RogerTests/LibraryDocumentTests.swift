@@ -238,4 +238,17 @@ struct LibraryDocumentTests {
         #expect(try LibraryDocumentEditor.saveBody("\nMine\n", of: document) == .changedOnDisk)
         #expect(try read(target) == otherEdit)
     }
+
+    /// A link whose file is gone stays a link: nothing is written.
+    @Test func aDanglingLinkIsNotReplaced() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        try FileManager.default.removeItem(at: target)
+        #expect(throws: LibraryDocumentEditor.WriteError.linkTargetMissing) {
+            try LibraryDocumentEditor.write("Text\n", to: link)
+        }
+        #expect(try isLink(link))
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+    }
 }

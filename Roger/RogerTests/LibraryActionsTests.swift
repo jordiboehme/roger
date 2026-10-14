@@ -452,4 +452,19 @@ struct LibraryActionsTests {
         )
         #expect(offered.map(\.folder) == [roger, legacy])
     }
+
+    /// A folder the user added to an unfinished Roger meeting (for slides,
+    /// say) does not hide it: it can still be finalised. The subfolder rule
+    /// is for Trash only.
+    @Test func aRogerSessionWithASubfolderIsStillFinalisable() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let roger = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        try touch(roger.appendingPathComponent("mic-001.caf"))
+        try touch(roger.appendingPathComponent("Slides/deck.pdf"))
+        let session = MeetingSession(id: UUID(), folder: roger, startedAt: Date(timeIntervalSince1970: 1_790_000_000))
+        let offered = LibraryActions.finalisable([session], layout: library, extraFolders: [], dismissed: [])
+        #expect(offered.map(\.folder) == [roger])
+    }
 }

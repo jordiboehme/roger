@@ -176,7 +176,9 @@ enum LibraryActions {
 
     /// The unfinished sessions Roger offers to finalise: only folders that
     /// `isRogerSessionFolder` accepts (the check Trash uses) and that the
-    /// user did not dismiss (`dismissed` holds standardized paths).
+    /// user did not dismiss (`dismissed` holds standardized paths). A
+    /// subfolder the user added does not count against it: that rule is
+    /// for Trash only.
     static func finalisable(
         _ sessions: [MeetingSession],
         layout: LibraryLayout,
@@ -185,7 +187,7 @@ enum LibraryActions {
     ) -> [MeetingSession] {
         sessions.filter { session in
             !dismissed.contains(session.folder.standardizedFileURL.path)
-                && isRogerSessionFolder(session.folder, layout: layout, extraFolders: extraFolders)
+                && isRogerSessionFolder(session.folder, layout: layout, extraFolders: extraFolders, allowsSubfolders: true)
         }
     }
 

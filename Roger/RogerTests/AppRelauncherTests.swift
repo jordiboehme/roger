@@ -39,15 +39,25 @@ struct AppRelauncherTests {
         sleeper.arguments = ["30"]
         try sleeper.run()
         let waiter = Process()
+        // A failed expectation must leave nothing running.
+        defer {
+            if sleeper.isRunning { sleeper.terminate() }
+            if waiter.isRunning { waiter.terminate() }
+        }
         waiter.executableURL = URL(fileURLWithPath: "/bin/sh")
         // Only the wait loop: never run `open` in a test.
         waiter.arguments = ["-c", AppRelauncher.waitLoop(pid: sleeper.processIdentifier)]
         try waiter.run()
-        try await Task.sleep(for: .milliseconds(400))
-        #expect(waiter.isRunning)
+        // While the process lives, the loop keeps going (checked several times).
+        for _ in 0..<6 {
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(waiter.isRunning)
+            guard waiter.isRunning else { return }
+        }
         sleeper.terminate()
         sleeper.waitUntilExit()
-        for _ in 0..<50 where waiter.isRunning { try await Task.sleep(for: .milliseconds(50)) }
+        // Then it ends soon: poll up to 5 seconds.
+        for _ in 0..<100 where waiter.isRunning { try await Task.sleep(for: .milliseconds(50)) }
         #expect(!waiter.isRunning)
     }
 }

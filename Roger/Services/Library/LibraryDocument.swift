@@ -41,6 +41,15 @@ enum LibraryDocumentEditor {
         }
     }
 
+    enum WriteError: LocalizedError, Equatable {
+        /// The entry is a link and the file it points to is gone.
+        case linkTargetMissing
+
+        var errorDescription: String? {
+            "The file this entry links to is gone. Roger did not save."
+        }
+    }
+
     /// Read without URL resource caching, so a change by another app is
     /// seen. For a symlink this is the date of the file it points to
     /// (`attributesOfItem` alone describes the link itself).
@@ -97,9 +106,15 @@ enum LibraryDocumentEditor {
     /// in with `replaceItemAt`, which keeps the original's creation date,
     /// Finder tags and other attributes. The original is never truncated in
     /// place, so a failed write leaves it intact. A symlink is followed: the
-    /// file it points to gets the text and the link stays a link.
+    /// file it points to gets the text and the link stays a link. A link
+    /// whose file is gone is refused (`WriteError.linkTargetMissing`).
     static func write(_ text: String, to url: URL) throws {
         let fm = FileManager.default
+        // A dangling link would be replaced by a plain file: refuse instead.
+        let isLink = (try? fm.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeSymbolicLink
+        if isLink, !fm.fileExists(atPath: url.path) {
+            throw WriteError.linkTargetMissing
+        }
         let target = LibraryPath.canonicalURL(url)
         let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
         defer { try? fm.removeItem(at: scratch) }
