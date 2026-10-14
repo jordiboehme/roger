@@ -12,6 +12,8 @@ enum MeetingRecordingError: LocalizedError, Sendable {
     case audioCapturePermissionDenied
     case tapStartFailed(String)
     case audioWriterFailed(String)
+    /// The library folder is missing (the message names it).
+    case libraryMissing(String)
     case finalisationFailed(String)
     case noAudioCaptured
     case sleepInterrupted
@@ -37,6 +39,8 @@ enum MeetingRecordingError: LocalizedError, Sendable {
             return "Couldn't start system audio capture: \(reason)"
         case .audioWriterFailed(let reason):
             return "Couldn't write audio to disk: \(reason)"
+        case .libraryMissing(let message):
+            return message
         case .finalisationFailed(let reason):
             return "Couldn't finalise the meeting recording: \(reason)"
         case .noAudioCaptured:

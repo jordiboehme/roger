@@ -211,6 +211,16 @@ final class AppCoordinator {
         let oldMeetings = appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
         let sessions = MeetingSessionScanner.sessionFolders(in: oldMeetings, maxDepth: 1)
         if !sessions.isEmpty, !LibraryMigration.isInsideLibrary(oldMeetings, layout: layout) {
+            // A missing custom library folder (drive not connected) is never
+            // created: keep the meetings in place and still find them.
+            do {
+                try LibraryLayout.prepareRootForWriting(layout)
+            } catch {
+                logger.warning("Library migration skipped: \(error.localizedDescription, privacy: .public)")
+                addExtra(oldMeetings)
+                appState.extraScanFolders = extras
+                return
+            }
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "Move your meetings to the Roger library?"
@@ -218,9 +228,14 @@ final class AppCoordinator {
             alert.addButton(withTitle: "Move")
             alert.addButton(withTitle: "Keep in Place")
             if alert.runModal() == .alertFirstButtonReturn {
-                let result = LibraryMigration.execute(LibraryMigration.plan(sessionFolders: sessions, layout: layout))
-                logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failed.count) failed")
-                if !result.failed.isEmpty {
+                do {
+                    let result = try LibraryMigration.execute(LibraryMigration.plan(sessionFolders: sessions, layout: layout), layout: layout)
+                    logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failed.count) failed")
+                    if !result.failed.isEmpty {
+                        addExtra(oldMeetings)
+                    }
+                } catch {
+                    logger.warning("Library migration skipped: \(error.localizedDescription, privacy: .public)")
                     addExtra(oldMeetings)
                 }
             } else {

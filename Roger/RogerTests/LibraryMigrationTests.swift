@@ -48,12 +48,13 @@ struct LibraryMigrationTests {
         let root = try TempFolder.make()
         defer { TempFolder.remove(root) }
         let layout = LibraryLayout(root: root.appendingPathComponent("Roger"))
+        try FileManager.default.createDirectory(at: layout.root, withIntermediateDirectories: true)
         let old = root.appendingPathComponent("Roger Recordings/2026-10-13 09-00")
         try makeSession(old)
         let existing = layout.kindFolder(.meetings).appendingPathComponent("2026/10/2026-10-13 09-00")
         try makeSession(existing)
 
-        let result = LibraryMigration.execute(LibraryMigration.plan(sessionFolders: [old], layout: layout))
+        let result = try LibraryMigration.execute(LibraryMigration.plan(sessionFolders: [old], layout: layout), layout: layout)
         #expect(result.failed.isEmpty)
         #expect(result.moved.map(\.lastPathComponent) == ["2026-10-13 09-00 1"])
         #expect(!FileManager.default.fileExists(atPath: old.path))
@@ -65,8 +66,25 @@ struct LibraryMigrationTests {
         defer { TempFolder.remove(root) }
         let missing = root.appendingPathComponent("gone")
         let move = LibraryMigration.Move(source: missing, destinationFolder: root.appendingPathComponent("dest"))
-        let result = LibraryMigration.execute([move])
+        let result = try LibraryMigration.execute([move], layout: LibraryLayout(root: root))
         #expect(result.failed == [move])
         #expect(result.moved.isEmpty)
+    }
+
+    @Test func aMissingCustomRootIsNotCreatedByTheMigration() throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let custom = base.appendingPathComponent("Drive/Roger")
+        let layout = LibraryLayout(root: custom)
+        let old = base.appendingPathComponent("Roger Recordings/2026-10-13 09-00")
+        try makeSession(old)
+        #expect(throws: LibraryRootMissingError(path: custom.path)) {
+            try LibraryMigration.execute(
+                LibraryMigration.plan(sessionFolders: [old], layout: layout),
+                layout: layout, defaultRoot: base.appendingPathComponent("Documents/Roger")
+            )
+        }
+        #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Drive").path))
+        #expect(FileManager.default.fileExists(atPath: old.path))
     }
 }

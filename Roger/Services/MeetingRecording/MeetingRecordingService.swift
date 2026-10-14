@@ -104,8 +104,11 @@ final class MeetingRecordingService {
         do {
             session = try MeetingSession.create(layout: appState.libraryLayout, startedAt: startedAt)
         } catch {
-            state = .error(.audioWriterFailed(error.localizedDescription))
-            throw MeetingRecordingError.audioWriterFailed(error.localizedDescription)
+            let failure: MeetingRecordingError = error is LibraryRootMissingError
+                ? .libraryMissing(error.localizedDescription)
+                : .audioWriterFailed(error.localizedDescription)
+            state = .error(failure)
+            throw failure
         }
         self.session = session
         checkpointStore = MeetingCheckpointStore(folder: session.folder, sessionStartedAt: session.startedAt)
