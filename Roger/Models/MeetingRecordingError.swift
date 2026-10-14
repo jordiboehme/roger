@@ -33,9 +33,9 @@ enum MeetingRecordingError: LocalizedError, Sendable {
         case .fileTranscriptionActive:
             return "Wait for the current file transcription to finish before starting a meeting."
         case .microphonePermissionDenied:
-            return "Microphone access denied. Grant permission in System Settings › Privacy & Security."
+            return "Microphone access denied. Grant permission in System Settings > Privacy & Security."
         case .audioCapturePermissionDenied:
-            return "System audio recording denied. Grant permission in System Settings › Privacy & Security › Audio."
+            return "System audio recording denied. Grant permission in System Settings > Privacy & Security > Audio."
         case .tapStartFailed(let reason):
             return "Couldn't start system audio capture: \(reason)"
         case .audioWriterFailed(let reason):

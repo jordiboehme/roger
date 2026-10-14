@@ -7,16 +7,11 @@ struct AIProviderPane: View {
     @State private var claudeKey: String = KeychainManager.loadAPIKey(for: .claude) ?? ""
     @State private var openAIKey: String = KeychainManager.loadAPIKey(for: .openai) ?? ""
     @State private var testingConnection = false
-    @State private var connectionStatus: String?
+    @State private var connectionStatus: SettingsTestResult?
     @State private var appleIntelligence = AppleIntelligenceStatus.current
     /// Set when the keychain refused a key.
     @State private var keyError: String?
     @FocusState private var focusedKey: LLMProviderType?
-
-    private static var isAppleIntelligenceAvailable: Bool {
-        if #available(macOS 26, *) { return true }
-        return false
-    }
 
     var body: some View {
         @Bindable var state = coordinator.appState
@@ -25,7 +20,7 @@ struct AIProviderPane: View {
             Section {
                 Picker(selection: $state.selectedLLMProvider) {
                     ForEach(LLMProviderType.allCases) { choice in
-                        Text(Self.menuTitle(choice, appleIntelligenceAvailable: Self.isAppleIntelligenceAvailable))
+                        Text(Self.menuTitle(choice, appleIntelligence: appleIntelligence))
                             .tag(choice)
                     }
                 } label: {
@@ -55,8 +50,8 @@ struct AIProviderPane: View {
                     TextField("Model", text: $state.ollamaModel)
                     SettingsRow(
                         title: "Connection",
-                        note: connectionStatus,
-                        noteColor: SettingsResultColor.color(for: connectionStatus)
+                        note: connectionStatus?.text,
+                        noteColor: SettingsTestResult.color(for: connectionStatus)
                     ) {
                         HStack {
                             if testingConnection {
@@ -105,6 +100,11 @@ struct AIProviderPane: View {
             default: break
             }
         }
+        .onChange(of: provider) {
+            // An error of one provider's key does not belong to the next.
+            keyError = nil
+            connectionStatus = nil
+        }
         .onAppear { appleIntelligence = .current }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             appleIntelligence = .current
@@ -129,10 +129,15 @@ struct AIProviderPane: View {
         }
     }
 
-    /// Menu entry: the provider name and where the text goes.
-    static func menuTitle(_ provider: LLMProviderType, appleIntelligenceAvailable: Bool) -> String {
-        if provider == .appleIntelligence && !appleIntelligenceAvailable {
-            return "\(provider.displayName) (macOS 26 or later)"
+    /// Menu entry: the provider name and where the text goes, or why
+    /// Apple Intelligence cannot be used.
+    static func menuTitle(_ provider: LLMProviderType, appleIntelligence: AppleIntelligenceStatus) -> String {
+        if provider == .appleIntelligence {
+            switch appleIntelligence {
+            case .available: break
+            case .unavailable(.needsMacOS26): return "\(provider.displayName) (macOS 26 or later)"
+            case .unavailable: return "\(provider.displayName) (not available)"
+            }
         }
         return "\(provider.displayName) (\(provider.isLocal ? "local" : "cloud"))"
     }
@@ -165,7 +170,7 @@ struct AIProviderPane: View {
             )
             let available = await service.isAvailable
             testingConnection = false
-            connectionStatus = available ? "OK: connected" : "Cannot reach Ollama"
+            connectionStatus = available ? .success("Works. Roger reached Ollama.") : .failure("Roger cannot reach Ollama.")
         }
     }
 }

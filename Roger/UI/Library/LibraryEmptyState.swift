@@ -33,7 +33,7 @@ struct LibraryEmptyState: Equatable {
         switch sidebar {
         case .kind(.log):
             return .init(title: "No Log Entries",
-                         message: "No log entries yet. Bind the Log preset to Caps+⌥ in Settings → Presets.",
+                         message: "No log entries yet. Bind the Log preset to Option + Caps Lock in Settings > Presets.",
                          systemImage: "book.closed", settingsButton: .presets)
         case .kind(.meeting):
             return .init(title: "No Meetings", message: "No meetings yet. Start a recording from the menu bar.",

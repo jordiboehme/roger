@@ -5,11 +5,11 @@ import SwiftUI
 /// and a test.
 struct PermissionsPane: View {
     @Environment(AppCoordinator.self) private var coordinator
-    @State private var micTestResult: String?
-    @State private var accessibilityTestResult: String?
-    @State private var hotkeyTestResult: String?
+    @State private var micTestResult: SettingsTestResult?
+    @State private var accessibilityTestResult: SettingsTestResult?
+    @State private var hotkeyTestResult: SettingsTestResult?
     @State private var hotkeyTestActive = false
-    @State private var systemAudioTestResult: String?
+    @State private var systemAudioTestResult: SettingsTestResult?
     @State private var systemAudioTestRunning = false
     /// nil while hidutil is asked.
     @State private var capsLockActive: Bool?
@@ -22,8 +22,8 @@ struct PermissionsPane: View {
             Section {
                 SettingsRow(
                     title: "Microphone",
-                    note: micTestResult ?? "Roger hears your voice to transcribe it.",
-                    noteColor: SettingsResultColor.color(for: micTestResult)
+                    note: micTestResult?.text ?? "Roger hears your voice to transcribe it.",
+                    noteColor: SettingsTestResult.color(for: micTestResult)
                 ) {
                     HStack {
                         grantedStatus(pm.microphoneAuthorized)
@@ -44,8 +44,8 @@ struct PermissionsPane: View {
 
                 SettingsRow(
                     title: "Accessibility",
-                    note: accessibilityTestResult ?? "Roger types your text at the cursor and sees the dictation key.",
-                    noteColor: SettingsResultColor.color(for: accessibilityTestResult)
+                    note: accessibilityTestResult?.text ?? "Roger types your text at the cursor and sees the dictation key.",
+                    noteColor: SettingsTestResult.color(for: accessibilityTestResult)
                 ) {
                     HStack {
                         grantedStatus(pm.accessibilityAuthorized)
@@ -66,8 +66,8 @@ struct PermissionsPane: View {
 
                 SettingsRow(
                     title: "System audio",
-                    note: systemAudioTestResult ?? "Roger records the other side of a meeting. macOS asks when you first record.",
-                    noteColor: SettingsResultColor.color(for: systemAudioTestResult)
+                    note: systemAudioTestResult?.text ?? "Roger records the other side of a meeting. macOS asks when you first record.",
+                    noteColor: SettingsTestResult.color(for: systemAudioTestResult)
                 ) {
                     HStack {
                         SettingsStatus(level: .unknown, text: "Not known")
@@ -88,8 +88,8 @@ struct PermissionsPane: View {
             Section {
                 SettingsRow(
                     title: "Hotkey listener",
-                    note: hotkeyTestResult ?? "Roger listens for F18. Press Test, then the key.",
-                    noteColor: SettingsResultColor.color(for: hotkeyTestResult)
+                    note: hotkeyTestResult?.text ?? "Roger listens for F18. Press Test, then the key.",
+                    noteColor: SettingsTestResult.color(for: hotkeyTestResult)
                 ) {
                     HStack {
                         SettingsStatus(
@@ -152,7 +152,7 @@ struct PermissionsPane: View {
 
     // MARK: - Actions
 
-    /// Deep-links to System Settings › Privacy & Security › Audio. Falls back
+    /// Deep-links to System Settings > Privacy & Security > Audio. Falls back
     /// to the Privacy & Security root if the specific anchor is unknown to
     /// the current macOS build.
     private func openAudioCapturePane() {
@@ -221,13 +221,16 @@ struct PermissionsPane: View {
             if player.isRunning { player.terminate() }
 
             systemAudioTestResult = sawAudio
-                ? "OK: captured system playback"
-                : "No audio captured. Grant permission in System Settings › Privacy & Security › Audio."
+                ? .success("Works. Roger heard the test sound.")
+                : .failure("Roger heard nothing. Allow it in System Settings > Privacy & Security > Audio.")
         } catch {
             tap.stop()
-            systemAudioTestResult = "Failed: \(error.localizedDescription)"
+            systemAudioTestResult = .failure(error)
         }
     }
+
+    /// The microphone test ran but macOS sent no audio (the coreaudiod wedge).
+    static let stuckAudioText = "The audio system of macOS is stuck. Relaunch Roger. If it happens again, restart the Mac."
 
     private func testMicrophone() {
         micTestResult = nil
@@ -237,14 +240,14 @@ struct PermissionsPane: View {
                 let result = try await service.probe()
                 if let samples = result.samples, !samples.isEmpty {
                     let peak = samples.map { abs($0) }.max() ?? 0
-                    micTestResult = "OK: \(samples.count) samples (peak: \(String(format: "%.3f", peak)))"
+                    micTestResult = .success("Works. Loudest level \(String(format: "%.3f", peak)).")
                 } else if result.health == .halStarved {
-                    micTestResult = "Failed - \(AudioCaptureService.halStarvedAdvice)"
+                    micTestResult = .failure(Self.stuckAudioText)
                 } else {
-                    micTestResult = "Failed: no audio captured"
+                    micTestResult = .failure("Roger got no sound from the microphone.")
                 }
             } catch {
-                micTestResult = "Failed: \(error.localizedDescription)"
+                micTestResult = .failure(error)
             }
         }
     }
@@ -267,8 +270,8 @@ struct PermissionsPane: View {
             &focusedElement
         )
         accessibilityTestResult = result == .success
-            ? "OK: can read focused UI element"
-            : "Failed: error \(result.rawValue)"
+            ? .success("Works. Roger can read the focused field.")
+            : .failure("Roger cannot read the focused field (error \(result.rawValue)).")
     }
 
     private func testHotkey() {
@@ -280,7 +283,7 @@ struct PermissionsPane: View {
 
         coordinator.hotkeyManager.onRecordingStarted = { [self] _ in
             Task { @MainActor in
-                hotkeyTestResult = "OK: keypress detected!"
+                hotkeyTestResult = .success("Works. Roger saw the key.")
                 hotkeyTestActive = false
                 coordinator.hotkeyManager.onRecordingStarted = originalStart
                 coordinator.hotkeyManager.onRecordingStopped = originalStop
@@ -290,7 +293,7 @@ struct PermissionsPane: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [self] in
             if hotkeyTestActive {
-                hotkeyTestResult = "Timeout: no keypress in 10s"
+                hotkeyTestResult = .failure("No key press in 10 seconds.")
                 hotkeyTestActive = false
                 coordinator.hotkeyManager.onRecordingStarted = originalStart
                 coordinator.hotkeyManager.onRecordingStopped = originalStop

@@ -143,11 +143,24 @@ struct SettingsDurationStepper: View {
     }
 }
 
-/// Note color for a test result: green for "OK...", red otherwise.
-enum SettingsResultColor {
-    static func color(for result: String?) -> Color {
+/// The outcome of a Test button: a short sentence and whether it worked.
+struct SettingsTestResult: Equatable {
+    let text: String
+    let succeeded: Bool
+
+    static func success(_ text: String) -> SettingsTestResult { .init(text: text, succeeded: true) }
+    static func failure(_ text: String) -> SettingsTestResult { .init(text: text, succeeded: false) }
+
+    /// A failure with a system error: "Failed: <reason>."
+    static func failure(_ error: Error) -> SettingsTestResult {
+        let reason = error.localizedDescription.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        return .failure("Failed: \(reason).")
+    }
+
+    /// Note color: green when it worked, red when not, gray without a result.
+    static func color(for result: SettingsTestResult?) -> Color {
         guard let result else { return .secondary }
-        return result.hasPrefix("OK") ? .green : .red
+        return result.succeeded ? .green : .red
     }
 }
 

@@ -6,8 +6,10 @@ struct MicrophonePane: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var devices: [AudioDeviceLookup.InputDevice] = []
     @State private var systemDefaultName: String?
-    @State private var systemDefaultTransport: String?
-    @State private var testResult: String?
+    /// Transport of the device Roger records from ("USB", "Built-in"). Asked
+    /// in refresh(), never in body: Core Audio can hang when coreaudiod is stuck.
+    @State private var currentTransport: String?
+    @State private var testResult: SettingsTestResult?
     @State private var testing = false
     /// Peak of the last test, 0...1. The meter shows it.
     @State private var peak: Float = 0
@@ -21,7 +23,7 @@ struct MicrophonePane: View {
         SettingsForm {
             Section("Input device") {
                 Picker(selection: deviceSelection) {
-                    Text("Automatic (System Default)").tag(String?.none)
+                    Text("Automatic").tag(String?.none)
                     ForEach(devices) { device in
                         Text(device.name).tag(Optional(device.id))
                     }
@@ -36,8 +38,8 @@ struct MicrophonePane: View {
             Section {
                 SettingsRow(
                     title: "Level",
-                    note: micAllowed ? (testResult ?? "Speak and press Test.") : "Roger needs access to the microphone. See Permissions.",
-                    noteColor: micAllowed ? SettingsResultColor.color(for: testResult) : .secondary
+                    note: micAllowed ? (testResult?.text ?? "Speak and press Test.") : "Roger needs access to the microphone. See Permissions.",
+                    noteColor: micAllowed ? SettingsTestResult.color(for: testResult) : .secondary
                 ) {
                     HStack {
                         ProgressView(value: Double(min(max(peak, 0), 1)))
@@ -69,6 +71,7 @@ struct MicrophonePane: View {
             get: { coordinator.appState.selectedInputDeviceUID },
             set: { uid in
                 coordinator.appState.selectedInputDeviceUID = uid
+                refresh()
                 Task { await coordinator.warmUpMicrophone() }
             }
         )
@@ -80,7 +83,7 @@ struct MicrophonePane: View {
         return Self.deviceNote(
             isAutomatic: uid == nil,
             deviceName: device?.name ?? systemDefaultName,
-            transport: device.flatMap { AudioDeviceLookup.transportName(of: $0.deviceID) } ?? (uid == nil ? systemDefaultTransport : nil),
+            transport: currentTransport,
             isConnected: uid == nil || device != nil
         )
     }
@@ -100,7 +103,12 @@ struct MicrophonePane: View {
     private func refresh() {
         devices = AudioDeviceLookup.availableInputs()
         systemDefaultName = AudioDeviceLookup.systemDefaultInputName
-        systemDefaultTransport = AudioDeviceLookup.systemDefaultInputID.flatMap(AudioDeviceLookup.transportName(of:))
+        let uid = coordinator.appState.selectedInputDeviceUID
+        if let uid {
+            currentTransport = devices.first { $0.id == uid }.flatMap { AudioDeviceLookup.transportName(of: $0.deviceID) }
+        } else {
+            currentTransport = AudioDeviceLookup.systemDefaultInputID.flatMap(AudioDeviceLookup.transportName(of:))
+        }
     }
 
     private func runTest() {
@@ -118,18 +126,18 @@ struct MicrophonePane: View {
                 let actualDefault = AudioDeviceLookup.systemDefaultInputName ?? "unknown"
                 if let samples = result.samples, !samples.isEmpty {
                     peak = samples.map { abs($0) }.max() ?? 0
-                    testResult = "OK: peak \(String(format: "%.3f", peak))"
+                    testResult = .success("Works. Loudest level \(String(format: "%.3f", peak)).")
                 } else if result.health == .halStarved {
                     starved = true
-                    testResult = "Failed - audio system is stuck"
+                    testResult = .failure("The audio system of macOS is stuck. See below.")
                 } else {
                     let routingHint = expectedDeviceName != actualDefault
-                        ? " (system default: \(actualDefault))"
+                        ? " The macOS default is \(actualDefault)."
                         : ""
-                    testResult = "Failed: 0 samples from \(expectedDeviceName)\(routingHint). Check mic privacy settings or MDM audio policy."
+                    testResult = .failure("Roger got no sound from \(expectedDeviceName).\(routingHint) Check the microphone access in Permissions.")
                 }
             } catch {
-                testResult = "Failed: \(error.localizedDescription)"
+                testResult = .failure(error)
             }
             testing = false
         }

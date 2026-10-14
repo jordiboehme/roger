@@ -1,5 +1,6 @@
 import CoreAudio
 import Foundation
+import SwiftUI
 import Testing
 @testable import Roger
 
@@ -25,11 +26,21 @@ struct TranscriptionPanesTests {
     }
 
     @Test func providerMenuSaysWhereTextGoes() {
-        #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligenceAvailable: true) == "Apple Intelligence (local)")
-        #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligenceAvailable: false) == "Apple Intelligence (macOS 26 or later)")
-        #expect(AIProviderPane.menuTitle(.ollama, appleIntelligenceAvailable: true) == "Ollama (local)")
-        #expect(AIProviderPane.menuTitle(.claude, appleIntelligenceAvailable: true) == "Claude (cloud)")
-        #expect(AIProviderPane.menuTitle(.openai, appleIntelligenceAvailable: false) == "OpenAI (cloud)")
+        #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .available) == "Apple Intelligence (local)")
+        #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .unavailable(.needsMacOS26)) == "Apple Intelligence (macOS 26 or later)")
+        #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .unavailable(.notEnabled)) == "Apple Intelligence (not available)")
+        #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .unavailable(.deviceNotEligible)) == "Apple Intelligence (not available)")
+        #expect(AIProviderPane.menuTitle(.ollama, appleIntelligence: .available) == "Ollama (local)")
+        #expect(AIProviderPane.menuTitle(.claude, appleIntelligence: .available) == "Claude (cloud)")
+        #expect(AIProviderPane.menuTitle(.openai, appleIntelligence: .unavailable(.notEnabled)) == "OpenAI (cloud)")
+    }
+
+    @Test func testResultsColorBySuccessNotByWording() {
+        #expect(SettingsTestResult.color(for: nil) == .secondary)
+        #expect(SettingsTestResult.color(for: .success("Works. Roger saw the key.")) == .green)
+        #expect(SettingsTestResult.color(for: .failure("No key press in 10 seconds.")) == .red)
+        struct Boom: LocalizedError { var errorDescription: String? { "The device is busy." } }
+        #expect(SettingsTestResult.failure(Boom()) == .failure("Failed: The device is busy."))
     }
 
     @Test func filesOutputNoteNamesTheFolder() {

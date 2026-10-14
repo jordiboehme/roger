@@ -186,7 +186,7 @@ enum ProcessTapError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .tapCreationFailed(let s):
-            return "Couldn't create system-audio tap (\(CoreAudioHelpers.errorString(s))). Grant permission in System Settings › Privacy & Security › Audio."
+            return "Couldn't create system-audio tap (\(CoreAudioHelpers.errorString(s))). Grant permission in System Settings > Privacy & Security > Audio."
         case .aggregateDeviceCreationFailed(let s):
             return "Couldn't create the audio aggregate device (\(CoreAudioHelpers.errorString(s)))."
         case .formatReadFailed:

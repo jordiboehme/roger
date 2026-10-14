@@ -18,7 +18,7 @@ struct LibraryEmptyStateTests {
     @Test func emptyLogsPointToThePresets() {
         let state = LibraryEmptyState.make(sidebar: .kind(.log), searchText: "", dateFilter: .any)
         #expect(state.title == "No Log Entries")
-        #expect(state.message == "No log entries yet. Bind the Log preset to Caps+⌥ in Settings → Presets.")
+        #expect(state.message == "No log entries yet. Bind the Log preset to Option + Caps Lock in Settings > Presets.")
         #expect(state.settingsButton == .presets)
     }
 
