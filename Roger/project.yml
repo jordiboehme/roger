@@ -30,6 +30,9 @@ targets:
       - path: LLM
       - path: Resources/Assets.xcassets
         buildPhase: resources
+      - path: ../skills
+        type: folder
+        buildPhase: resources
       - path: Resources/Info.plist
         buildPhase: none
       - path: Resources/Roger.entitlements
