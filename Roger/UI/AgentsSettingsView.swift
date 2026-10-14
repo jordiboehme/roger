@@ -43,6 +43,7 @@ struct AgentsSettingsView: View {
             VStack(spacing: 16) {
                 libraryCard
                 harnessesCard
+                desktopCard
                 manualSetupCard
                 consumersCard
                 Text(Self.documentsHint)
@@ -59,6 +60,7 @@ struct AgentsSettingsView: View {
                 agentsLoaded = true
             }
             await agents?.refresh()
+            await agents?.refreshDesktop()
         }
         .confirmationDialog(
             consumerAction.map(confirmationTitle) ?? "",
@@ -130,6 +132,41 @@ struct AgentsSettingsView: View {
                 }
             } else if agentsLoaded {
                 Text("This copy of Roger has no ingest skill.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private var desktopCard: some View {
+        if let agents, agents.desktopAvailable {
+            settingsCard(icon: "macwindow", title: "Claude Desktop") {
+                if agents.desktopAppMoved() {
+                    Text("Roger.app moved - add again.")
+                        .foregroundStyle(.orange)
+                }
+                HStack {
+                    Button("Add to Claude Desktop") {
+                        Task { await agents.addToClaudeDesktop() }
+                    }
+                    Button("Save Skill for Claude Desktop") {
+                        Task { await agents.saveSkillForClaudeDesktop() }
+                    }
+                }
+                if let added = agents.desktopRecord.extensionAddedAt {
+                    Text("Extension last added \(added.formatted(.relative(presentation: .named))).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let saved = agents.desktopRecord.skillSavedAt {
+                    Text("Skill last saved \(saved.formatted(.relative(presentation: .named))).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let message = agents.desktopMessage {
+                    Text(message).font(.caption)
+                }
+                Text("Roger cannot see what Claude Desktop has installed. These lines show what Roger did last.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

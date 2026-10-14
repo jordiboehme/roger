@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -68,6 +69,7 @@ final class AgentsController {
         self.runner = runner
         self.searchPath = searchPath
         self.executableChoice = RogerMCPLocation.choose(appBundle: appBundle, links: links)
+        self.appBundle = appBundle
     }
 
     /// Nil when this copy of Roger has no bundled skill.
@@ -181,6 +183,101 @@ final class AgentsController {
         }
         await finish(id, message: notes.isEmpty ? nil : notes.joined(separator: " "), command: command)
         return true
+    }
+
+    // MARK: - Claude Desktop
+
+    /// Where Claude Desktop lives; the row shows only when it exists.
+    @ObservationIgnored var claudeAppURL = URL(fileURLWithPath: "/Applications/Claude.app")
+    @ObservationIgnored var desktopStore = DesktopRecordStore.live
+    @ObservationIgnored var downloadsFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+    @ObservationIgnored var tempFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Roger-mcpb", isDirectory: true)
+    /// Set by the initializer, so tests and the Desktop actions use the same app.
+    @ObservationIgnored var appBundle = Bundle.main.bundleURL
+    /// Set by `refreshDesktop()`: the view body never touches the disk.
+    private(set) var desktopAvailable = false
+    private(set) var desktopRecord = DesktopRecord()
+    var desktopMessage: String?
+
+    /// Desktop gets the bundle's own binary, never a Homebrew link.
+    private var desktopExecutable: String? {
+        if case .unusable = executableChoice { return nil }
+        return RogerMCPLocation.bundled(in: appBundle).path
+    }
+
+    /// Reads the record and checks for Claude Desktop off the main actor.
+    func refreshDesktop() async {
+        let store = desktopStore
+        let claude = claudeAppURL
+        let (record, available) = await Task.detached(priority: .userInitiated) {
+            (store.load(), FileManager.default.fileExists(atPath: claude.path))
+        }.value
+        desktopRecord = record
+        desktopAvailable = available
+    }
+
+    func desktopAppMoved() -> Bool {
+        guard let desktopExecutable else { return false }
+        return desktopRecord.appMoved(currentExecutable: desktopExecutable)
+    }
+
+    /// Builds `roger.mcpb` in a temp folder and opens it with Claude
+    /// Desktop, which shows its install dialog. Same name means an update.
+    func addToClaudeDesktop() async {
+        guard let executable = desktopExecutable else {
+            if case .unusable(let reason) = executableChoice { desktopMessage = reason }
+            return
+        }
+        let folder = tempFolder
+        let bundle = appBundle
+        let store = desktopStore
+        do {
+            let mcpb: URL? = try await Task.detached(priority: .userInitiated) {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                return try DesktopExtensionBuilder.iconPNG(for: bundle).map {
+                    try DesktopExtensionBuilder.buildExtension(
+                        executable: executable, version: AgentsHint.appVersion, iconPNG: $0, in: folder, archiver: DittoArchiver()
+                    )
+                }
+            }.value
+            guard let mcpb else {
+                desktopMessage = "Roger could not draw its icon for the extension."
+                return
+            }
+            _ = try await NSWorkspace.shared.open([mcpb], withApplicationAt: claudeAppURL, configuration: NSWorkspace.OpenConfiguration())
+            try await Task.detached {
+                var record = store.load()
+                record.extensionCommand = executable
+                record.extensionAddedAt = Date()
+                try store.save(record)
+            }.value
+            desktopMessage = "Claude Desktop shows its install dialog. Confirm it there."
+        } catch {
+            desktopMessage = error.localizedDescription
+        }
+        await refreshDesktop()
+    }
+
+    /// Writes `ingest-roger.zip` to Downloads and shows it in Finder.
+    func saveSkillForClaudeDesktop() async {
+        let skill = installer.skill
+        let folder = downloadsFolder
+        let store = desktopStore
+        do {
+            let zip = try await Task.detached(priority: .userInitiated) {
+                let zip = try DesktopExtensionBuilder.buildSkillZip(skill, in: folder, archiver: DittoArchiver())
+                var record = store.load()
+                record.skillSavedAt = Date()
+                try store.save(record)
+                return zip
+            }.value
+            NSWorkspace.shared.activateFileViewerSelecting([zip])
+            desktopMessage = "Upload \(zip.lastPathComponent) in Claude > Settings > Capabilities > Skills."
+        } catch {
+            desktopMessage = error.localizedDescription
+        }
+        await refreshDesktop()
     }
 
     // MARK: - Helpers
