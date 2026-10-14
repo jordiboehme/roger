@@ -13,4 +13,15 @@ enum SettingsFormat {
         let rest = total % 60
         return rest == 0 ? "\(minutes) min" : "\(minutes) min \(rest) s"
     }
+
+    /// "8 hours ago", "yesterday". Always English, like the rest of the UI,
+    /// whatever the region is.
+    static func relative(_ date: Date, to now: Date = .now) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .full
+        formatter.formattingContext = .middleOfSentence
+        return formatter.localizedString(for: date, relativeTo: now)
+    }
 }

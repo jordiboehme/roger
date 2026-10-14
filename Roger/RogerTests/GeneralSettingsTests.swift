@@ -18,6 +18,12 @@ struct SettingsFormatTests {
     @Test func germanUsesAComma() {
         #expect(SettingsFormat.duration(1.5, locale: Locale(identifier: "de_DE")) == "1,5 s")
     }
+
+    @Test func relativeDatesAreEnglishInEveryRegion() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        #expect(SettingsFormat.relative(now.addingTimeInterval(-8 * 3600), to: now) == "8 hours ago")
+        #expect(SettingsFormat.relative(now.addingTimeInterval(-86_400), to: now) == "yesterday")
+    }
 }
 
 @MainActor

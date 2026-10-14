@@ -92,12 +92,12 @@ struct AgentsPane: View {
         Section("Library") {
             VStack(alignment: .leading, spacing: 4) {
                 Text(root.path)
-                    .font(.body.monospaced())
+                    .font(.subheadline.monospaced())
                     .textSelection(.enabled)
                 Group {
                     if let status, status.isSetUp {
                         if let last = status.lastEventAt {
-                            Text("\(status.eventCount) changes recorded, the last one \(last.formatted(.relative(presentation: .named))).")
+                            Text("\(status.eventCount) changes recorded, the last one \(SettingsFormat.relative(last)).")
                         } else {
                             Text("No changes recorded yet.")
                         }
@@ -105,6 +105,7 @@ struct AgentsPane: View {
                         Text("The change list is not set up yet. Roger sets it up when it starts.")
                     }
                 }
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
         }
@@ -148,11 +149,13 @@ struct AgentsPane: View {
                     .disabled(agents.desktopBusy)
                 }
                 if let added = agents.desktopRecord.extensionAddedAt {
-                    Text("Extension last added \(added.formatted(.relative(presentation: .named))).")
+                    Text("Extension last added \(SettingsFormat.relative(added)).")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if let saved = agents.desktopRecord.skillSavedAt {
-                    Text("Skill last saved \(saved.formatted(.relative(presentation: .named))).")
+                    Text("Skill last saved \(SettingsFormat.relative(saved)).")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if let message = agents.desktopMessage {
@@ -261,12 +264,13 @@ struct AgentsPane: View {
             let consumers = status?.consumers ?? []
             if consumers.isEmpty {
                 Text("No agent has read the library yet. Each agent keeps a bookmark here under its consumer name.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             ForEach(consumers) { consumer in
                 SettingsRow(
                     title: consumer.name,
-                    note: "At change \(consumer.seq), \(consumer.openEvents) open, \(consumer.updatedAt.formatted(.relative(presentation: .named)))"
+                    note: "At change \(consumer.seq), \(consumer.openEvents) open, \(SettingsFormat.relative(consumer.updatedAt))"
                 ) {
                     HStack {
                         Button("Start Over") { consumerAction = .startOver(consumer.name) }
