@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Roger
 
@@ -28,5 +29,15 @@ struct LibraryEmptyStateTests {
             == "No transcripts yet. Drop an audio or video file on the menu bar icon.")
         #expect(LibraryEmptyState.make(sidebar: .all, searchText: "", dateFilter: .any).message
             == "Save a log entry, record a meeting or drop a file on the menu bar icon.")
+    }
+
+    @Test func aMissingLibraryFolderComesFirst() {
+        let state = LibraryEmptyState.make(
+            sidebar: .kind(.log), searchText: "supplier", dateFilter: .today,
+            missingRoot: URL(fileURLWithPath: "/Volumes/Drive/Roger")
+        )
+        #expect(state.title == "Library folder not found")
+        #expect(state.message == "Roger cannot find /Volumes/Drive/Roger. Connect the drive that holds it or choose another folder in Settings > Recordings.")
+        #expect(!state.showsPresetsButton)
     }
 }

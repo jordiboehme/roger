@@ -42,6 +42,7 @@ struct RecordingsSettingsView: View {
                             if state.libraryRoot != nil {
                                 Button("Reset") {
                                     state.libraryRoot = nil
+                                    LibraryLayout.createRootIfDefault(state.libraryLayout)
                                     coordinator.libraryChanges.reconcile()
                                 }
                                     .buttonStyle(.bordered)

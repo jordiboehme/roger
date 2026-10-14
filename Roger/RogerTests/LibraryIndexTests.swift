@@ -299,4 +299,29 @@ struct LibraryIndexTests {
         await index.apply(changedPaths: [folder.path])
         #expect(await index.items().isEmpty)
     }
+
+    /// A root on a drive that is not connected: no parent folder (it could
+    /// be all of `~/Documents`) is watched in its place.
+    @Test func aMissingRootIsReportedAndNotWatchedThroughItsParent() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let index = makeIndex(LibraryLayout(root: base.appendingPathComponent("Drive/Roger", isDirectory: true)))
+        let missing = await index.libraryRootMissing()
+        #expect(missing)
+        #expect(await index.watchedPaths().isEmpty)
+    }
+
+    @Test func recheckFindsARootThatAppeared() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Drive/Roger", isDirectory: true))
+        let index = makeIndex(layout)
+        #expect(await index.items().isEmpty)
+        try writeLog(layout, at: date, text: "Back again")
+        await index.recheckRoot()
+        let missing = await index.libraryRootMissing()
+        #expect(!missing)
+        #expect(await index.items().count == 1)
+        #expect(await index.watchedPaths() == [LibraryPath.canonical(layout.root)])
+    }
 }

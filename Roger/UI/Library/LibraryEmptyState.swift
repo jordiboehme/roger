@@ -8,7 +8,19 @@ struct LibraryEmptyState: Equatable {
     let systemImage: String
     let showsPresetsButton: Bool
 
-    static func make(sidebar: LibrarySidebarSelection, searchText: String, dateFilter: LibraryDateFilter) -> LibraryEmptyState {
+    /// `missingRoot` is the library folder when it does not exist; that
+    /// comes before everything else.
+    static func make(
+        sidebar: LibrarySidebarSelection,
+        searchText: String,
+        dateFilter: LibraryDateFilter,
+        missingRoot: URL? = nil
+    ) -> LibraryEmptyState {
+        if let missingRoot {
+            return .init(title: "Library folder not found",
+                         message: "Roger cannot find \(missingRoot.path). Connect the drive that holds it or choose another folder in Settings > Recordings.",
+                         systemImage: "folder.badge.questionmark", showsPresetsButton: false)
+        }
         if !searchText.isEmpty {
             return .init(title: "No Results", message: "Nothing matches \"\(searchText)\".",
                          systemImage: "magnifyingglass", showsPresetsButton: false)

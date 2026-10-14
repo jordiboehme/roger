@@ -5,6 +5,7 @@ import Testing
 private final class FakeLibraryIndex: LibraryIndex, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [LibraryItem]
+    private var missing = false
     let changes: AsyncStream<Void>
     private let continuation: AsyncStream<Void>.Continuation
 
@@ -17,6 +18,12 @@ private final class FakeLibraryIndex: LibraryIndex, @unchecked Sendable {
 
     func items() async -> [LibraryItem] { lock.withLock { stored } }
     func search(_ query: LibraryQuery) async -> [LibraryItem] { query.apply(to: lock.withLock { stored }) }
+
+    func libraryRootMissing() async -> Bool { lock.withLock { missing } }
+
+    func setMissing(_ value: Bool) {
+        lock.withLock { missing = value }
+    }
 
     func set(_ items: [LibraryItem]) {
         lock.withLock { stored = items }
@@ -328,5 +335,16 @@ struct LibraryModelTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(condition())
+    }
+
+    @Test func aMissingLibraryFolderIsShownUntilItIsBack() async {
+        let fake = FakeLibraryIndex([])
+        fake.setMissing(true)
+        let model = LibraryModel(index: fake)
+        await model.reload()
+        #expect(model.libraryMissing)
+        fake.setMissing(false)
+        await model.recheckLibraryRoot()
+        #expect(!model.libraryMissing)
     }
 }

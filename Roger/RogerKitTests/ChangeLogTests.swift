@@ -107,4 +107,17 @@ struct ChangeLogTests {
         let written = try await ChangeLog(root: root, now: { fixed }).append([change(1)])
         #expect(written.first?.at == fixed)
     }
+
+    /// The root may be on a drive that is not connected: the log must not
+    /// create it (or anything above it).
+    @Test func changeLogNeverCreatesAMissingRoot() async throws {
+        let base = try TempDir.make()
+        defer { TempDir.remove(base) }
+        let log = ChangeLog(root: base.appendingPathComponent("Drive/Roger", isDirectory: true))
+        await #expect(throws: (any Error).self) { try await log.ensureFile() }
+        await #expect(throws: (any Error).self) {
+            try await log.append([PendingChange(event: .created, kind: .log, key: "Logs/x", path: "Logs/x.md")])
+        }
+        #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Drive").path))
+    }
 }

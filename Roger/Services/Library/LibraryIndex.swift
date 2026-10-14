@@ -15,6 +15,17 @@ protocol LibraryIndex: Sendable {
     /// Single consumer: iterate it from one place only (it is one
     /// `AsyncStream`, not a broadcast). Finishes when the index is released.
     var changes: AsyncStream<Void> { get }
+    /// True when the library root is not a folder (deleted, or on a drive
+    /// that is not connected).
+    func libraryRootMissing() async -> Bool
+    /// Looks at the root again; reads everything again when it appeared or
+    /// went away.
+    func recheckRoot() async
+}
+
+extension LibraryIndex {
+    func libraryRootMissing() async -> Bool { false }
+    func recheckRoot() async {}
 }
 
 /// What must be read again after a file system change. Paths are canonical.
@@ -52,6 +63,8 @@ actor InMemoryLibraryIndex: LibraryIndex {
     private var itemsByID: [String: LibraryItem] = [:]
     private var externalIDs: Set<String> = []
     private var isBuilt = false
+    /// Set by every full build: the root is not a folder.
+    private var rootMissing = false
     private let watchesFileSystem: Bool
     private var watcher: LibraryFolderWatcher?
     private var eventTask: Task<Void, Never>?
@@ -104,6 +117,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
     func rebuild() {
         let start = Date()
         scanEventId = FSEventsGetCurrentEventId()
+        rootMissing = !Self.isFolder(root)
         itemsByID = scanAll()
         isBuilt = true
         // Plain locals: Logger interpolation must not touch actor state.
@@ -191,6 +205,23 @@ actor InMemoryLibraryIndex: LibraryIndex {
         return candidates.first { MeetingSessionScanner.isSessionFolder(URL(fileURLWithPath: $0, isDirectory: true)) }
     }
 
+    func libraryRootMissing() async -> Bool {
+        buildIfNeeded()
+        return rootMissing
+    }
+
+    /// Called when Roger becomes active: a root that appeared (a drive was
+    /// connected) or went away is noticed without a file system event.
+    func recheckRoot() async {
+        guard isBuilt else { return }
+        if Self.isFolder(root) == rootMissing { rebuild() }
+    }
+
+    private static func isFolder(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
     // MARK: - Watching
 
     /// Stops following file system changes. The items stay.
@@ -213,6 +244,8 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let paths = watchedPaths()
         if let watcher, watcher.paths == paths { return }
         tearDownWatcher()
+        // Nothing to watch: a missing root and no other folders.
+        guard !paths.isEmpty else { return }
         let (events, sink) = AsyncStream.makeStream(of: [String]?.self)
         let watcher = LibraryFolderWatcher(paths: paths, latency: 0.5) { changed, mustRescan in
             sink.yield(mustRescan ? nil : changed)
@@ -235,12 +268,13 @@ actor InMemoryLibraryIndex: LibraryIndex {
         }
     }
 
-    /// The library root (or its nearest existing parent, so the root
-    /// appearing is noticed), the extra folders, the folder of the external
-    /// list and the folders of external transcripts. FSEvents watches each
-    /// recursively, so new `YYYY/MM` folders are covered.
-    private func watchedPaths() -> [String] {
-        var urls = [LibraryPath.nearestExisting(scope.layout.root)]
+    /// The library root when it exists (never a parent: that could be all
+    /// of `~/Documents`; a root that appears is found by `recheckRoot`), the
+    /// extra folders, the folder of the external list and the folders of
+    /// external transcripts. FSEvents watches each recursively, so new
+    /// `YYYY/MM` folders are covered.
+    func watchedPaths() -> [String] {
+        var urls: [URL] = rootMissing ? [] : [scope.layout.root]
         urls += scope.extraFolders.filter { FileManager.default.fileExists(atPath: $0.path) }
         if let list = externalListPath {
             urls.append(LibraryPath.nearestExisting(URL(fileURLWithPath: list).deletingLastPathComponent()))

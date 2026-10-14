@@ -184,7 +184,8 @@ struct LibraryListView: View {
             LibraryEmptyStateView(state: LibraryEmptyState.make(
                 sidebar: model.sidebar,
                 searchText: model.appliedSearch,
-                dateFilter: model.dateFilter
+                dateFilter: model.dateFilter,
+                missingRoot: model.libraryMissing ? coordinator.appState.libraryLayout.root : nil
             ))
         }
     }

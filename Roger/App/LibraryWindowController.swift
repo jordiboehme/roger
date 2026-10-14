@@ -17,6 +17,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
     private var scope: LibraryScanScope?
     /// True from `show` until the window closes (also while miniaturised).
     private(set) var isOpen = false
+    private var activationObserver: NSObjectProtocol?
 
     #if DEBUG
     /// For `LibrarySnapshotRunner` only.
@@ -27,6 +28,17 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
     init(coordinator: AppCoordinator, indexStore: LibraryIndexStore) {
         self.coordinator = coordinator
         self.indexStore = indexStore
+        super.init()
+        // A library folder on a drive that was connected meanwhile, or
+        // one that was deleted: look again whenever Roger becomes active.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isOpen, let model = self.model else { return }
+                Task { await model.recheckLibraryRoot() }
+            }
+        }
     }
 
     func show(selecting url: URL? = nil) {

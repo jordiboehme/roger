@@ -66,7 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.runLibraryMigrationIfNeeded()
 
         // Fill or catch up the change log agents read (after the migration,
-        // so moved meetings get their library keys).
+        // so moved meetings get their library keys). The change log never
+        // creates the root; the default one is created here on first launch.
+        LibraryLayout.createRootIfDefault(coordinator.appState.libraryLayout)
         coordinator.libraryChanges.reconcile()
         coordinator.checkAgentSkills()
 

@@ -53,10 +53,16 @@ public actor ChangeLog {
     /// Runs `decide` with all events under the lock and appends what it
     /// returns. `seq` continues after the highest valid seq in the file.
     /// When the file does not end with a newline (a crash cut the last
-    /// line), one is written first so the new lines parse.
+    /// line), one is written first so the new lines parse. Throws when the
+    /// library root is not an existing folder: the log never creates the
+    /// root (it may be on a drive that is not connected), only `.roger/`.
     func locked<T: Sendable>(
         _ decide: ([ChangeEvent]) throws -> ([PendingChange], T)
     ) throws -> (written: [ChangeEvent], result: T) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: root.path])
+        }
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         return try FileLock.withExclusiveLock(at: fileURL, flags: O_RDWR | O_APPEND | O_CREAT) { fd in
             let existing = try Self.readAll(fd)

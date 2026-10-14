@@ -66,6 +66,9 @@ final class LibraryModel {
     private(set) var counts: [LibraryItemKind: Int] = [:]
     private(set) var totalCount = 0
     private(set) var isLoading = true
+    /// The library folder does not exist (deleted, or on a drive that is
+    /// not connected).
+    private(set) var libraryMissing = false
     /// The search text in effect.
     private(set) var appliedSearch = ""
 
@@ -227,6 +230,12 @@ final class LibraryModel {
         scheduleReload()
     }
 
+    /// Roger became active: the library folder may have come back.
+    func recheckLibraryRoot() async {
+        await index.recheckRoot()
+        await reload()
+    }
+
     func commitSearch() async {
         appliedSearch = searchText
         await reload()
@@ -239,12 +248,14 @@ final class LibraryModel {
         let reloadNumber = lastStartedReload
         let all = await index.items()
         let found = await index.search(query)
+        let missing = await index.libraryRootMissing()
         // Drop the results when the index was replaced, this reload was
         // cancelled or a newer reload has already been applied.
         guard generation == indexGeneration, !Task.isCancelled, reloadNumber > lastAppliedReload else { return }
         lastAppliedReload = reloadNumber
         counts = Dictionary(grouping: all, by: \.kind).mapValues(\.count)
         totalCount = all.count
+        libraryMissing = missing
         results = found
         isLoading = false
         let ids = Set(found.map(\.id))
