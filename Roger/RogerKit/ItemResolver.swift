@@ -55,9 +55,10 @@ public enum ItemResolver {
         return result.filter { seen.insert($0).inserted }
     }
 
-    /// The whole file as text; nil when it cannot be read as UTF-8.
+    /// The whole file as UTF-8 text with LF line endings (see `TextFile`);
+    /// nil only when the file cannot be read.
     public static func markdown(of item: LibraryItem) -> String? {
-        (try? Data(contentsOf: item.url)).flatMap { String(data: $0, encoding: .utf8) }
+        try? TextFile.read(item.url)
     }
 
     /// The item behind a key passed to a tool.

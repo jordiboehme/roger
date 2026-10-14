@@ -14,7 +14,7 @@ public enum LibraryItemReader {
     /// applies when the tags do not say. `folder` overrides the item's
     /// folder (meetings: the session folder).
     public static func item(markdownAt url: URL, fallbackKind: LibraryItemKind, folder: URL? = nil) -> LibraryItem? {
-        let text = (try? Data(contentsOf: url)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        let text = (try? TextFile.read(url)) ?? ""
         let front = LibraryFrontmatterParser.parse(text)
         let tags = Set(front?.tags ?? [])
         if tags.contains("meeting") && tags.contains("segment") { return nil }
