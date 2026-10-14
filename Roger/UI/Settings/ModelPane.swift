@@ -34,6 +34,12 @@ struct ModelPane: View {
                         } else if isReady {
                             SettingsStatus(level: .good, text: "Downloaded")
                             Button("Remove…", role: .destructive) { confirmRemove = true }
+                        } else if coordinator.lastModelError != nil {
+                            // The error shows as the note under Status.
+                            SettingsStatus(level: .bad, text: "Not loaded")
+                            Button("Try Again") {
+                                Task { await coordinator.setupModel() }
+                            }
                         } else {
                             SettingsStatus(level: .bad, text: "Not downloaded")
                             Button("Download") {

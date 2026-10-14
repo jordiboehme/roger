@@ -23,7 +23,7 @@ struct FilesPane: View {
             } header: {
                 Text("Output")
             } footer: {
-                Text("Drop an audio or video file on the menu bar icon. Roger saves the transcript as a Markdown file. It never overwrites a file, it adds a number.")
+                Text("Drop an audio or video file on the menu bar icon. Roger saves the transcript as a Markdown file. It never overwrites a file. It adds a number.")
             }
 
             Section {
@@ -33,7 +33,7 @@ struct FilesPane: View {
                     note: "Files are transcribed on your Mac. Presets with AI steps cannot be picked.",
                     presets: state.presets,
                     selection: $state.fileTranscriptionPresetID,
-                    currentName: state.fileTranscriptionPreset.name
+                    current: state.fileTranscriptionPreset
                 )
                 SettingsToggle(
                     title: "Speaker labels",

@@ -39,14 +39,41 @@ struct TranscriptionPanesTests {
             == "In the folder of the dropped file, as <file name>.md.")
     }
 
-    /// The checkmark sits on the preset in use: a deleted or AI preset falls
-    /// back to Plain, like `AppState.fileTranscriptionPreset`.
-    @Test func localPresetMenuChecksThePresetInUse() {
-        let presets = DictationPreset.builtInPresets
+    /// The preset in use for files and meetings: the stored one when it
+    /// needs no AI, else the user's Plain (also when renamed).
+    @Test func localPresetResolverFallsBackToTheUsersPlain() {
+        var presets = DictationPreset.builtInPresets
         let local = presets.first { !$0.requiresAI && $0.id != DictationPreset.plain.id }!
         let ai = presets.first { $0.requiresAI }!
-        #expect(LocalPresetMenu.effectiveID(selection: local.id, presets: presets) == local.id)
-        #expect(LocalPresetMenu.effectiveID(selection: ai.id, presets: presets) == DictationPreset.plain.id)
-        #expect(LocalPresetMenu.effectiveID(selection: UUID(), presets: presets) == DictationPreset.plain.id)
+        #expect(DictationPreset.localPreset(id: local.id, in: presets).id == local.id)
+        #expect(DictationPreset.localPreset(id: ai.id, in: presets).id == DictationPreset.plain.id)
+        #expect(DictationPreset.localPreset(id: UUID(), in: presets).id == DictationPreset.plain.id)
+
+        let plainIndex = presets.firstIndex { $0.id == DictationPreset.plain.id }!
+        presets[plainIndex].name = "Basic"
+        #expect(DictationPreset.localPreset(id: UUID(), in: presets).name == "Basic")
+
+        // An edited Plain with AI steps is no fallback: the original Plain is.
+        presets[plainIndex].enableRewrite = true
+        let fallback = DictationPreset.localPreset(id: UUID(), in: presets)
+        #expect(!fallback.requiresAI)
+        #expect(fallback.name == DictationPreset.plain.name)
+    }
+
+    @Test func appleIntelligenceReasonsArePlain() {
+        #expect(AppleIntelligenceStatus.available.isAvailable)
+        #expect(AppleIntelligenceStatus.available.note == nil)
+        #expect(AppleIntelligenceStatus.unavailable(.deviceNotEligible).note == "This Mac does not support Apple Intelligence.")
+        #expect(AppleIntelligenceStatus.unavailable(.notEnabled).note == "Turn on Apple Intelligence in System Settings > Apple Intelligence & Siri.")
+        #expect(AppleIntelligenceStatus.unavailable(.modelNotReady).note == "Apple Intelligence is still downloading.")
+        #expect(AppleIntelligenceStatus.unavailable(.needsMacOS26).note == "Needs macOS 26 or later.")
+        #expect(!AppleIntelligenceStatus.unavailable(.other).isAvailable)
+    }
+
+    @Test func providerNotesSayWhereTextGoes() {
+        #expect(AIProviderPane.providerNote(.appleIntelligence) == "Your text stays on your Mac.")
+        #expect(AIProviderPane.providerNote(.ollama) == "Your text stays on your Mac or in your network.")
+        #expect(AIProviderPane.providerNote(.claude) == "Your text is sent to Claude.")
+        #expect(AIProviderPane.providerNote(.openai) == "Your text is sent to OpenAI.")
     }
 }

@@ -32,24 +32,59 @@ struct AppleIntelligenceService: LLMService {
     }
 
     private var unavailabilityReason: String {
-        switch SystemLanguageModel.default.availability {
-        case .available:
-            return ""
-        case .unavailable(let reason):
-            switch reason {
-            case .deviceNotEligible:
-                return "This Mac does not support Apple Intelligence"
-            case .appleIntelligenceNotEnabled:
-                return "Enable Apple Intelligence in System Settings > Apple Intelligence & Siri"
-            case .modelNotReady:
-                return "Apple Intelligence is still downloading"
-            @unknown default:
-                return "Apple Intelligence is not available"
-            }
-        }
+        AppleIntelligenceStatus.current.note ?? ""
     }
 }
 #endif
+
+/// Whether Apple Intelligence can process text on this Mac, with a plain
+/// reason when it cannot. Settings > Text Model shows it.
+enum AppleIntelligenceStatus: Equatable {
+    case available
+    case unavailable(Reason)
+
+    enum Reason: Equatable {
+        case needsMacOS26
+        case deviceNotEligible
+        case notEnabled
+        case modelNotReady
+        case other
+    }
+
+    var isAvailable: Bool { self == .available }
+
+    /// The reason as a sentence, nil when available.
+    var note: String? {
+        switch self {
+        case .available: return nil
+        case .unavailable(.needsMacOS26): return "Needs macOS 26 or later."
+        case .unavailable(.deviceNotEligible): return "This Mac does not support Apple Intelligence."
+        case .unavailable(.notEnabled): return "Turn on Apple Intelligence in System Settings > Apple Intelligence & Siri."
+        case .unavailable(.modelNotReady): return "Apple Intelligence is still downloading."
+        case .unavailable(.other): return "Apple Intelligence is not available."
+        }
+    }
+
+    /// Asks the system model now.
+    static var current: AppleIntelligenceStatus {
+        #if canImport(FoundationModels)
+        if #available(macOS 26, *) {
+            switch SystemLanguageModel.default.availability {
+            case .available:
+                return .available
+            case .unavailable(let reason):
+                switch reason {
+                case .deviceNotEligible: return .unavailable(.deviceNotEligible)
+                case .appleIntelligenceNotEnabled: return .unavailable(.notEnabled)
+                case .modelNotReady: return .unavailable(.modelNotReady)
+                @unknown default: return .unavailable(.other)
+                }
+            }
+        }
+        #endif
+        return .unavailable(.needsMacOS26)
+    }
+}
 
 struct AppleIntelligenceFallbackService: LLMService {
     let providerType: LLMProviderType = .appleIntelligence

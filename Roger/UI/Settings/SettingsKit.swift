@@ -173,18 +173,18 @@ struct LocalPresetMenu: View {
     var note: String? = nil
     let presets: [DictationPreset]
     @Binding var selection: UUID
-    /// The preset in use (the fallback when the stored one needs AI).
-    let currentName: String
+    /// The preset in use, from `DictationPreset.localPreset(id:in:)`. The
+    /// menu title and the checkmark come from it.
+    let current: DictationPreset
 
     var body: some View {
-        let checked = Self.effectiveID(selection: selection, presets: presets)
         SettingsRow(title: title, note: note) {
-            Menu(currentName) {
+            Menu(current.name) {
                 ForEach(presets) { preset in
                     Button {
                         if !preset.requiresAI { selection = preset.id }
                     } label: {
-                        if preset.id == checked {
+                        if preset.id == current.id {
                             Label(menuTitle(preset), systemImage: "checkmark")
                         } else {
                             Text(menuTitle(preset))
@@ -195,15 +195,6 @@ struct LocalPresetMenu: View {
             }
             .fixedSize()
         }
-    }
-
-    /// The preset in use: the stored one when it exists and needs no AI,
-    /// else Plain (the same fallback as the AppState resolvers).
-    static func effectiveID(selection: UUID, presets: [DictationPreset]) -> UUID {
-        if let preset = presets.first(where: { $0.id == selection }), !preset.requiresAI {
-            return preset.id
-        }
-        return DictationPreset.plain.id
     }
 
     private func menuTitle(_ preset: DictationPreset) -> String {

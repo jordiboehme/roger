@@ -168,20 +168,14 @@ final class AppState {
     /// to have no AI steps enabled. Falls back to Plain if the stored
     /// preset was deleted or accidentally flipped to require AI.
     var meetingTranscriptionPreset: DictationPreset {
-        if let preset = presets.first(where: { $0.id == meetingTranscriptionPresetID }), !preset.requiresAI {
-            return preset
-        }
-        return DictationPreset.plain
+        DictationPreset.localPreset(id: meetingTranscriptionPresetID, in: presets)
     }
 
     /// Resolves `fileTranscriptionPresetID` to a live preset, guaranteeing no
     /// AI steps are enabled. Falls back to Plain if the configured preset was
     /// deleted or accidentally flipped to require AI.
     var fileTranscriptionPreset: DictationPreset {
-        if let preset = presets.first(where: { $0.id == fileTranscriptionPresetID }), !preset.requiresAI {
-            return preset
-        }
-        return DictationPreset.plain
+        DictationPreset.localPreset(id: fileTranscriptionPresetID, in: presets)
     }
 
     // MARK: - LLM Settings

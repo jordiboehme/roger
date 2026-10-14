@@ -8,6 +8,10 @@ struct AIProviderPane: View {
     @State private var openAIKey: String = KeychainManager.loadAPIKey(for: .openai) ?? ""
     @State private var testingConnection = false
     @State private var connectionStatus: String?
+    @State private var appleIntelligence = AppleIntelligenceStatus.current
+    /// Set when the keychain refused a key.
+    @State private var keyError: String?
+    @FocusState private var focusedKey: LLMProviderType?
 
     private static var isAppleIntelligenceAvailable: Bool {
         if #available(macOS 26, *) { return true }
@@ -27,25 +31,21 @@ struct AIProviderPane: View {
                 } label: {
                     SettingsLabel(
                         title: "Provider",
-                        note: provider.isLocal ? "Your text stays on your Mac or in your network." : "Your text is sent to \(provider.displayName)."
+                        note: Self.providerNote(provider),
+                        noteColor: provider.isLocal ? .secondary : .orange
                     )
                 }
             } header: {
                 Text("Provider")
-            } footer: {
-                if !provider.isLocal {
-                    Label("Dictated text is sent to the servers of \(provider.displayName) for processing.", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                }
             }
 
             switch provider {
             case .appleIntelligence:
                 Section("Apple Intelligence") {
-                    SettingsRow(title: "Availability", note: "Needs macOS 26 with Apple Intelligence turned on. Your text never leaves your Mac.") {
+                    SettingsRow(title: "Availability", note: appleIntelligence.note) {
                         SettingsStatus(
-                            level: Self.isAppleIntelligenceAvailable ? .good : .bad,
-                            text: Self.isAppleIntelligenceAvailable ? "Available" : "Needs macOS 26"
+                            level: appleIntelligence.isAvailable ? .good : .bad,
+                            text: appleIntelligence.isAvailable ? "Available" : "Not available"
                         )
                     }
                 }
@@ -74,24 +74,58 @@ struct AIProviderPane: View {
             case .claude:
                 Section {
                     SecureField("API key", text: $claudeKey)
-                        .onChange(of: claudeKey) { _, newValue in saveKey(newValue, for: .claude) }
+                        .focused($focusedKey, equals: .claude)
+                        .onSubmit { saveKey(claudeKey, for: .claude) }
+                        .onDisappear { saveKey(claudeKey, for: .claude) }
                     TextField("Model", text: $state.claudeModel)
                 } header: {
                     Text("Claude")
                 } footer: {
-                    Text("Roger keeps the key in your keychain.")
+                    keyFooter
                 }
             case .openai:
                 Section {
                     SecureField("API key", text: $openAIKey)
-                        .onChange(of: openAIKey) { _, newValue in saveKey(newValue, for: .openai) }
+                        .focused($focusedKey, equals: .openai)
+                        .onSubmit { saveKey(openAIKey, for: .openai) }
+                        .onDisappear { saveKey(openAIKey, for: .openai) }
                     TextField("Model", text: $state.openAIModel)
                 } header: {
                     Text("OpenAI")
                 } footer: {
-                    Text("Roger keeps the key in your keychain.")
+                    keyFooter
                 }
             }
+        }
+        .onChange(of: focusedKey) { old, _ in
+            // The key field lost focus: save what was typed.
+            switch old {
+            case .claude: saveKey(claudeKey, for: .claude)
+            case .openai: saveKey(openAIKey, for: .openai)
+            default: break
+            }
+        }
+        .onAppear { appleIntelligence = .current }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appleIntelligence = .current
+        }
+    }
+
+    @ViewBuilder
+    private var keyFooter: some View {
+        if let keyError {
+            Text(keyError).foregroundStyle(.red)
+        } else {
+            Text("Roger keeps the key in your keychain.")
+        }
+    }
+
+    /// The note under the provider menu: where the text goes.
+    static func providerNote(_ provider: LLMProviderType) -> String {
+        switch provider {
+        case .appleIntelligence: return "Your text stays on your Mac."
+        case .ollama: return "Your text stays on your Mac or in your network."
+        case .claude, .openai: return "Your text is sent to \(provider.displayName)."
         }
     }
 
@@ -105,11 +139,19 @@ struct AIProviderPane: View {
 
     // MARK: - Actions
 
+    /// Writes the key when it differs from the stored one. An empty field
+    /// removes the key.
     private func saveKey(_ key: String, for provider: LLMProviderType) {
-        if key.isEmpty {
-            try? KeychainManager.deleteAPIKey(for: provider)
-        } else {
-            try? KeychainManager.saveAPIKey(key, for: provider)
+        guard key != (KeychainManager.loadAPIKey(for: provider) ?? "") else { return }
+        do {
+            if key.isEmpty {
+                try KeychainManager.deleteAPIKey(for: provider)
+            } else {
+                try KeychainManager.saveAPIKey(key, for: provider)
+            }
+            keyError = nil
+        } catch {
+            keyError = "Roger could not save the key: \(error.localizedDescription)"
         }
     }
 
