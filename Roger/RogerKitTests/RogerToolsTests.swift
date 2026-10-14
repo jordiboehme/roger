@@ -139,6 +139,30 @@ struct RogerToolsTests {
         #expect(output.text.contains("\n\n==== roger paths ====\npaths[3]: /"))
     }
 
+    /// A transcript in an extra scan folder inside the root: list_items
+    /// gives a key that get_item opens.
+    @Test func itemInAnotherFolderOfTheRootOpensByItsKey() async throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let inbox = root.appendingPathComponent("Inbox", isDirectory: true)
+        try KitFixtures.transcript(at: inbox.appendingPathComponent("talk.m4a.md"), at: KitFixtures.base, title: "Talk", text: "Quarterly numbers")
+        let layout = LibraryLayout(root: root)
+        let items = LibraryScanner.scanAll(scope: LibraryScanScope(layout: layout, extraFolders: [inbox]), externalFiles: [])
+        try await ChangeLog(root: root).reconcile(items: items)
+        let now = self.now
+        let tools = RogerTools(
+            locator: LibraryLocator(argument: nil, preferences: { RogerPreferences(libraryRoot: root.path, extraScanFolders: [inbox.path]) }),
+            registry: ExternalTranscriptRegistry(fileURL: root.appendingPathComponent("none.json")),
+            now: { now }
+        )
+        let list = tools.call("list_items", arguments: [:]).text
+        #expect(list.hasPrefix("items[1]{key,kind,title,date,duration,paths}:\n  External/talk.m4a-"))
+        let key = try #require(list.split(separator: "\n").last?.trimmingCharacters(in: .whitespaces).split(separator: ",").first.map(String.init))
+        let item = tools.call("get_item", arguments: ["key": .string(key)])
+        #expect(!item.isError)
+        #expect(item.text.contains("Quarterly numbers"))
+    }
+
     @Test(arguments: ["../x", "/etc/passwd", "Logs/../../etc/passwd", "~/secret"])
     func getItemRejectsPaths(key: String) async throws {
         let root = try await library()

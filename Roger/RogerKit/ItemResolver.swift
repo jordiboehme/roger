@@ -76,7 +76,7 @@ public enum ItemResolver {
             return ChangeSubject(kind: last.kind, key: key, path: last.path)
         }
 
-        guard let top = parts.first, ["Logs", "Meetings", "Transcripts"].contains(String(top)) else {
+        guard parts.count >= 2, let top = parts.first, ChangeKey.libraryFolders.contains(String(top)) else {
             throw ItemKeyError.notFound(key)
         }
         let rootPath = LibraryPath.canonical(root)

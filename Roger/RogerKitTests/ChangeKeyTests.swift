@@ -50,6 +50,19 @@ struct ChangeKeyTests {
         #expect(subject.isExternal)
     }
 
+    /// Only Logs, Meetings and Transcripts get relative keys: get_item
+    /// resolves nothing else by path.
+    @Test func fileInsideTheRootButOutsideTheThreeFoldersIsExternal() throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let md = try KitFixtures.transcript(at: root.appendingPathComponent("Inbox/talk.md"), at: date, title: "Talk", text: "x")
+        let canonical = LibraryPath.canonical(md)
+        let subject = ChangeKey.subject(markdownURL: md, kind: .transcript, root: root)
+        #expect(subject.key == "External/talk-" + hash8(canonical))
+        #expect(subject.path == canonical)
+        #expect(subject.isExternal)
+    }
+
     @Test func meetingOutsideTheRootHashesTheFolder() throws {
         let home = try TempDir.make()
         defer { TempDir.remove(home) }

@@ -16,14 +16,18 @@ public struct ChangeSubject: Equatable, Sendable {
     public var isExternal: Bool { key.hasPrefix(ChangeKey.externalPrefix) }
 }
 
-/// Stable item ids. Inside the library: the library-relative path without
-/// `.md` (meetings: the session folder), and `path` is the relative path of
-/// the Markdown file. Outside the library (transcripts next to their
-/// source, items in extra scan folders): `External/<name>-<hash8>` with the
-/// canonical absolute path. All paths are canonical (`LibraryPath`), so
-/// `/var/...` and `/private/var/...` give the same key.
+/// Stable item ids. Under `Logs/`, `Meetings/` or `Transcripts/` of the
+/// library: the library-relative path without `.md` (meetings: the session
+/// folder), and `path` is the relative path of the Markdown file. Anywhere
+/// else (transcripts next to their source, items in extra scan folders,
+/// also when those are inside the library folder): `External/<name>-<hash8>`
+/// with the canonical absolute path. All paths are canonical
+/// (`LibraryPath`), so `/var/...` and `/private/var/...` give the same key.
 public enum ChangeKey {
     public static let externalPrefix = "External/"
+    /// The library folders whose items get relative keys. `ItemResolver`
+    /// resolves relative keys only below these.
+    public static let libraryFolders: Set<String> = ["Logs", "Meetings", "Transcripts"]
 
     /// Nil for items without Markdown (unfinished meetings).
     public static func subject(for item: LibraryItem, root: URL) -> ChangeSubject? {
@@ -33,20 +37,17 @@ public enum ChangeKey {
 
     public static func subject(markdownURL: URL, kind: LibraryItemKind, root: URL) -> ChangeSubject {
         let rootPath = LibraryPath.canonical(root)
-        let rogerPath = LibraryPath.canonical(ChangeLogFile.folder(root: root))
         let markdown = LibraryPath.canonical(markdownURL)
         let isSession = kind == .meeting && markdownURL.lastPathComponent == "transcript.md"
         let subjectPath = isSession ? (markdown as NSString).deletingLastPathComponent : markdown
 
-        if subjectPath != rootPath,
-           LibraryPath.isPath(subjectPath, inside: rootPath),
-           !LibraryPath.isPath(subjectPath, inside: rogerPath) {
-            let relativeMarkdown = LibraryPath.components(of: markdown, below: rootPath).joined(separator: "/")
-            let relativeSubject = LibraryPath.components(of: subjectPath, below: rootPath).joined(separator: "/")
+        let components = LibraryPath.components(of: subjectPath, below: rootPath)
+        if components.count >= 2, libraryFolders.contains(components[0]) {
+            let relativeSubject = components.joined(separator: "/")
             return ChangeSubject(
                 kind: kind,
                 key: isSession ? relativeSubject : withoutMarkdownExtension(relativeSubject),
-                path: relativeMarkdown
+                path: LibraryPath.components(of: markdown, below: rootPath).joined(separator: "/")
             )
         }
         let name = isSession
