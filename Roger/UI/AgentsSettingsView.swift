@@ -34,9 +34,8 @@ struct AgentsSettingsView: View {
 
     private var root: URL { coordinator.appState.libraryLayout.root }
 
-    private var executableChoice: RogerMCPLocation.Choice {
-        RogerMCPLocation.choose(appBundle: Bundle.main.bundleURL)
-    }
+    /// Looked up once, off the main actor, by `AgentsController.live()`.
+    private var executableChoice: RogerMCPLocation.Choice? { agents?.executableChoice }
 
     var body: some View {
         ScrollView {
@@ -56,7 +55,7 @@ struct AgentsSettingsView: View {
         .task {
             reload()
             if !agentsLoaded {
-                agents = AgentsController.live()
+                agents = await AgentsController.live()
                 agentsLoaded = true
             }
             await agents?.refresh()
@@ -242,13 +241,19 @@ struct AgentsSettingsView: View {
             DisclosureGroup("Commands to add Roger to an agent yourself") {
                 VStack(alignment: .leading, spacing: 10) {
                     switch executableChoice {
-                    case .usable(let executable):
+                    case .usable(let executable)?:
                         Text("Claude Code:")
                         copyableBlock(McpCommandFormatter.claudeAdd(executable: executable))
                         Text("Other clients (.mcp.json, Cursor, Copilot CLI, Kiro):")
                         copyableBlock(McpCommandFormatter.jsonSnippet(executable: executable))
-                    case .unusable(let reason):
+                    case .unusable(let reason)?:
                         Text(reason).foregroundStyle(.secondary)
+                    case nil:
+                        if agentsLoaded {
+                            Text("Not available in this copy of Roger.").foregroundStyle(.secondary)
+                        } else {
+                            ProgressView().controlSize(.small)
+                        }
                     }
                 }
                 .padding(.top, 6)
@@ -289,17 +294,22 @@ struct AgentsSettingsView: View {
         }
     }
 
+    /// The bookmark files are written off the main actor.
     private func perform(_ action: ConsumerAction) {
         let bookmarks = ConsumerBookmarks(root: root)
-        do {
-            switch action {
-            case .startOver(let name): try bookmarks.reset(name)
-            case .forget(let name): try bookmarks.forget(name)
+        Task {
+            do {
+                try await Task.detached {
+                    switch action {
+                    case .startOver(let name): try bookmarks.reset(name)
+                    case .forget(let name): try bookmarks.forget(name)
+                    }
+                }.value
+            } catch {
+                actionError = error.localizedDescription
             }
-        } catch {
-            actionError = error.localizedDescription
+            reload()
         }
-        reload()
     }
 
     private func confirmationTitle(_ action: ConsumerAction) -> String {

@@ -68,23 +68,40 @@ final class AgentsController {
     /// Drops a refresh that finished after a newer one.
     @ObservationIgnored private var refreshGeneration = 0
 
-    init(home: URL, installer: SkillInstaller, runner: any CommandRunner, appBundle: URL, searchPath: [String]? = nil, links: [String] = RogerMCPLocation.homebrewLinks) {
+    /// `executableChoice` is looked up from `appBundle` and `links` when
+    /// not given (`live()` looks it up off the main actor).
+    init(
+        home: URL,
+        installer: SkillInstaller,
+        runner: any CommandRunner,
+        appBundle: URL,
+        searchPath: [String]? = nil,
+        links: [String] = RogerMCPLocation.homebrewLinks,
+        executableChoice: RogerMCPLocation.Choice? = nil
+    ) {
         self.home = home
         self.installer = installer
         self.runner = runner
         self.searchPath = searchPath
-        self.executableChoice = RogerMCPLocation.choose(appBundle: appBundle, links: links)
+        self.executableChoice = executableChoice ?? RogerMCPLocation.choose(appBundle: appBundle, links: links)
         self.appBundle = appBundle
     }
 
-    /// Nil when this copy of Roger has no bundled skill.
-    static func live() -> AgentsController? {
-        guard let skill = BundledSkill.load() else { return nil }
+    /// Nil when this copy of Roger has no bundled skill. Reads the skill
+    /// and checks the `roger-mcp` paths off the main actor.
+    static func live() async -> AgentsController? {
+        let appBundle = Bundle.main.bundleURL
+        let found = await Task.detached(priority: .userInitiated) { () -> (BundledSkill, RogerMCPLocation.Choice)? in
+            guard let skill = BundledSkill.load() else { return nil }
+            return (skill, RogerMCPLocation.choose(appBundle: appBundle))
+        }.value
+        guard let (skill, choice) = found else { return nil }
         return AgentsController(
             home: FileManager.default.homeDirectoryForCurrentUser,
             installer: .live(skill: skill),
             runner: ProcessCommandRunner(),
-            appBundle: Bundle.main.bundleURL
+            appBundle: appBundle,
+            executableChoice: choice
         )
     }
 

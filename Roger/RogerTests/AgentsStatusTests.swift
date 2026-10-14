@@ -98,4 +98,15 @@ struct AgentsStatusTests {
         }
         #expect(reason.contains("Applications"))
     }
+
+    /// The change log is gone (or unreadable): the consumers are still
+    /// listed, so they can be started over or forgotten.
+    @Test func consumersAreListedWithoutAChangeLog() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        try ConsumerBookmarks(root: root).ack("crystalline", upTo: 4, now: now)
+        let status = AgentsLibraryStatus.read(root: root)
+        #expect(!status.isSetUp)
+        #expect(status.consumers == [AgentsConsumerRow(name: "crystalline", seq: 4, updatedAt: now, openEvents: 0)])
+    }
 }
