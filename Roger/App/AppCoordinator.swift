@@ -192,60 +192,31 @@ final class AppCoordinator {
     /// their meetings are still found.
     func runLibraryMigrationIfNeeded() {
         guard !appState.libraryMigrationDone, !meetingRecorder.isActive else { return }
-        // Stays false when the move was skipped (library folder missing) or
-        // failed to start: it is offered again at the next launch.
-        var finished = true
-        defer {
-            if finished { appState.libraryMigrationDone = true }
-            refreshPendingMeetingSessions()
-        }
-
-        var extras = appState.extraScanFolders
-        func addExtra(_ url: URL) {
-            if !extras.contains(where: { $0.standardizedFileURL == url.standardizedFileURL }) {
-                extras.append(url)
-            }
-        }
-        if let transcripts = appState.legacyFileTranscriptFolder {
-            addExtra(transcripts)
-        }
-
         let layout = appState.libraryLayout
-        let oldMeetings = appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
-        let sessions = MeetingSessionScanner.sessionFolders(in: oldMeetings, maxDepth: 1)
-        if !sessions.isEmpty, !LibraryMigration.isInsideLibrary(oldMeetings, layout: layout) {
-            // A missing custom library folder (drive not connected) is never
-            // created: keep the meetings in place and still find them.
-            guard LibraryMigration.isReadyToMigrate(layout: layout) else {
-                logger.warning("Library migration skipped: the library folder \(layout.root.path, privacy: .public) is missing")
-                finished = false
-                addExtra(oldMeetings)
-                appState.extraScanFolders = extras
-                return
-            }
+        let input = LibraryMigrationRun.Input(
+            layout: layout,
+            extraFolders: appState.extraScanFolders,
+            legacyTranscriptFolder: appState.legacyFileTranscriptFolder,
+            legacyMeetingsFolder: appState.legacyMeetingRecordingsFolder ?? LibraryLayout.legacyRecordingsFolder
+        )
+        let result = LibraryMigrationRun.run(input) { count, folder in
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "Move your meetings to the Roger library?"
-            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(sessions.count) \(sessions.count == 1 ? "meeting" : "meetings") from \(oldMeetings.path) there? If you keep them in place, Roger still finds them."
+            alert.informativeText = "Roger now keeps log entries, meetings and transcripts in one folder: \(layout.root.path). Move \(count) \(count == 1 ? "meeting" : "meetings") from \(folder.path) there? If you keep them in place, Roger still finds them."
             alert.addButton(withTitle: "Move")
             alert.addButton(withTitle: "Keep in Place")
-            if alert.runModal() == .alertFirstButtonReturn {
-                do {
-                    let result = try LibraryMigration.execute(LibraryMigration.plan(sessionFolders: sessions, layout: layout), layout: layout)
-                    logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failed.count) failed")
-                    if !result.failed.isEmpty {
-                        addExtra(oldMeetings)
-                    }
-                } catch {
-                    logger.warning("Library migration skipped: \(error.localizedDescription, privacy: .public)")
-                    finished = false
-                    addExtra(oldMeetings)
-                }
-            } else {
-                addExtra(oldMeetings)
-            }
+            return alert.runModal() == .alertFirstButtonReturn
         }
-        appState.extraScanFolders = extras
+        if !result.moved.isEmpty || result.failedCount > 0 {
+            logger.notice("Library migration moved \(result.moved.count) meetings, \(result.failedCount) failed")
+        }
+        appState.extraScanFolders = result.extraFolders
+        // Not finished (library folder missing): offered again next launch.
+        if result.finished {
+            appState.libraryMigrationDone = true
+        }
+        refreshPendingMeetingSessions()
     }
 
     private func setupPermissionCallbacks() {
