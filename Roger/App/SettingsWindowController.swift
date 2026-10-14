@@ -42,6 +42,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         if let pane { navigation.selection = pane }
         let window = self.window ?? makeWindow()
         isOpen = true
+        navigation.isVisible = true
         // Before the window is shown, so the Dock icon does not flash.
         presence.enter(.settings)
         if window.isMiniaturized { window.deminiaturize(nil) }
@@ -89,6 +90,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         guard let closing = notification.object as? NSWindow, closing === window else { return }
+        // End editing first, so a field that saves on focus loss saves now.
+        closing.makeFirstResponder(nil)
+        // Remove the pane and let SwiftUI apply it right away: its
+        // onDisappear runs before the window is gone, also when it is
+        // reopened at once.
+        navigation.isVisible = false
+        closing.contentView?.layoutSubtreeIfNeeded()
         isOpen = false
         presence.leave(.settings)
     }

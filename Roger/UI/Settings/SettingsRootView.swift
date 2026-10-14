@@ -19,8 +19,10 @@ struct SettingsRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 260)
             .toolbar(removing: .sidebarToggle)
         } detail: {
-            SettingsPaneContent(pane: navigation.selection)
-                .navigationTitle(navigation.selection.title)
+            SettingsWhileVisible(navigation: navigation) {
+                SettingsPaneContent(pane: navigation.selection)
+            }
+            .navigationTitle(navigation.selection.title)
         }
         .environment(navigation)
     }
@@ -41,6 +43,19 @@ struct SettingsRootView: View {
                 SettingsPaneIcon(pane: pane)
             }
             .tag(pane)
+        }
+    }
+}
+
+/// Shows its content only while the settings window is open, so a closed
+/// window ends the pane and a reopened one starts it again.
+struct SettingsWhileVisible<Content: View>: View {
+    let navigation: SettingsNavigation
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Group {
+            if navigation.isVisible { content() }
         }
     }
 }

@@ -33,6 +33,13 @@ final class SettingsNavigation {
         }
     }
 
+    /// True while the settings window is open. The pane is only rendered
+    /// while it is, so closing the window ends the pane (onDisappear saves
+    /// edits and stops timers) and reopening starts it fresh (.task and
+    /// onAppear run again). An NSWindow keeps its SwiftUI content alive
+    /// across close and reopen otherwise.
+    var isVisible = false
+
     @ObservationIgnored private let memory: SettingsPaneMemory
 
     init(memory: SettingsPaneMemory) {

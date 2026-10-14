@@ -80,3 +80,65 @@ struct SettingsWindowControllerTests {
         #expect(window.collectionBehavior.contains(.fullScreenNone))
     }
 }
+
+/// Closing the settings window must end the pane (onDisappear saves an API
+/// key, timers stop) and reopening must start it again (.task and onAppear
+/// run). Uses a real NSWindow and NSHostingController, never on screen.
+@MainActor
+struct SettingsPaneLifecycleTests {
+    final class Events {
+        var list: [String] = []
+    }
+
+    struct Probe: View {
+        let events: Events
+        var body: some View {
+            Color.clear
+                .onAppear { events.list.append("appear") }
+                .onDisappear { events.list.append("disappear") }
+        }
+    }
+
+    private func make(_ events: Events) -> SettingsWindowController {
+        SettingsWindowController(
+            presence: AppWindowPresence { _ in },
+            memory: .none,
+            frameAutosaveName: nil,
+            present: { $0.contentView?.layoutSubtreeIfNeeded() },
+            makeContent: { navigation in
+                AnyView(SettingsWhileVisible(navigation: navigation) { Probe(events: events) })
+            }
+        )
+    }
+
+    private func close(_ controller: SettingsWindowController) throws {
+        let window = try #require(controller.window)
+        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+    }
+
+    @Test func closeEndsThePaneAndReopenStartsItAgain() throws {
+        let events = Events()
+        let controller = make(events)
+        controller.show(.aiProvider)
+        #expect(controller.navigation.isVisible)
+        #expect(events.list == ["appear"])
+
+        try close(controller)
+        #expect(!controller.navigation.isVisible)
+        #expect(events.list == ["appear", "disappear"])
+
+        controller.show()
+        #expect(events.list == ["appear", "disappear", "appear"])
+    }
+
+    @Test func closeEndsEditingInTheWindow() throws {
+        let controller = make(Events())
+        controller.show()
+        let window = try #require(controller.window)
+        let field = NSTextField()
+        window.contentView?.addSubview(field)
+        window.makeFirstResponder(field)
+        try close(controller)
+        #expect(window.firstResponder === window)
+    }
+}
