@@ -12,7 +12,7 @@ struct MeetingSession: Sendable, Equatable, Identifiable {
     let startedAt: Date
 
     /// Default name format: `YYYY-MM-DD HH-mm`. Single source of truth so
-    /// recovery and the Recordings tab agree on what to look for.
+    /// recovery and Library & Meetings agree on what to look for.
     static let folderNameFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")

@@ -1004,7 +1004,7 @@ final class AppCoordinator {
 
     /// Stops a meeting recording and runs finalisation off the main actor.
     /// The floating panel is dismissed on entering finalisation; the
-    /// Recordings tab will show the result.
+    /// Library & Meetings pane will show the result.
     func stopMeetingRecording() async {
         guard meetingRecorder.isActive else { return }
         // Bring the overlay back so the standard "thinking / finalising"

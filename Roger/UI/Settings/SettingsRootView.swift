@@ -71,10 +71,10 @@ struct SettingsPaneContent: View {
         case .model: ModelPane()
         case .aiProvider: AIProviderPane()
         case .files: FilesPane()
-        case .library: RecordingsSettingsView()
-        case .agents: AgentsSettingsView()
+        case .library: LibraryPane()
+        case .agents: AgentsPane()
         case .permissions: PermissionsPane()
-        case .about: AboutView()
+        case .about: AboutPane()
         }
     }
 }

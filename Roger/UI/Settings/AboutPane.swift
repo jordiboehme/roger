@@ -1,8 +1,7 @@
 import SwiftUI
 
-// MARK: - About
-
-struct AboutView: View {
+/// Settings > About: icon, version, links and credits. Centered, not a form.
+struct AboutPane: View {
     private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
     private let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
 
