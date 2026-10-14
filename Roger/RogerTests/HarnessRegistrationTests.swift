@@ -240,6 +240,50 @@ struct HarnessRegistrationTests {
     }
 
     @MainActor
+    private func installedRow(_ id: HarnessID, folder: String, clis: [String], result: CommandResult) async throws -> (home: URL, row: AgentsController.Row) {
+        let (home, bin) = try home(with: clis)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(folder), withIntermediateDirectories: true)
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
+        let controller = AgentsController(home: home, installer: installer, runner: FakeRunner([result]), appBundle: app, searchPath: [bin.path], links: [])
+        await controller.refresh()
+        await controller.install(id)
+        let row = try #require(controller.rows.first { $0.id == id })
+        #expect(row.skillState == .upToDate)
+        #expect(row.connection == .notConnected)
+        return (home, row)
+    }
+
+    /// Without a CLI Roger cannot add the server, so the button only shows
+    /// what to do by hand.
+    @MainActor
+    @Test func harnessWithoutACLIShowsSetup() async throws {
+        let (home, row) = try await installedRow(.cursor, folder: ".cursor", clis: [], result: ok)
+        defer { TempFolder.remove(home) }
+        #expect(row.hasCLI == false)
+        #expect(row.primaryAction == "Show setup")
+    }
+
+    @MainActor
+    @Test func missingCLIShowsSetup() async throws {
+        let (home, row) = try await installedRow(.claudeCode, folder: ".claude", clis: [], result: ok)
+        defer { TempFolder.remove(home) }
+        #expect(row.hasCLI == false)
+        #expect(row.manualCommand?.hasPrefix("claude mcp add") == true)
+        #expect(row.primaryAction == "Show setup")
+    }
+
+    @MainActor
+    @Test func failedRegistrationWithTheCLIOffersUpdate() async throws {
+        let failed = CommandResult(status: .exited(1), stdout: "", stderr: "boom")
+        let (home, row) = try await installedRow(.claudeCode, folder: ".claude", clis: ["claude"], result: failed)
+        defer { TempFolder.remove(home) }
+        #expect(row.hasCLI)
+        #expect(row.primaryAction == "Update")
+    }
+
+    @MainActor
     @Test func unusableExecutableStillReadsTheConfig() async throws {
         let (home, bin) = try home(with: ["claude"])
         defer { TempFolder.remove(home) }

@@ -31,6 +31,9 @@ final class AgentsController {
         var message: String?
         var manualCommand: String?
         var isBusy = false
+        /// False when the harness has no CLI or Roger did not find it: then
+        /// the server can only be added by hand.
+        var hasCLI = true
 
         var id: HarnessID { spec.id }
 
@@ -38,12 +41,14 @@ final class AgentsController {
         private var serverAbsent: Bool { connection == .notConnected || connection == .unknown }
 
         /// "Install" while the row has nothing of its own, "Update" when
-        /// something is out of date, nil when all is well.
+        /// something is out of date, "Show setup" when only the server is
+        /// missing and Roger cannot add it (no CLI), nil when all is well.
         var primaryAction: String? {
             let skillFresh = coveredBy != nil || skillState == .notInstalled
             if skillFresh, serverAbsent { return "Install" }
             let skillOK = coveredBy != nil || skillState == .upToDate
-            if !skillOK || connection != .connected { return "Update" }
+            if !skillOK { return "Update" }
+            if connection != .connected { return hasCLI ? "Update" : "Show setup" }
             return nil
         }
 
@@ -93,6 +98,7 @@ final class AgentsController {
         let plan: HarnessInstallPlan
         let skillState: SkillRowState
         let connection: ServerConnection
+        let hasCLI: Bool
     }
 
     /// Reads detection, skill states and config files again, off the main
@@ -104,12 +110,14 @@ final class AgentsController {
         let home = self.home
         let installer = self.installer
         let executable = self.executable
+        let searchPath = await resolvedSearchPath()
         let snapshots = await Task.detached(priority: .userInitiated) {
             SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home), home: home).map { plan in
                 Snapshot(
                     plan: plan,
                     skillState: installer.state(of: plan.skillFolder),
-                    connection: HarnessRegistration.connection(plan.harness, home: home, executable: executable)
+                    connection: HarnessRegistration.connection(plan.harness, home: home, executable: executable),
+                    hasCLI: plan.harness.cli.map { CLILocator.find($0, in: searchPath) != nil } ?? false
                 )
             }
         }.value
@@ -125,7 +133,8 @@ final class AgentsController {
                 connection: snapshot.connection,
                 message: previous[id]?.message,
                 manualCommand: previous[id]?.manualCommand,
-                isBusy: previous[id]?.isBusy ?? false
+                isBusy: previous[id]?.isBusy ?? false,
+                hasCLI: snapshot.hasCLI
             )
         }
     }
@@ -292,12 +301,17 @@ final class AgentsController {
 
     // MARK: - Helpers
 
-    private func registrar() async -> HarnessRegistrar {
+    /// The login shell's `PATH` and the extra folders, looked up once.
+    private func resolvedSearchPath() async -> [String] {
         if searchPath == nil {
             let path = await CLILocator.loginShellPATH(runner: runner, home: home)
             searchPath = CLILocator.searchPath(loginShellPATH: path, home: home)
         }
-        return HarnessRegistrar(home: home, runner: runner, searchPath: searchPath ?? CLILocator.extraDirectories)
+        return searchPath ?? CLILocator.extraDirectories
+    }
+
+    private func registrar() async -> HarnessRegistrar {
+        HarnessRegistrar(home: home, runner: runner, searchPath: await resolvedSearchPath())
     }
 
     private func setBusy(_ id: HarnessID, _ busy: Bool) {
