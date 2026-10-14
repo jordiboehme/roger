@@ -103,4 +103,84 @@ struct DesktopExtensionBuilderTests {
         try store.save(record)
         #expect(store.load() == record)
     }
+
+    @Test func launcherQuotesASingleQuote() {
+        #expect(DesktopExtensionBuilder.launcher(executable: "/Users/o'neil/Roger.app/Contents/MacOS/roger-mcp")
+                == "#!/bin/sh\nexec '/Users/o'\\''neil/Roger.app/Contents/MacOS/roger-mcp' \"$@\"\n")
+    }
+
+    @Test func concurrentSkillSavesNeverOverwrite() async throws {
+        let downloads = try TempFolder.make()
+        defer { TempFolder.remove(downloads) }
+        let existing = downloads.appendingPathComponent("ingest-roger.zip")
+        try Data("mine".utf8).write(to: existing)
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let urls = try await withThrowingTaskGroup(of: URL.self) { group in
+            for _ in 0..<6 {
+                group.addTask { try DesktopExtensionBuilder.buildSkillZip(skill, in: downloads, archiver: DittoArchiver()) }
+            }
+            return try await group.reduce(into: [URL]()) { $0.append($1) }
+        }
+        #expect(Set(urls.map(\.lastPathComponent)).count == 6)
+        #expect(!urls.contains(existing))
+        #expect(try Data(contentsOf: existing) == Data("mine".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: downloads.path).count == 7)
+    }
+
+    @Test func failedZipLeavesNothingAndReportsStderr() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let missing = folder.appendingPathComponent("nope")
+        let target = folder.appendingPathComponent("out.zip")
+        do {
+            try DittoArchiver().zip(missing, keepParent: false, to: target)
+            Issue.record("expected a failure")
+        } catch let error as ArchiverError {
+            #expect(!error.detail.isEmpty)
+            #expect(error.localizedDescription.contains(error.detail))
+        }
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+    }
+
+    @MainActor
+    @Test func refreshDesktopUsesTheInjectedPaths() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let skill = BundledSkill(content: Data("x".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: folder, receiptURL: folder.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let controller = AgentsController(home: folder, installer: installer, runner: ProcessCommandRunner(),
+                                          appBundle: folder.appendingPathComponent("Roger.app"), searchPath: [], links: [])
+        controller.desktopStore = DesktopRecordStore(fileURL: folder.appendingPathComponent("claude-desktop.json"))
+        controller.claudeAppURL = folder.appendingPathComponent("Claude.app")
+        await controller.refreshDesktop()
+        #expect(!controller.desktopAvailable)
+        #expect(controller.desktopRecord == DesktopRecord())
+
+        try FileManager.default.createDirectory(at: controller.claudeAppURL, withIntermediateDirectories: true)
+        let record = DesktopRecord(extensionCommand: exe, extensionAddedAt: Date(timeIntervalSince1970: 1_790_000_000), skillSavedAt: nil)
+        try controller.desktopStore.save(record)
+        await controller.refreshDesktop()
+        #expect(controller.desktopAvailable)
+        #expect(controller.desktopRecord == record)
+    }
+
+    @MainActor
+    @Test func savingTheSkillUsesTheInjectedFolders() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let skill = BundledSkill(content: Data("x".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: folder, receiptURL: folder.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let controller = AgentsController(home: folder, installer: installer, runner: ProcessCommandRunner(),
+                                          appBundle: folder.appendingPathComponent("Roger.app"), searchPath: [], links: [])
+        let downloads = folder.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        controller.downloadsFolder = downloads
+        controller.desktopStore = DesktopRecordStore(fileURL: folder.appendingPathComponent("claude-desktop.json"))
+        var revealed: [URL] = []
+        controller.reveal = { revealed.append($0) }
+        await controller.saveSkillForClaudeDesktop()
+        #expect(revealed.map(\.lastPathComponent) == ["ingest-roger.zip"])
+        #expect(controller.desktopRecord.skillSavedAt != nil)
+        #expect(!controller.desktopBusy)
+    }
 }

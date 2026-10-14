@@ -199,6 +199,10 @@ final class AgentsController {
     private(set) var desktopAvailable = false
     private(set) var desktopRecord = DesktopRecord()
     var desktopMessage: String?
+    /// True while an add or save runs; the view disables both buttons.
+    private(set) var desktopBusy = false
+    /// Shows a file in Finder; tests replace it.
+    @ObservationIgnored var reveal: @MainActor (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
 
     /// Desktop gets the bundle's own binary, never a Homebrew link.
     private var desktopExecutable: String? {
@@ -225,6 +229,9 @@ final class AgentsController {
     /// Builds `roger.mcpb` in a temp folder and opens it with Claude
     /// Desktop, which shows its install dialog. Same name means an update.
     func addToClaudeDesktop() async {
+        guard !desktopBusy else { return }
+        desktopBusy = true
+        defer { desktopBusy = false }
         guard let executable = desktopExecutable else {
             if case .unusable(let reason) = executableChoice { desktopMessage = reason }
             return
@@ -261,6 +268,9 @@ final class AgentsController {
 
     /// Writes `ingest-roger.zip` to Downloads and shows it in Finder.
     func saveSkillForClaudeDesktop() async {
+        guard !desktopBusy else { return }
+        desktopBusy = true
+        defer { desktopBusy = false }
         let skill = installer.skill
         let folder = downloadsFolder
         let store = desktopStore
@@ -272,7 +282,7 @@ final class AgentsController {
                 try store.save(record)
                 return zip
             }.value
-            NSWorkspace.shared.activateFileViewerSelecting([zip])
+            reveal(zip)
             desktopMessage = "Upload \(zip.lastPathComponent) in Claude > Settings > Capabilities > Skills."
         } catch {
             desktopMessage = error.localizedDescription

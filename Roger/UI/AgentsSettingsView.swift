@@ -148,9 +148,11 @@ struct AgentsSettingsView: View {
                     Button("Add to Claude Desktop") {
                         Task { await agents.addToClaudeDesktop() }
                     }
+                    .disabled(agents.desktopBusy)
                     Button("Save Skill for Claude Desktop") {
                         Task { await agents.saveSkillForClaudeDesktop() }
                     }
+                    .disabled(agents.desktopBusy)
                 }
                 if let added = agents.desktopRecord.extensionAddedAt {
                     Text("Extension last added \(added.formatted(.relative(presentation: .named))).")

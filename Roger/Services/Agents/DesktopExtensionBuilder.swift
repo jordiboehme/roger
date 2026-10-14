@@ -73,7 +73,11 @@ protocol Archiver: Sendable {
 
 struct ArchiverError: Error, LocalizedError {
     let status: Int32
-    var errorDescription: String? { "Could not create the zip file (ditto exit code \(status))." }
+    var detail = ""
+    var errorDescription: String? {
+        let base = "Could not create the zip file (ditto exit code \(status))."
+        return detail.isEmpty ? base : base + " " + detail
+    }
 }
 
 /// `/usr/bin/ditto`, which keeps the executable bit and adds no resource
@@ -86,9 +90,16 @@ struct DittoArchiver: Archiver {
             + (keepParent ? ["--keepParent"] : [])
             + [source.path, destination.path]
         process.standardInput = FileHandle.nullDevice
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
         try process.run()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw ArchiverError(status: process.terminationStatus) }
+        guard process.terminationStatus == 0 else {
+            try? FileManager.default.removeItem(at: destination)
+            let detail = String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw ArchiverError(status: process.terminationStatus, detail: detail)
+        }
     }
 }
 
@@ -146,9 +157,16 @@ enum DesktopExtensionBuilder {
         try Data(launcher(executable: executable).utf8).write(to: launcherURL)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcherURL.path)
 
+        // Zip next to the final name, then swap it in: Desktop never sees a half-written bundle.
         let output = folder.appendingPathComponent("roger.mcpb")
-        if fm.fileExists(atPath: output.path) { try fm.removeItem(at: output) }
-        try archiver.zip(stage, keepParent: false, to: output)
+        let partial = folder.appendingPathComponent("roger-\(UUID().uuidString).mcpb")
+        defer { try? fm.removeItem(at: partial) }
+        try archiver.zip(stage, keepParent: false, to: partial)
+        if fm.fileExists(atPath: output.path) {
+            _ = try fm.replaceItemAt(output, withItemAt: partial)
+        } else {
+            try fm.moveItem(at: partial, to: output)
+        }
         return output
     }
 
@@ -162,14 +180,38 @@ enum DesktopExtensionBuilder {
         try fm.createDirectory(at: skillFolder, withIntermediateDirectories: true)
         try skill.content.write(to: skillFolder.appendingPathComponent("SKILL.md"))
 
-        var output = folder.appendingPathComponent("\(BundledSkill.name).zip")
-        var counter = 1
-        while fm.fileExists(atPath: output.path) {
-            output = folder.appendingPathComponent("\(BundledSkill.name) \(counter).zip")
+        // Zip inside the staging folder, then move to a free name. The move
+        // fails when the target exists, so a file is never overwritten.
+        let partial = stage.appendingPathComponent("\(BundledSkill.name).zip")
+        try archiver.zip(skillFolder, keepParent: true, to: partial)
+        var counter = 0
+        while true {
+            let name = counter == 0 ? "\(BundledSkill.name).zip" : "\(BundledSkill.name) \(counter).zip"
+            let output = folder.appendingPathComponent(name)
+            if try moveWithoutReplacing(partial, to: output) { return output }
             counter += 1
+            if counter > 1000 { throw CocoaError(.fileWriteFileExists) }
         }
-        try archiver.zip(skillFolder, keepParent: true, to: output)
-        return output
+    }
+
+    /// Atomic move that never replaces: false when `destination` exists. Falls
+    /// back to copy + remove across volumes, where the copy fails on a clash.
+    private static func moveWithoutReplacing(_ source: URL, to destination: URL) throws -> Bool {
+        if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return true }
+        switch errno {
+        case EEXIST: return false
+        case EXDEV:
+            let fm = FileManager.default
+            do {
+                try fm.copyItem(at: source, to: destination)
+                try? fm.removeItem(at: source)
+                return true
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                return false
+            }
+        default:
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 
     /// The app icon as a `size` x `size` PNG.
