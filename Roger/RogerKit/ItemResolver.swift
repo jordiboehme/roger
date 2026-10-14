@@ -44,10 +44,12 @@ public enum ItemResolver {
         result += item.audioFiles.map { LibraryPath.canonical($0) }
         if item.kind == .meeting {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: item.folderURL.path)) ?? []
+            let folder = LibraryPath.canonical(item.folderURL)
             result += names
                 .filter { !$0.hasPrefix(".") && imageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
                 .sorted()
                 .map { LibraryPath.canonical(item.folderURL.appendingPathComponent($0)) }
+                .filter { LibraryPath.isPath($0, inside: folder) }
         }
         var seen = Set<String>()
         return result.filter { seen.insert($0).inserted }
@@ -74,6 +76,9 @@ public enum ItemResolver {
             return ChangeSubject(kind: last.kind, key: key, path: last.path)
         }
 
+        guard let top = parts.first, ["Logs", "Meetings", "Transcripts"].contains(String(top)) else {
+            throw ItemKeyError.notFound(key)
+        }
         let rootPath = LibraryPath.canonical(root)
         let base = URL(fileURLWithPath: rootPath, isDirectory: true)
         let candidates: [(URL, LibraryItemKind)] = [

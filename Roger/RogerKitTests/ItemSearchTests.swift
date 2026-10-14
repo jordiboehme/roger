@@ -34,7 +34,11 @@ struct ItemSearchTests {
     @Test func unfinishedMeetingsAreNotFound() throws {
         let (root, items) = try library()
         defer { TempDir.remove(root) }
-        #expect(ItemSearch.search("unfinished", in: items, kind: nil, limit: 20).isEmpty)
+        let unfinished = try #require(items.first { $0.kind == .meeting && !$0.hasMarkdown })
+        #expect(unfinished.searchText.contains("unfinished"))
+        let hits = ItemSearch.search("unfinished", in: items, kind: nil, limit: 20)
+        #expect(!hits.contains { $0.item.id == unfinished.id })
+        #expect(hits.isEmpty)
         #expect(ItemSearch.search("   ", in: items, kind: nil, limit: 20).isEmpty)
     }
 

@@ -82,4 +82,26 @@ struct ItemResolverTests {
         defer { TempDir.remove(root) }
         #expect(ItemResolver.item(path: "Logs/2026/10/gone.md", kind: .log, root: root) == nil)
     }
+
+    @Test func keysOutsideTheItemFoldersAreNotFound() throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        try "# Readme".write(to: root.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        #expect(throws: ItemKeyError.notFound("README")) {
+            try ItemResolver.subject(forKey: "README", root: root, events: [])
+        }
+    }
+
+    @Test func screenshotSymlinkOutOfTheSessionIsSkipped() throws {
+        let root = try TempDir.make()
+        defer { TempDir.remove(root) }
+        let outside = try TempDir.make()
+        defer { TempDir.remove(outside) }
+        let session = try KitFixtures.meeting(in: root.appendingPathComponent("Meetings/2026/10"), name: "2026-10-13 09-00", at: date, text: "x")
+        let target = outside.appendingPathComponent("secret.png")
+        try Data([1]).write(to: target)
+        try FileManager.default.createSymbolicLink(at: session.appendingPathComponent("shot.png"), withDestinationURL: target)
+        let item = try #require(ItemResolver.item(path: "Meetings/2026/10/2026-10-13 09-00/transcript.md", kind: .meeting, root: root))
+        #expect(!ItemResolver.paths(of: item).contains { $0.hasSuffix("secret.png") })
+    }
 }
