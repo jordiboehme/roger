@@ -41,9 +41,11 @@ enum LibraryDocumentEditor {
         }
     }
 
-    /// Read without URL resource caching, so a change by another app is seen.
+    /// Read without URL resource caching, so a change by another app is
+    /// seen. For a symlink this is the date of the file it points to
+    /// (`attributesOfItem` alone describes the link itself).
     static func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        (try? FileManager.default.attributesOfItem(atPath: LibraryPath.canonical(url)))?[.modificationDate] as? Date
     }
 
     /// One line, trimmed. Nil when nothing is left.
@@ -94,14 +96,16 @@ enum LibraryDocumentEditor {
     /// Writes into a scratch folder on the same volume and swaps the file
     /// in with `replaceItemAt`, which keeps the original's creation date,
     /// Finder tags and other attributes. The original is never truncated in
-    /// place, so a failed write leaves it intact.
+    /// place, so a failed write leaves it intact. A symlink is followed: the
+    /// file it points to gets the text and the link stays a link.
     static func write(_ text: String, to url: URL) throws {
         let fm = FileManager.default
-        let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+        let target = LibraryPath.canonicalURL(url)
+        let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
         defer { try? fm.removeItem(at: scratch) }
-        let temp = scratch.appendingPathComponent(url.lastPathComponent)
+        let temp = scratch.appendingPathComponent(target.lastPathComponent)
         try Data(text.utf8).write(to: temp)
-        _ = try fm.replaceItemAt(url, withItemAt: temp)
+        _ = try fm.replaceItemAt(target, withItemAt: temp)
     }
 
     /// False for an unfinished meeting without a transcript and for files

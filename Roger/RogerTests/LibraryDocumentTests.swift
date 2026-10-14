@@ -190,4 +190,52 @@ struct LibraryDocumentTests {
         #expect(LibraryDocumentEditor.canEdit(log, activeSessionFolder: active))
         #expect(!LibraryDocumentEditor.canEdit(unfinished, activeSessionFolder: nil))
     }
+
+    // MARK: Symlinks
+
+    /// `<folder>/note.md` is a link to `<folder>/real/note.md`.
+    private func linkedLog(in folder: URL) throws -> (link: URL, target: URL) {
+        let real = folder.appendingPathComponent("real", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let target = try writeLog(in: real)
+        let link = folder.appendingPathComponent("note.md")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        return (link, target)
+    }
+
+    private func isLink(_ url: URL) throws -> Bool {
+        try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true
+    }
+
+    @Test func saveWritesThroughASymlink() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        let document = try LibraryDocument.load(link)
+        #expect(try LibraryDocumentEditor.saveBody("\nMine\n", of: document) == .saved)
+        #expect(try isLink(link))
+        #expect(try read(target) == document.frontmatter + "\nMine\n")
+    }
+
+    @Test func renameWritesThroughASymlink() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        try LibraryDocumentEditor.rename(fileAt: link, to: "Through the link")
+        #expect(try isLink(link))
+        #expect(try read(target).contains("title: \"Through the link\"\n"))
+    }
+
+    /// Another app edits the file the link points to: the save must notice.
+    @Test func targetChangedBehindALinkIsDetected() throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let (link, target) = try linkedLog(in: folder)
+        let document = try LibraryDocument.load(link)
+        let otherEdit = try read(target) + "Added by another app\n"
+        try otherEdit.write(to: target, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: date.addingTimeInterval(600)], ofItemAtPath: target.path)
+        #expect(try LibraryDocumentEditor.saveBody("\nMine\n", of: document) == .changedOnDisk)
+        #expect(try read(target) == otherEdit)
+    }
 }
