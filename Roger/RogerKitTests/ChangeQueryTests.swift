@@ -196,4 +196,11 @@ struct SinceParserTests {
     func rejects(raw: String) {
         #expect(SinceParser.parse(raw, now: now) == nil)
     }
+
+    /// Guard test: the regex `$` was never reached with a newline (the text is
+    /// trimmed or `DateFormatter` refuses it), so this passes before the change.
+    @Test func aDayWithANewlineIsNoDay() {
+        #expect(SinceParser.parse("2026-10-13\n", now: now) == nil)
+        #expect(SinceParser.parse("2026-1-13", now: now) == nil)
+    }
 }

@@ -35,7 +35,7 @@ public enum TOON {
         if let first = text.unicodeScalars.first, first == " " || first == "\t" { return true }
         if let last = text.unicodeScalars.last, last == " " || last == "\t" { return true }
         if text == "true" || text == "false" || text == "null" { return true }
-        if text.range(of: #"^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$"#, options: .regularExpression) != nil { return true }
+        if looksLikeNumber(text) { return true }
         if text.hasPrefix("-") || text.hasPrefix("#") { return true }
         for scalar in text.unicodeScalars {
             switch scalar {
@@ -72,7 +72,50 @@ public enum TOON {
 
     /// §7.3: unquoted when it matches `^[A-Za-z_][A-Za-z0-9_.]*$`.
     public static func key(_ name: String) -> String {
-        name.range(of: #"^[A-Za-z_][A-Za-z0-9_.]*$"#, options: .regularExpression) != nil ? name : quoted(name)
+        isPlainKey(name) ? name : quoted(name)
+    }
+
+    /// `^[A-Za-z_][A-Za-z0-9_.]*$`, checked by hand: a regex `$` also
+    /// matches before a final newline, and a pattern would be compiled on
+    /// every call.
+    static func isPlainKey(_ name: String) -> Bool {
+        let scalars = Array(name.unicodeScalars)
+        guard let first = scalars.first, isLetterOrUnderscore(first) else { return false }
+        return scalars.allSatisfy { isLetterOrUnderscore($0) || isDigit($0) || $0 == "." }
+    }
+
+    /// `^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$`, checked by hand.
+    static func looksLikeNumber(_ text: String) -> Bool {
+        let scalars = Array(text.unicodeScalars)
+        var index = 0
+        func skipSign() {
+            if index < scalars.count, scalars[index] == "+" || scalars[index] == "-" { index += 1 }
+        }
+        func digits() -> Int {
+            let start = index
+            while index < scalars.count, isDigit(scalars[index]) { index += 1 }
+            return index - start
+        }
+        skipSign()
+        guard digits() > 0 else { return false }
+        if index < scalars.count, scalars[index] == "." {
+            index += 1
+            guard digits() > 0 else { return false }
+        }
+        if index < scalars.count, scalars[index] == "e" || scalars[index] == "E" {
+            index += 1
+            skipSign()
+            guard digits() > 0 else { return false }
+        }
+        return index == scalars.count
+    }
+
+    private static func isLetterOrUnderscore(_ scalar: Unicode.Scalar) -> Bool {
+        ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || scalar == "_"
+    }
+
+    private static func isDigit(_ scalar: Unicode.Scalar) -> Bool {
+        ("0"..."9").contains(scalar)
     }
 
     /// `name: value`
