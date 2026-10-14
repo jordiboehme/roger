@@ -120,12 +120,21 @@ public struct RogerTools: Sendable {
         } else {
             throw ToolFailure("Pass exactly one start: consumer, since or from with upTo.")
         }
-        return ChangeQuery.run(events: events, start: start, kinds: kinds, summary: summary, root: location.root).render()
+        return ChangeQuery.run(events: events, start: start, kinds: kinds, summary: summary, root: location.root)
+            .render(library: LibraryPath.canonical(location.root))
     }
 
     private func ack(_ args: ToolArguments, _ location: LibraryLocation) throws -> String {
         guard let consumer = try args.string("consumer"), let upTo = try args.int("upTo") else {
             throw ToolFailure("ack needs consumer and upTo.")
+        }
+        // The library from get_changes: when Roger switched to another
+        // library since, this upTo belongs to the old one.
+        if let library = try args.string("library") {
+            let given = URL(fileURLWithPath: (library as NSString).expandingTildeInPath, isDirectory: true)
+            guard LibraryPath.canonical(given) == LibraryPath.canonical(location.root) else {
+                throw ToolFailure("The library changed since get_changes. Call get_changes again.")
+            }
         }
         let lastSeq = try ChangeLogFile.readEvents(root: location.root).map(\.seq).max() ?? 0
         guard upTo >= 0 else { throw ToolFailure("upTo must be 0 or more.") }

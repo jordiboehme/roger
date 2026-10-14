@@ -23,7 +23,7 @@ struct BundledSkillTests {
     @Test func skillFollowsTheProtocolAndTheStyleRules() throws {
         let text = try String(contentsOf: repositoryCopy, encoding: .utf8)
         #expect(text.hasPrefix("---\nname: ingest-roger\ndescription: "))
-        for required in ["get_changes", "summary: true", "ack", "roger://", "$contains_any", "RESULT: ok more", "RESULT: failed:", "archived", "crystalline"] {
+        for required in ["get_changes", "summary: true", "ack", "library: <library from step 1>", "roger://", "$contains_any", "RESULT: ok more", "RESULT: failed:", "archived", "crystalline"] {
             #expect(text.contains(required), "missing \(required)")
         }
         #expect(!text.contains("\u{2014}"))

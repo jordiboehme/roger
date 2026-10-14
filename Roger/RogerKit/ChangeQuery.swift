@@ -46,15 +46,18 @@ public struct ChangeAnswer: Equatable, Sendable {
     public let more: Bool
     public let entries: [ChangeEntry]
 
-    /// TOON head (`from`, `upTo`, `more`, `count`), then the entries.
-    public func render() -> String {
-        let head = [
+    /// TOON head (`from`, `upTo`, `more`, `count` and, when given,
+    /// `library`), then the entries. `library` is the canonical root path;
+    /// an agent hands it back to `ack`.
+    public func render(library: String? = nil) -> String {
+        var head = [
             TOON.field("from", .int(from)),
             TOON.field("upTo", .int(upTo)),
             TOON.field("more", .bool(more)),
             TOON.field("count", .int(entries.count)),
-        ].joined(separator: "\n")
-        return ([head] + entries.map { $0.render() }).joined(separator: "\n\n")
+        ]
+        if let library { head.append(TOON.field("library", .string(library))) }
+        return ([head.joined(separator: "\n")] + entries.map { $0.render() }).joined(separator: "\n\n")
     }
 }
 

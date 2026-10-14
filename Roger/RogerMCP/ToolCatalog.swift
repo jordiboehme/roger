@@ -5,10 +5,10 @@ import MCP
 enum ToolCatalog {
     static let instructions = """
     Roger is a speech-to-text app on this Mac. Its library holds log entries, meeting transcripts and file transcripts as Markdown files.
-    To ingest what is new, call get_changes with your consumer name, ingest each entry, then call ack with that consumer and the upTo from the answer. Repeat while more is true.
+    To ingest what is new, call get_changes with your consumer name, ingest each entry, then call ack with that consumer and the upTo and library from the answer. Repeat while more is true.
     Entries come one per item with its latest state. On updated read the item again as a whole. On deleted remove what you made from it.
     Answers are text. Lists are TOON: a header like items[3]{key,kind,title}: and then one comma-separated row per record. Values with commas, colons or quotes are in double quotes.
-    A get_changes answer starts with from, upTo, more and count. Each entry then starts with the line ==== roger entry <seq> ====, lists its fields and has its Markdown after a blank line.
+    A get_changes answer starts with from, upTo, more, count and library. Each entry then starts with the line ==== roger entry <seq> ====, lists its fields and has its Markdown after a blank line.
     Items are named by keys. No tool takes a file path and no tool deletes anything.
     """
 
@@ -45,7 +45,7 @@ enum ToolCatalog {
         Tool(
             name: "get_changes",
             title: "Get changes",
-            description: "Returns what changed in the library, one entry per item with its latest state. Pass exactly one start: consumer (after that consumer's bookmark, unknown names start at 0), since (a seq, a date YYYY-MM-DD, an RFC 3339 time or a duration like 30m, 12h or 3d) or from with upTo (a fixed range). Ingest loop: call get_changes with your consumer, ingest every entry, then call ack with the same consumer and the answer's upTo. Repeat while more is true. With since, pass the previous upTo as since. On updated read the entry again as a whole. On deleted remove what you made from it. summary: true leaves out the Markdown, so you can plan first and then fetch groups with from and upTo (optionally with kinds). Only ack the upTo of a call without kinds.",
+            description: "Returns what changed in the library, one entry per item with its latest state. Pass exactly one start: consumer (after that consumer's bookmark, unknown names start at 0), since (a seq, a date YYYY-MM-DD, an RFC 3339 time or a duration like 30m, 12h or 3d) or from with upTo (a fixed range). Ingest loop: call get_changes with your consumer, ingest every entry, then call ack with the same consumer and the answer's upTo and library. Repeat while more is true. With since, pass the previous upTo as since. On updated read the entry again as a whole. On deleted remove what you made from it. summary: true leaves out the Markdown, so you can plan first and then fetch groups with from and upTo (optionally with kinds). Only ack the upTo of a call without kinds.",
             inputSchema: schema([
                 "consumer": property("string", "Your consumer name: a-z, 0-9 and -, at most 64 characters."),
                 "since": property("string", "A seq like 42, a date YYYY-MM-DD, an RFC 3339 time or a duration like 30m, 12h or 3d."),
@@ -60,10 +60,11 @@ enum ToolCatalog {
         Tool(
             name: "ack",
             title: "Confirm ingested changes",
-            description: "Moves a consumer's bookmark to upTo after you ingested everything up to it. Never moves it backwards: an older upTo leaves the bookmark as it is. upTo must not be after the last change.",
+            description: "Moves a consumer's bookmark to upTo after you ingested everything up to it. Never moves it backwards: an older upTo leaves the bookmark as it is. upTo must not be after the last change. Pass the library from the get_changes answer: when Roger switched to another library since, ack refuses and changes nothing.",
             inputSchema: schema([
                 "consumer": property("string", "Your consumer name."),
                 "upTo": .object(["type": .string("integer"), "minimum": .int(0)]),
+                "library": property("string", "The library value from the get_changes answer."),
             ], required: ["consumer", "upTo"]),
             annotations: Tool.Annotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false)
         ),

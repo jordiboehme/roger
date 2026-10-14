@@ -83,7 +83,7 @@ struct RogerToolsTests {
         let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(3)])
         #expect(ack.text == "Bookmark crystalline is now 3 (was 0).")
         let again = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline")])
-        #expect(again.text == "from: 4\nupTo: 3\nmore: false\ncount: 0")
+        #expect(again.text == "from: 4\nupTo: 3\nmore: false\ncount: 0\nlibrary: \(LibraryPath.canonical(root))")
     }
 
     @Test func sinceTakesNumbersAsIntegersOrStrings() async throws {
@@ -268,5 +268,53 @@ struct RogerToolsTests {
             #expect(!tools(root).call(name, arguments: arguments).isError)
         }
         #expect(try snapshot() == before)
+    }
+
+    @Test func getChangesNamesTheLibrary() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        let text = tools(root).call("get_changes", arguments: ["consumer": .string("crystalline"), "summary": .bool(true)]).text
+        #expect(text.hasPrefix("from: 1\nupTo: 3\nmore: false\ncount: 3\nlibrary: \(LibraryPath.canonical(root))\n\n==== roger entry"))
+    }
+
+    /// Roger switched to library B between get_changes and ack: the upTo of
+    /// library A must not move B's bookmark.
+    @Test func ackRefusesAnotherLibrary() async throws {
+        let a = try await library()
+        let b = try await library()
+        defer {
+            TempDir.remove(a)
+            TempDir.remove(b)
+        }
+        let box = PreferencesBox(RogerPreferences(libraryRoot: a.path, extraScanFolders: []))
+        let tools = RogerTools(
+            locator: LibraryLocator(argument: nil, preferences: { box.get() }),
+            registry: ExternalTranscriptRegistry(fileURL: a.appendingPathComponent("none.json"))
+        )
+        _ = tools.call("get_changes", arguments: ["consumer": .string("crystalline")])
+        box.set(RogerPreferences(libraryRoot: b.path, extraScanFolders: []))
+        let ack = tools.call("ack", arguments: [
+            "consumer": .string("crystalline"), "upTo": .int(3), "library": .string(LibraryPath.canonical(a)),
+        ])
+        #expect(ack == .error("The library changed since get_changes. Call get_changes again."))
+        #expect(try ConsumerBookmarks(root: b).bookmark("crystalline") == nil)
+        #expect(!FileManager.default.fileExists(atPath: ConsumerBookmarks(root: b).folder.path))
+    }
+
+    /// `/var/...` and `/private/var/...` (and a trailing slash) are the same library.
+    @Test func ackAcceptsAnotherSpellingOfTheSameLibrary() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        let canonical = LibraryPath.canonical(root)
+        try #require(canonical.hasPrefix("/private/var/"))
+        let spelling = String(canonical.dropFirst("/private".count)) + "/"
+        let ack = tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(2), "library": .string(spelling)])
+        #expect(ack.text == "Bookmark crystalline is now 2 (was 0).")
+    }
+
+    @Test func ackWithoutLibraryWorksAsBefore() async throws {
+        let root = try await library()
+        defer { TempDir.remove(root) }
+        #expect(tools(root).call("ack", arguments: ["consumer": .string("crystalline"), "upTo": .int(1)]).text == "Bookmark crystalline is now 1 (was 0).")
     }
 }
