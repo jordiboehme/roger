@@ -92,3 +92,19 @@ final class LibraryChangeRecorder {
         }
     }
 }
+
+extension LibraryChangeRecorder {
+    /// The items whose own file really went to the Trash: a meeting's session
+    /// folder (or its `transcript.md`), otherwise the item's Markdown file.
+    /// A log's `.m4a` is not an item; failed and skipped URLs do not count.
+    /// Paths are compared canonically; call this right after the move, while
+    /// the parent folders still exist.
+    nonisolated static func trashedItems(_ items: [LibraryItem], plan: LibraryActions.TrashPlan, failed: [URL]) -> [LibraryItem] {
+        let failedPaths = Set(failed.map { LibraryPath.canonical($0) })
+        let moved = Set(plan.urls.map { LibraryPath.canonical($0) }).subtracting(failedPaths)
+        return items.filter { item in
+            moved.contains(LibraryPath.canonical(item.url))
+                || (item.kind == .meeting && moved.contains(LibraryPath.canonical(item.folderURL)))
+        }
+    }
+}

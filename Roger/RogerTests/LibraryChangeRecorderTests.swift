@@ -167,3 +167,45 @@ struct LibraryChangeRecorderTests {
         }
     }
 }
+
+struct TrashedItemsTests {
+    private let date = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func logItem(in folder: URL, name: String) throws -> LibraryItem {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(name + ".md")
+        let entry = LogEntry(text: "x", startedAt: date, endedAt: date, presetName: "Log", language: nil)
+        try LogEntryWriter.content(for: entry, audioFileName: name + ".m4a", generatedAt: date).write(to: url, atomically: true, encoding: .utf8)
+        try Data().write(to: folder.appendingPathComponent(name + ".m4a"))
+        return try #require(LibraryItemReader.item(markdownAt: url, fallbackKind: .log))
+    }
+
+    @Test func aLogWithItsAudioIsOneItem() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let item = try logItem(in: root, name: "a")
+        let plan = LibraryActions.TrashPlan(urls: [item.url, item.url.deletingPathExtension().appendingPathExtension("m4a")], itemCount: 1)
+        #expect(LibraryChangeRecorder.trashedItems([item], plan: plan, failed: []) == [item])
+    }
+
+    @Test func failedAndSkippedItemsAreNotDeleted() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let moved = try logItem(in: root, name: "a")
+        let failed = try logItem(in: root, name: "b")
+        let skipped = try logItem(in: root, name: "c")
+        let plan = LibraryActions.TrashPlan(urls: [moved.url, failed.url], itemCount: 2, skipped: [skipped])
+        #expect(LibraryChangeRecorder.trashedItems([moved, failed, skipped], plan: plan, failed: [failed.url]) == [moved])
+    }
+
+    @Test func aMeetingFolderMapsToItsMeeting() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let folder = root.appendingPathComponent("2026-10-13 09-00", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("---\ntags: [meeting, transcript]\n---\n".utf8).write(to: folder.appendingPathComponent("transcript.md"))
+        let item = try #require(LibraryItemReader.meetingItem(sessionFolder: folder))
+        let plan = LibraryActions.TrashPlan(urls: [folder], itemCount: 1, meetingFolderCount: 1)
+        #expect(LibraryChangeRecorder.trashedItems([item], plan: plan, failed: []) == [item])
+    }
+}

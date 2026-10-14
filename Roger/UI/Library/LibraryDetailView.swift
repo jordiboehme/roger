@@ -233,6 +233,7 @@ struct LibraryItemDetail: View {
             )
             switch outcome {
             case .saved:
+                coordinator.libraryChanges.recordWritten(markdownURL: item.url, kind: item.kind)
                 // The new modification date, or the next save sees this
                 // write as a change by another app.
                 reloadNow()
@@ -271,6 +272,7 @@ struct LibraryItemDetail: View {
         }
         do {
             try LibraryDocumentEditor.rename(fileAt: item.url, to: titleDraft)
+            coordinator.libraryChanges.recordWritten(markdownURL: item.url, kind: item.kind)
             reloadNow()
         } catch {
             actionError = error.localizedDescription
