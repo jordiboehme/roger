@@ -29,3 +29,6 @@ AGENTS.md
 # Temporary files
 *.swp
 *~
+
+# Superpowers working files
+.superpowers/
