@@ -13,7 +13,6 @@ permissions:
 jobs:
   notes:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
     permissions:
       contents: read
     outputs:
@@ -22,6 +21,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Allow rehearsals only from main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          echo "::error::A rehearsal runs only from main, not from $REF."
+          exit 1
 
       - name: Resolve version
         id: version
