@@ -1,7 +1,7 @@
 # Roger MCP Server - Design
 
 Date: 2026-10-13
-Status: approved in brainstorming, awaiting spec review
+Status: approved in brainstorming, awaiting spec review (updated 2026-10-14: skill install, Claude Desktop)
 Target release: 0.25.0
 Issue: #7
 
@@ -19,7 +19,11 @@ The design follows the proven model of Notedown's MCP server (append-only change
 | Item content | Markdown (frontmatter and text) plus absolute paths of the item's files. Inputs never take paths, only keys |
 | Change events | `created`, `updated`, `deleted`, written by Roger only. External file changes are not tracked. On `updated` the agent re-reads the whole item |
 | Log storage | `.roger/changes.jsonl` and `.roger/consumers/<name>.json` inside the library folder |
-| Scope of 0.25.0 | Server, Agents settings tab, ingest skill, unattended script, Homebrew symlink |
+| Scope of 0.25.0 | Server, Agents settings tab, ingest skill, unattended script, Homebrew symlink, skill install/update/uninstall in detected harnesses, Claude Desktop extension and skill |
+| Platform | Local stdio only, macOS 15+ on Apple Silicon only. No HTTP, no OAuth, no Windows/Linux/x86_64 variants |
+| Harness detection | Auto-detected by home folder, one row per detected harness |
+| MCP registration | Through the harness's own CLI only. Otherwise a copyable command or snippet. Roger never writes another app's config file |
+| Claude Desktop | Roger builds the `.mcpb` at runtime (binary server, absolute path of the running bundle's `roger-mcp`) and a skill zip for upload |
 
 Out of scope: HTTP transport, OAuth, live actions (start recording, notifications), MCP resources and subscriptions, word-level diffs, tracking external file edits, log compaction.
 
@@ -149,11 +153,44 @@ The cask generated in the release workflow gets `binary "#{appdir}/Roger.app/Con
 
 ### Agents settings tab
 
-- Command with copy button: `claude mcp add roger -- roger-mcp` when `roger-mcp` is on the PATH, else `claude mcp add roger -- <bundle path>/Contents/MacOS/roger-mcp`.
-- JSON snippet for `.mcp.json` and other clients, with copy button.
 - Status: library path, event count, time of the last event.
+- Harness rows (see "Skill install"), then the Claude Desktop row.
+- Manual setup (collapsed): command with copy button, `claude mcp add --scope user roger -- roger-mcp` when `roger-mcp` is on the PATH, else the bundle path; JSON snippet for `.mcp.json` and other clients.
 - Consumers: name, bookmark age, open events. Actions "Start over" (bookmark to 0) and "Forget" (delete bookmark), each after a confirmation.
 - One line about the Documents permission prompt.
+
+### Skill install
+
+Harness detection: a harness is detected when its home folder exists.
+
+| Harness | Detected by | Skills folder | MCP CLI |
+|---|---|---|---|
+| Claude Code | `~/.claude` | `~/.claude/skills` | `claude mcp add --scope user roger -- <roger-mcp>` |
+| Codex | `~/.codex` | `~/.agents/skills` | `codex mcp add roger -- <roger-mcp>` |
+| Gemini CLI | `~/.gemini` | `~/.agents/skills` | `gemini mcp add --scope user roger <roger-mcp>` |
+| Cursor | `~/.cursor` | `~/.agents/skills` (also reads `~/.claude/skills`) | none: JSON snippet for `~/.cursor/mcp.json` |
+| Copilot CLI | `~/.copilot` | `~/.copilot/skills` | none: JSON snippet for `~/.copilot/mcp-config.json` |
+| Kiro | `~/.kiro` | `~/.kiro/skills` | none: JSON snippet for `~/.kiro/settings/mcp.json` |
+
+The exact CLI syntax and config paths are checked against current docs during planning; the table is the intent.
+
+- Source: `skills/ingest-roger/SKILL.md` in the repo, bundled into Roger.app as a resource. Its version is the app version; its SHA-256 decides whether a file changed.
+- Install: copy (never a link) into `<skills folder>/ingest-roger/SKILL.md` via temp file plus rename. A folder shared by several harnesses is written once; the other rows say "covered by <harness>". Then register the server with the harness CLI if one exists and is found (login shell PATH plus `/opt/homebrew/bin`, `/usr/local/bin`). A missing CLI or a failing command is not an error: the row shows the exact command or snippet with Copy.
+- Roger never writes another app's config file. It only reads them (and runs `<cli> mcp list` where available) to show "server connected" or "not connected".
+- Receipt: `~/Library/Application Support/Roger/skill-installs.json`, per skills folder: version and SHA-256. It is treated as untrusted: Roger only ever touches `ingest-roger` inside the known skills folders.
+- Row states: not installed, up to date, outdated (receipt version older than the app), changed by you (file hash differs from the receipt), plus server connected / not connected.
+- Checked when the Agents tab opens. After an app update with outdated installs, the menu bar popover shows one quiet hint ("Agent skill outdated - update in Settings"). Never updates on its own.
+- Update: a file changed by the user is saved as `SKILL.md.bak` first; the row says so.
+- Uninstall: removes the skill folder only when the file is unchanged; a changed file asks first and then goes to the Trash. Then `<cli> mcp remove roger` where a CLI exists, else the row shows the command.
+
+### Claude Desktop
+
+Shown when `/Applications/Claude.app` exists.
+
+- "Add to Claude Desktop": Roger writes `roger.mcpb` to a temp folder (manifest with server type `binary`, `mcp_config.command` = absolute path of the running bundle's `roger-mcp`, name `roger`, version = app version, icon) and opens it with Claude Desktop, which shows its install dialog. Same name means an update. No Node shim and no release asset.
+- "Save skill for Claude Desktop": writes `ingest-roger.zip` (`ingest-roger/SKILL.md`) to `~/Downloads` and reveals it, with the hint "Upload in Claude > Settings > Capabilities > Skills".
+- Roger cannot read Desktop's state. The row shows when each step was last done and warns "Roger.app moved - add again" when the stored path no longer matches the running bundle.
+- The `.mcpb` manifest format is checked against the current MCPB spec during planning.
 
 ### Ingest skill (`skills/ingest-roger/SKILL.md`)
 
@@ -181,7 +218,10 @@ Unit tests in `RogerKitTests`:
 - Tools: each handler called directly with JSON arguments, including errors and rejected keys (`..`, absolute paths).
 - End to end: start the built `roger-mcp --library <temp>` as a process, send `initialize`, `tools/list` and `get_changes` over stdin, check the responses and that stdout holds only JSON-RPC.
 
-Manual: `claude mcp add` and a real `/ingest-roger` run; the script once by hand; the Agents tab including "Start over".
+- Skill install (app tests on temp folders): detection, install plan with shared folders, receipt states (outdated, changed by you), `.bak` on update, uninstall refuses a changed file without confirmation, receipt entries outside known folders ignored, CLI calls through a fake runner (success, missing CLI, failure).
+- `.mcpb` builder: manifest content and zip layout; skill zip layout.
+
+Manual: Install in Claude Code from the Agents tab and a real `/ingest-roger` run; Add to Claude Desktop; the script once by hand; the Agents tab including "Start over".
 
 ## 6. Delivery
 
@@ -190,7 +230,9 @@ One plan, in this order:
 1. Extract `RogerKit` and add `RogerKitTests`.
 2. `ChangeLog` in the app: writer, first fill, catch-up. Wire `LogEntryWriter`, meeting finalisation (including retries) and `TranscriptOutputWriter`.
 3. `roger-mcp` with the six tools, bundling, signing and the cask stanza.
-4. Agents settings tab.
+4. Agents settings tab with status and consumers.
 5. Skill, script and README.
+6. Skill install/update/uninstall with harness detection and CLI registration.
+7. Claude Desktop: `.mcpb` builder and skill zip.
 
-Dependency on the library window (#6, 0.24.0): it is the source of `updated` and `deleted` for edits, renames and trash. If it has shipped, this plan wires those actions to `ChangeLog`. If not, `ChangeLog` exposes `append` for the library window to call when it lands.
+Dependency on the library window (#6): shipped in 0.24.0. This plan wires its edit, rename and trash actions (`LibraryDocumentEditor`, `LibraryActions.moveToTrash`) to `ChangeLog` as the source of `updated` and `deleted`.
