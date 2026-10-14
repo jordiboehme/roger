@@ -111,3 +111,70 @@ public actor ChangeLog {
         }
     }
 }
+
+/// What a writer did to an item.
+public enum ChangeIntent: Sendable {
+    /// The item's Markdown was written (new, edited, renamed, rewritten).
+    case written
+    /// The item went to the Trash.
+    case deleted
+}
+
+extension PendingChange {
+    public init(_ event: ChangeEventType, _ subject: ChangeSubject) {
+        self.init(event: event, kind: subject.kind, key: subject.key, path: subject.path)
+    }
+}
+
+extension ChangeLog {
+    /// `.written` appends `created` when the key never appeared or its last
+    /// event is `deleted`, else `updated`. `.deleted` appends only when the
+    /// key's last event exists and is not `deleted`. Nil when nothing was
+    /// appended.
+    @discardableResult
+    public func record(_ intent: ChangeIntent, _ subject: ChangeSubject) throws -> ChangeEvent? {
+        try locked { events in
+            let last = Self.lastEvents(events)[subject.key]
+            switch intent {
+            case .written:
+                let type: ChangeEventType = (last == nil || last?.event == .deleted) ? .created : .updated
+                return ([PendingChange(type, subject)], ())
+            case .deleted:
+                guard let last, last.event != .deleted else { return ([], ()) }
+                return ([PendingChange(.deleted, subject)], ())
+            }
+        }.written.first
+    }
+
+    /// First fill and catch-up: `created` for every item whose key never
+    /// appeared or whose last event is `deleted` (the file exists again),
+    /// oldest recording first. Items without Markdown are skipped. Creates
+    /// an empty log when there is nothing to add. Does not notice edits or
+    /// deletions made outside Roger.
+    @discardableResult
+    public func reconcile(items: [LibraryItem]) throws -> [ChangeEvent] {
+        let root = self.root
+        let subjects = items
+            .sorted { ($0.date, $0.url.path) < ($1.date, $1.url.path) }
+            .compactMap { ChangeKey.subject(for: $0, root: root) }
+        return try locked { events in
+            let last = Self.lastEvents(events)
+            var seen = Set<String>()
+            var pending: [PendingChange] = []
+            for subject in subjects where seen.insert(subject.key).inserted {
+                if let event = last[subject.key], event.event != .deleted { continue }
+                pending.append(PendingChange(.created, subject))
+            }
+            return (pending, ())
+        }.written
+    }
+
+    /// The event with the highest seq per key.
+    public static func lastEvents(_ events: [ChangeEvent]) -> [String: ChangeEvent] {
+        var result: [String: ChangeEvent] = [:]
+        for event in events where (result[event.key]?.seq ?? 0) < event.seq {
+            result[event.key] = event
+        }
+        return result
+    }
+}
