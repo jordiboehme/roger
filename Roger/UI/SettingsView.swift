@@ -3,7 +3,7 @@ import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsTab: String, Hashable {
-    case general, permissions, microphone, aiProvider, presets, model, fileTranscription, recordings, about
+    case general, permissions, microphone, aiProvider, presets, model, fileTranscription, recordings, agents, about
 }
 
 struct SettingsView: View {
@@ -50,6 +50,11 @@ struct SettingsView: View {
                 .environment(coordinator)
                 .tabItem { Label("Recordings", systemImage: "record.circle") }
                 .tag(SettingsTab.recordings)
+
+            AgentsSettingsView()
+                .environment(coordinator)
+                .tabItem { Label("Agents", systemImage: "point.3.connected.trianglepath.dotted") }
+                .tag(SettingsTab.agents)
 
             AboutView()
                 .tabItem { Label("About", systemImage: "info.circle") }
