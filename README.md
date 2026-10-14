@@ -32,7 +32,7 @@ Roger lives in your menu bar and turns your voice into text - in any app. Hold a
 - **Auto-submit prompts** - configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
 - **Pick your mic** - dedicated Microphone tab lets you pin a specific input or follow the system default
 - **Caps Lock push-to-talk** - hold to listen, release to transcribe. Toggle mode and configurable minimum duration if you prefer
-- **Session safety** - a configurable recording cap (default two minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
+- **Session safety** - a configurable recording cap (default five minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
 - **Stays out of the way** - menu bar only, no Dock icon except while the library window is open. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
 
 ## Installation

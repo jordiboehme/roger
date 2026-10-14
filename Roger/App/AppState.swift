@@ -352,7 +352,9 @@ final class AppState {
         )
         self.maximumRecordingDuration = maximum.value
         if maximum.value != storedMaximum { defaults.set(maximum.value, forKey: "maximumRecordingDuration") }
-        defaults.set(maximum.migrated, forKey: RecordingDurationMigration.migratedKey)
+        if !defaults.bool(forKey: RecordingDurationMigration.migratedKey) {
+            defaults.set(true, forKey: RecordingDurationMigration.migratedKey)
+        }
         self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(

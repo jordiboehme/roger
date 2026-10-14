@@ -39,7 +39,7 @@ for ((run = 1; run <= runs; run++)); do
   printf '%s\n' "$output"
   # Only the last non-empty line counts: a RESULT line quoted earlier in
   # the output (or in an entry's text) must not end the loop.
-  result=$(printf '%s\n' "$output" | awk 'NF { last = $0 } END { sub(/[ \t\r]+$/, "", last); print last }')
+  result=$(printf '%s\n' "$output" | awk '{ sub(/\r$/, "") } NF { last = $0 } END { sub(/[ \t\r]+$/, "", last); print last }')
   case "$result" in
     "RESULT: ok")
       exit 0

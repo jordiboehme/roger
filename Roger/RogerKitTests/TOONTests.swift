@@ -75,6 +75,8 @@ struct TOONTests {
         #expect(TOON.table("items", fields: ["key"], rows: []) == "items: []")
     }
 
+    /// Guard test: it passed before the hand-written check (the regex already
+    /// rejected "abc\n"), and it keeps that so.
     @Test func keysWithATrailingNewlineAreQuoted() {
         #expect(TOON.key("abc\n") == "\"abc\\n\"")
         #expect(TOON.key("_a1") == "_a1")

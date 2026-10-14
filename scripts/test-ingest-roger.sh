@@ -32,11 +32,23 @@ fake done 'Ingested 3 entries.\nRESULT: ok\n\n'
 fake quoted 'The entry said: RESULT: ok\nRESULT: ok\nI also wrote a summary.\n'
 fake failed 'RESULT: failed: crystalline is not reachable\n'
 fake spaces 'RESULT: ok   \n'
+fake crlf 'Ingested 3 entries.\r\nRESULT: ok\r\n\r\n'
+# A claude that says "RESULT: ok more" first and "RESULT: ok" on the second run.
+cat > "$work/twice" <<SCRIPT
+#!/bin/sh
+if [ -e "$work/twice-ran" ]; then echo "RESULT: ok"; else touch "$work/twice-ran"; echo "RESULT: ok more"; fi
+SCRIPT
+chmod +x "$work/twice"
+# A claude that always says "RESULT: ok more".
+fake more 'RESULT: ok more\n'
 
 CLAUDE_BIN="$work/done" check 0 "RESULT: ok on the last line ends the loop" notes 3
 CLAUDE_BIN="$work/spaces" check 0 "trailing spaces after RESULT: ok are fine" notes 3
 CLAUDE_BIN="$work/quoted" check 1 "a RESULT line that is not the last line does not count" notes 3
 CLAUDE_BIN="$work/failed" check 1 "RESULT: failed fails" notes 3
+CLAUDE_BIN="$work/crlf" check 0 "CRLF output with RESULT: ok last is fine" notes 3
+CLAUDE_BIN="$work/twice" check 0 "RESULT: ok more goes on to a second run that ends with ok" notes 3
+CLAUDE_BIN="$work/more" check 0 "RESULT: ok more until max-runs ran out exits 0" notes 2
 CLAUDE_BIN="$work/done" check 2 "max-runs 0 is refused" notes 0
 CLAUDE_BIN="$work/done" check 2 "max-runs abc is refused" notes abc
 CLAUDE_BIN="$work/done" check 2 "max-runs -1 is refused" notes -1
