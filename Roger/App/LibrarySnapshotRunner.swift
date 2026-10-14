@@ -120,6 +120,10 @@ enum LibrarySnapshotRunner {
         // 7. Unfinished meetings, when there are any.
         model.searchText = ""
         await waitUntil(seconds: 5) { model.appliedSearch.isEmpty }
+        // 6b. The list filled again after the empty search: rows must show
+        // all their lines (no rebuild of the list since 0.26.0).
+        await settle()
+        render(window, "06b-refilled.png", into: folder)
         if !coordinator.pendingMeetingSessions.isEmpty {
             model.selection = []
             model.sidebar = .unfinished
