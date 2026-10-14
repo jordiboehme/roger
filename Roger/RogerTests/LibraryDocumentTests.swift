@@ -67,8 +67,35 @@ struct LibraryDocumentTests {
         #expect(LibraryDocumentEditor.renamed(text, to: "New") == "---\ntitle: \"New\"\n---\n\n```\n# comment\n```\n\n# New\n")
     }
 
-    @Test func renameKeepsCarriageReturnOnHeading() {
-        #expect(LibraryDocumentEditor.renamed("# Old\r\nBody\r\n", to: "New") == "# New\r\nBody\r\n")
+    /// A file from another editor: after a rename it is UTF-8 with LF, the
+    /// title and the H1 changed, and every other line is still there.
+    @Test(arguments: TextSample.allCases)
+    func renameOfEveryVariantWritesUTF8WithLF(_ sample: TextSample) throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try sample.write(to: folder.appendingPathComponent("note.md"))
+        try LibraryDocumentEditor.rename(fileAt: url, to: "Neuer Titel")
+        let expected = TextSample.text
+            .replacingOccurrences(of: "title: \"\(TextSample.title)\"", with: "title: \"Neuer Titel\"")
+            .replacingOccurrences(of: "# \(TextSample.title)", with: "# Neuer Titel")
+        #expect(try Data(contentsOf: url) == Data(expected.utf8))
+    }
+
+    @Test(arguments: TextSample.allCases)
+    func saveOfEveryVariantKeepsTheFrontmatter(_ sample: TextSample) throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let url = try sample.write(to: folder.appendingPathComponent("note.md"))
+        let document = try LibraryDocument.load(url)
+        #expect(document.frontmatter + document.body == TextSample.text)
+        #expect(document.frontmatter.contains("title: \"\(TextSample.title)\"\n"))
+        #expect(try LibraryDocumentEditor.saveBody("# Neu\r\n\r\nGeändert\r\n", of: document) == .saved)
+        #expect(try Data(contentsOf: url) == Data((document.frontmatter + "# Neu\n\nGeändert\n").utf8))
+    }
+
+    @Test func renameNeedsNoCarriageReturnHandling() {
+        // Text reaching `renamed` is already normalized by TextFile.
+        #expect(LibraryDocumentEditor.renamed("# Old\nBody\n", to: "New") == "# New\nBody\n")
     }
 
     // MARK: Save

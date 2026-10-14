@@ -1,7 +1,7 @@
 import Foundation
 
-/// A library file as read from disk for the detail pane. `frontmatter +
-/// body` is exactly the file's text.
+/// A library file as read from disk for the detail pane, through
+/// `TextFile` (UTF-8, LF). `frontmatter + body` is that text.
 struct LibraryDocument: Equatable, Sendable {
     let url: URL
     /// Exact frontmatter text including both `---` lines; empty when the file has none.
@@ -11,10 +11,7 @@ struct LibraryDocument: Equatable, Sendable {
     let modificationDate: Date?
 
     static func load(_ url: URL) throws -> LibraryDocument {
-        let data = try Data(contentsOf: url)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw CocoaError(.fileReadInapplicableStringEncoding, userInfo: [NSFilePathErrorKey: url.path])
-        }
+        let text = try TextFile.read(url)
         let parts = LibraryFrontmatterParser.split(text)
         return LibraryDocument(
             url: url,
@@ -72,8 +69,7 @@ enum LibraryDocumentEditor {
     }
 
     static func rename(fileAt url: URL, to title: String) throws {
-        let data = try Data(contentsOf: url)
-        guard let text = String(data: data, encoding: .utf8), let renamed = renamed(text, to: title) else {
+        guard let renamed = renamed(try TextFile.read(url), to: title) else {
             throw RenameError.notRenamable
         }
         try write(renamed, to: url)
@@ -85,13 +81,13 @@ enum LibraryDocumentEditor {
     /// overwrite never undoes a rename made in the meantime. Overwrite writes
     /// the caller's body as is, so an H1 renamed meanwhile is replaced by the
     /// body's H1 (the frontmatter title survives). The UI disables rename
-    /// while editing.
+    /// while editing. The body's line endings become LF.
     static func saveBody(_ body: String, of document: LibraryDocument, overwrite: Bool = false) throws -> SaveOutcome {
         let url = document.url
         guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
         if !overwrite, modificationDate(of: url) != document.modificationDate { return .changedOnDisk }
         let current = try LibraryDocument.load(url)
-        try write(current.frontmatter + body, to: url)
+        try write(current.frontmatter + TextFile.normalizeLineEndings(body), to: url)
         return .saved
     }
 
@@ -145,7 +141,7 @@ enum LibraryDocumentEditor {
             if fence == nil, line.hasPrefix("# ") { found = i; break }
         }
         guard let index = found else { return (body, false) }
-        lines[index] = "# " + title + (lines[index].hasSuffix("\r") ? "\r" : "")
+        lines[index] = "# " + title
         return (lines.joined(separator: "\n"), true)
     }
 }

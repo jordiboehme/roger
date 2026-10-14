@@ -113,6 +113,15 @@ struct HarnessRegistrationTests {
         #expect(HarnessRegistration.tomlCommand("[mcp_servers.other]\ncommand = \"x\"\n") == .absent)
     }
 
+    @Test func readsACRLFCodexConfig() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let config = home.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("model = \"gpt-5\"\r\n\r\n[mcp_servers.roger]\r\ncommand = \"\(exe)\"\r\n".utf8).write(to: config)
+        #expect(HarnessRegistration.connection(HarnessCatalog.spec(.codex), home: home, executable: exe) == .connected)
+    }
+
     @Test func connectionComparesTheCommand() throws {
         let (home, _) = try home(with: [])
         defer { TempFolder.remove(home) }

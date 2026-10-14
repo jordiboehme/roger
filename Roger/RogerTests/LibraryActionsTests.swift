@@ -399,4 +399,17 @@ struct LibraryActionsTests {
         #expect(LibraryActions.trashFailureMessage(failed)
             == "Some files could not be moved to the Trash: a.md, s.")
     }
+
+    /// A legacy session in an extra folder whose transcript was saved with
+    /// CRLF by another editor is still recognised by its meeting tag.
+    @Test func crlfMeetingTranscriptIsRecognised() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let extra = root.appendingPathComponent("Notes", isDirectory: true)
+        let folder = extra.appendingPathComponent("Planning", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("---\r\ntags: [meeting, transcript]\r\n---\r\n# Meeting\r\n".utf8)
+            .write(to: folder.appendingPathComponent("transcript.md"))
+        #expect(LibraryActions.isRogerSessionFolder(folder, layout: layout(root.appendingPathComponent("Roger")), extraFolders: [extra]))
+    }
 }

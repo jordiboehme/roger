@@ -68,7 +68,7 @@ enum HarnessRegistration {
         var sawUnreadable = false
         for file in spec.configFiles {
             guard let data = try? Data(contentsOf: home.appendingPathComponent(file)) else { continue }
-            let lookup = spec.id == .codex ? tomlCommand(String(decoding: data, as: UTF8.self)) : jsonCommand(data)
+            let lookup = spec.id == .codex ? tomlCommand(TextFile.decode(data)) : jsonCommand(data)
             switch lookup {
             case .command(let command):
                 guard let executable else { return .otherCommand(command) }

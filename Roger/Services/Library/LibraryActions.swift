@@ -158,7 +158,7 @@ enum LibraryActions {
     /// True when the folder's `transcript.md` has `meeting` in its tags.
     private static func hasMeetingTranscript(_ folder: URL) -> Bool {
         let transcript = folder.appendingPathComponent("transcript.md")
-        guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return false }
+        guard let text = try? TextFile.read(transcript) else { return false }
         return LibraryFrontmatterParser.parse(text)?.tags.contains("meeting") ?? false
     }
 

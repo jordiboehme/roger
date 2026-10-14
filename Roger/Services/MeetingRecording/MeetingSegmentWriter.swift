@@ -51,7 +51,7 @@ enum MeetingSegmentWriter {
         }
         let url = folder.appendingPathComponent(fileName(chunkStart: chunkStart))
         if FileManager.default.fileExists(atPath: url.path) {
-            let existing = try? String(contentsOf: url, encoding: .utf8)
+            let existing = try? TextFile.read(url)
             if let existing, sameContent(existing, out) {
                 // A retry that gives the same text: keep the file, no `.previous` copy.
                 logger.info("Segment \(url.lastPathComponent, privacy: .public) is unchanged")
@@ -66,7 +66,7 @@ enum MeetingSegmentWriter {
 
     /// True when the file is a live draft (`status: draft`) that finalisation may replace.
     static func isDraft(_ url: URL) -> Bool {
-        isDraft(text: try? String(contentsOf: url, encoding: .utf8))
+        isDraft(text: try? TextFile.read(url))
     }
 
     /// True for the text of a live draft. Nil (unreadable) is not a draft.
@@ -115,7 +115,7 @@ enum MeetingSegmentWriter {
         let url = folder.appendingPathComponent(fileName(chunkStart: chunkStart))
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         // Read once: the same text decides draft or not.
-        if isDraft(text: try? String(contentsOf: url, encoding: .utf8)) {
+        if isDraft(text: try? TextFile.read(url)) {
             try? FileManager.default.removeItem(at: url)
             return
         }
