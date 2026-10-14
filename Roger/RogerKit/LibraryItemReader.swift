@@ -79,9 +79,14 @@ public enum LibraryItemReader {
             ?? fileDate(folder)
             ?? .distantPast
         let title = "Unfinished meeting \(SessionFolderName.displayDate(started))"
-        let audio = ["mic.m4a", "system.m4a"]
-            .map { folder.appendingPathComponent($0) }
-            .filter { fm.fileExists(atPath: $0.path) }
+        let names = ((try? fm.contentsOfDirectory(atPath: folder.path)) ?? []).filter { !$0.hasPrefix(".") }
+        // The archives of an earlier run, then the CAF chunks of the recording.
+        let archives = ["mic.m4a", "system.m4a"].filter { names.contains($0) }
+        let chunks = names.filter { $0.lowercased().hasSuffix(".caf") }.sorted()
+        let audio = (archives + chunks).map { folder.appendingPathComponent($0) }
+        // Without markers.json the screenshots in the folder are counted.
+        let screenshots = markers?.markerCount
+            ?? names.filter { ItemResolver.imageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }.count
         return LibraryItem(
             url: folder,
             folderURL: folder,
@@ -92,7 +97,7 @@ public enum LibraryItemReader {
             language: nil,
             preset: nil,
             speakerCount: nil,
-            screenshotCount: markers?.markerCount ?? 0,
+            screenshotCount: screenshots,
             audioFiles: audio,
             firstLine: "Not transcribed yet.",
             searchText: title.lowercased(),
