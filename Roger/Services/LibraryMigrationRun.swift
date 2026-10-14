@@ -6,7 +6,7 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Libra
 /// The first-launch move of pre-library meetings into the library, without
 /// the alert: `ask` is the "Move your meetings?" question. Folders that
 /// stay in place become extra scan folders, so their meetings are still
-/// found.
+/// found. A later move without failures takes the old folder out again.
 struct LibraryMigrationRun {
     struct Input {
         let layout: LibraryLayout
@@ -70,7 +70,13 @@ struct LibraryMigrationRun {
                         )
                         result.moved = outcome.moved
                         result.failedCount = outcome.failed.count
-                        if !outcome.failed.isEmpty { addExtra(old) }
+                        if outcome.failed.isEmpty {
+                            // An earlier launch may have kept it as an extra
+                            // folder (library missing); its meetings moved now.
+                            extras.removeAll { $0.standardizedFileURL == old.standardizedFileURL }
+                        } else {
+                            addExtra(old)
+                        }
                     } catch {
                         logger.warning("Library migration skipped: \(error.localizedDescription, privacy: .public)")
                         result.finished = false

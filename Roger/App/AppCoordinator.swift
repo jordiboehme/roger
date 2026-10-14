@@ -563,6 +563,8 @@ final class AppCoordinator {
         samples: [Float]?
     ) async {
         let layout = appState.libraryLayout
+        // The menu bar shows the new text while a long recording is encoded.
+        if !LogEntrySaver.isEmpty(text) { appState.lastTranscription = text }
         let outcome = await LogEntrySaver(layout: layout).save(
             text, preset: preset, startedAt: startedAt, endedAt: endedAt,
             detectedLanguage: detectedLanguage, samples: samples

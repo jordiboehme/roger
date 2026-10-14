@@ -55,6 +55,20 @@ struct LibraryMigrationRunTests {
         #expect(FileManager.default.fileExists(atPath: moved.path))
     }
 
+    /// An earlier launch kept the old folder as an extra folder (library
+    /// missing). A later move without failures takes it out again.
+    @Test func aLaterMoveRemovesTheOldFolderFromTheExtraFolders() throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        try oldSession(base)
+        let other = base.appendingPathComponent("Other", isDirectory: true)
+        let result = LibraryMigrationRun.run(input(base, extras: [other, oldFolder(base)])) { _, _ in true }
+        #expect(result.finished)
+        #expect(result.failedCount == 0)
+        #expect(result.moved.count == 1)
+        #expect(result.extraFolders == [other])
+    }
+
     @Test func keepInPlaceMakesTheOldFolderAnExtraFolder() throws {
         let base = try TempFolder.make()
         defer { TempFolder.remove(base) }

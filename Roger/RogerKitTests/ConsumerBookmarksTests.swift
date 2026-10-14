@@ -90,6 +90,19 @@ struct ConsumerBookmarksTests {
     }
 
     /// The temp file cannot be written: the old bookmark stays, no temp file is left.
+    /// The library may be on a drive that is not connected: the bookmarks
+    /// never create its root.
+    @Test func aMissingRootIsNotCreated() throws {
+        let base = try TempDir.make()
+        defer { TempDir.remove(base) }
+        let root = base.appendingPathComponent("Gone", isDirectory: true)
+        let bookmarks = ConsumerBookmarks(root: root)
+        #expect(throws: (any Error).self) { try bookmarks.reset("crystalline", now: now) }
+        #expect(throws: (any Error).self) { try bookmarks.forget("crystalline") }
+        #expect(throws: (any Error).self) { try bookmarks.ack("crystalline", upTo: 1, now: now) }
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test func aFailedWriteKeepsTheOldBookmark() throws {
         let root = try TempDir.make()
         let bookmarks = ConsumerBookmarks(root: root)

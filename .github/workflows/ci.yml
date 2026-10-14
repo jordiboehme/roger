@@ -36,6 +36,9 @@ jobs:
       - name: Check version pins and release notes
         run: bash scripts/version-pins.sh
 
+      - name: Test the ingest script
+        run: bash scripts/test-ingest-roger.sh
+
   build:
     runs-on: macos-26
     steps:

@@ -246,8 +246,8 @@ struct LibraryItemDetail: View {
             switch outcome {
             case .saved:
                 coordinator.libraryChanges.recordWritten(
-                    markdownURL: item.url, kind: item.kind, root: coordinator.appState.libraryLayout.root
-                )
+                markdownURL: item.url, kind: item.kind, root: coordinator.appState.libraryLayout.root
+            )
                 // The new modification date, or the next save sees this
                 // write as a change by another app.
                 reloadNow()

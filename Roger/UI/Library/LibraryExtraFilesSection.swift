@@ -8,7 +8,7 @@ import SwiftUI
 struct LibraryExtraFilesSection: View {
     @Environment(AppCoordinator.self) private var coordinator
     let item: LibraryItem
-    /// Its `sessionFolderChangeCount` for this folder lists the folder
+    /// Its `sessionFolderChanges` count for this folder lists the folder
     /// again. Only this section reads it, not the detail body.
     let model: LibraryModel
     @State private var files: [MeetingExtraFiles.File] = []
@@ -17,6 +17,9 @@ struct LibraryExtraFilesSection: View {
     /// count in the question and the files moved are the same.
     @State private var cleanUpURLs: [URL] = []
     @State private var errorText: String?
+    /// `item.folderURL` resolved once per item (a realpath call), not on
+    /// every draw.
+    @State private var canonicalFolder = ""
 
     private var isLocked: Bool {
         !LibraryDocumentEditor.canEdit(item, activeSessionFolder: coordinator.meetingRecorder.activeSessionFolder)
@@ -90,8 +93,11 @@ struct LibraryExtraFilesSection: View {
                 .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
-        .task(id: item) { refresh() }
-        .onChange(of: model.sessionFolderChangeCount(for: item.folderURL)) { _, _ in refresh() }
+        .task(id: item) {
+            canonicalFolder = LibraryPath.canonical(item.folderURL)
+            refresh()
+        }
+        .onChange(of: model.sessionFolderChanges[canonicalFolder, default: 0]) { _, _ in refresh() }
         .confirmationDialog(
             cleanUpURLs.count == 1 ? "Move 1 extra file to the Trash?" : "Move \(cleanUpURLs.count) extra files to the Trash?",
             isPresented: $confirmsCleanUp,

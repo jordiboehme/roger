@@ -10,7 +10,6 @@ enum TextSample: String, CaseIterable, Sendable {
     case utf16LEBOM
     case windows1252
 
-
     /// What every variant decodes to: UTF-8 with LF.
     static let text = """
     ---

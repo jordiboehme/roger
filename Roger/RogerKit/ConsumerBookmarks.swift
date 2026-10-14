@@ -121,7 +121,12 @@ public struct ConsumerBookmarks: Sendable {
         guard Self.isValidName(name) else { throw ConsumerBookmarkError.invalidName(name) }
     }
 
+    /// Like the change log, never creates the library root (it may be on a
+    /// drive that is not connected), only `.roger/consumers/`.
     private func withLock<T>(_ body: () throws -> T) throws -> T {
+        guard LibraryLayout.isFolder(root) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: root.path])
+        }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return try FileLock.withExclusiveLock(
             at: folder.appendingPathComponent(".lock"), flags: O_RDWR | O_CREAT

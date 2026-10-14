@@ -7,8 +7,6 @@ extension POSIXError {
     }
 }
 
-/// An exclusive `flock` on a file, shared by the change log and the
-/// consumer bookmarks. The lock works across processes.
 /// Writes to a descriptor, shared by the change log and the bookmarks.
 enum FileIO {
     /// Loops only if the kernel takes fewer bytes.
@@ -35,6 +33,8 @@ enum FileIO {
     }
 }
 
+/// An exclusive `flock` on a file, shared by the change log and the
+/// consumer bookmarks. The lock works across processes.
 enum FileLock {
     /// Opens `url` (flags are added to `O_CLOEXEC`), takes the exclusive
     /// lock, runs `body` with the descriptor and releases the lock.
