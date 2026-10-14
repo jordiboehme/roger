@@ -154,8 +154,31 @@ actor InMemoryLibraryIndex: LibraryIndex {
         if watchesFileSystem { restartWatcherIfNeeded() }
     }
 
+    /// Reads again what Roger just wrote. A path that is an item's id is
+    /// read as is: for a symlinked entry the id is the link path, which
+    /// `apply` would resolve to the target (outside the library or another
+    /// item).
     func refresh(paths: [String]) async {
-        apply(changedPaths: paths)
+        guard isBuilt else { return }
+        var rest: [String] = []
+        var units: [LibraryScanUnit] = []
+        for path in paths {
+            guard let item = itemsByID[path] else {
+                rest.append(path)
+                continue
+            }
+            units.append(item.kind == .meeting ? .session(item.folderURL.path) : .file(path, item.kind))
+        }
+        if !units.isEmpty {
+            let before = itemsByID
+            scanEventId = FSEventsGetCurrentEventId()
+            for unit in units { reload(unit) }
+            if itemsByID != before {
+                pendingItemsChanged = true
+                notifyChange()
+            }
+        }
+        if !rest.isEmpty { apply(changedPaths: rest) }
     }
 
     /// Reads again what `paths` touched. Paths may be spelled as FSEvents

@@ -385,6 +385,28 @@ struct LibraryIndexTests {
         #expect(await index.items().first?.firstLine == "After")
     }
 
+    /// Roger's rename and save refresh an entry by its id, the link path.
+    @Test func refreshReadsALinkedFileNow() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base.appendingPathComponent("Roger", isDirectory: true))
+        let outside = LibraryLayout(root: base.appendingPathComponent("Elsewhere", isDirectory: true))
+        let target = try writeLog(outside, at: date, text: "Before")
+        let folder = layout.monthFolder(.logs, for: date)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let link = folder.appendingPathComponent(target.lastPathComponent)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let index = makeIndex(layout)
+        let item = try #require(await index.items().first)
+        #expect(item.firstLine == "Before")
+        try writeLog(outside, at: date, text: "After")
+        await index.refresh(paths: [item.id])
+        let items = await index.items()
+        #expect(items.map(\.id) == [item.id])
+        #expect(items.first?.firstLine == "After")
+    }
+
     /// A leftover file appearing in a meeting folder does not change the
     /// meeting item, but the change is still reported (Extra files).
     @Test func aChangeInsideAMeetingFolderIsReported() async throws {
