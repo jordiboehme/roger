@@ -345,7 +345,14 @@ final class AppState {
         self.activationMode = ActivationMode(rawValue: defaults.string(forKey: "activationMode") ?? "") ?? .pushToTalk
         self.restoreClipboard = defaults.object(forKey: "restoreClipboard") as? Bool ?? true
         self.minimumRecordingDuration = defaults.object(forKey: "minimumRecordingDuration") as? TimeInterval ?? 1.5
-        self.maximumRecordingDuration = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval ?? 120
+        let storedMaximum = defaults.object(forKey: "maximumRecordingDuration") as? TimeInterval
+        let maximum = RecordingDurationMigration.migrated(
+            stored: storedMaximum,
+            migrated: defaults.bool(forKey: RecordingDurationMigration.migratedKey)
+        )
+        self.maximumRecordingDuration = maximum.value
+        if maximum.value != storedMaximum { defaults.set(maximum.value, forKey: "maximumRecordingDuration") }
+        defaults.set(maximum.migrated, forKey: RecordingDurationMigration.migratedKey)
         self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
@@ -489,5 +496,21 @@ enum ActivationMode: String, CaseIterable, Identifiable, Codable {
         case .pushToTalk: return "Push to Talk (hold to listen)"
         case .toggle: return "Toggle (press to start/stop)"
         }
+    }
+}
+
+/// The default for the maximum recording duration went from 120 to 300
+/// seconds. The decision is a pure function so tests need no `AppState`.
+enum RecordingDurationMigration {
+    static let migratedKey = "maximumRecordingDurationMigrated300"
+    static let defaultDuration: TimeInterval = 300
+    private static let oldDefault: TimeInterval = 120
+
+    /// Nothing stored gets the default. A stored 120 (the old default)
+    /// becomes 300 once; any other value stays. `migrated` is true after.
+    static func migrated(stored: TimeInterval?, migrated: Bool) -> (value: TimeInterval, migrated: Bool) {
+        guard let stored else { return (defaultDuration, true) }
+        if !migrated, stored == oldDefault { return (defaultDuration, true) }
+        return (stored, true)
     }
 }
