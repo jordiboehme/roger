@@ -65,6 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Move pre-library meetings before anything lists them.
         coordinator.runLibraryMigrationIfNeeded()
 
+        // Fill or catch up the change log agents read (after the migration,
+        // so moved meetings get their library keys).
+        coordinator.libraryChanges.reconcile()
+        coordinator.checkAgentSkills()
+
         installStatusItem(coordinator: coordinator)
         coordinator.libraryOpener = { [weak self] url in
             self?.openLibrary(selecting: url)

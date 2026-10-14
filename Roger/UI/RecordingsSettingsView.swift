@@ -40,7 +40,10 @@ struct RecordingsSettingsView: View {
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
                             if state.libraryRoot != nil {
-                                Button("Reset") { state.libraryRoot = nil }
+                                Button("Reset") {
+                                    state.libraryRoot = nil
+                                    coordinator.libraryChanges.reconcile()
+                                }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
                             }
@@ -212,6 +215,7 @@ struct RecordingsSettingsView: View {
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
                 state.libraryRoot = url
+                coordinator.libraryChanges.reconcile()
             }
         }
     }

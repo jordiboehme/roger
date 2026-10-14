@@ -61,6 +61,20 @@ final class AppCoordinator {
     private var fileTranscriptionTask: Task<Void, Never>?
     /// Shared anonymous speaker diarization (file transcription + meetings).
     let diarizationService = DiarizationService()
+    /// Writes change-log events so agents see new and changed items.
+    let libraryChanges = LibraryChangeRecorder()
+    /// An installed ingest skill is older than the one in this app.
+    private(set) var agentSkillOutdated = false
+
+    /// Reads the installed skills (a few small files) off the main actor.
+    func checkAgentSkills() {
+        guard let skill = BundledSkill.load() else { return }
+        let installer = SkillInstaller.live(skill: skill)
+        Task {
+            let outdated = await Task.detached { installer.anyOutdated() }.value
+            agentSkillOutdated = outdated
+        }
+    }
 
     /// Meeting recording orchestrator. Builds on Core Audio Process Taps
     /// (macOS 14.4+, below the macOS 15 deployment floor).
@@ -103,6 +117,16 @@ final class AppCoordinator {
             diarization: diarizationService
         )
         self.systemMicMute = SystemMicMute(appState: appState)
+        libraryChanges.environment = { [appState] in
+            LibraryChangeEnvironment(
+                layout: appState.libraryLayout,
+                extraFolders: appState.extraScanFolders,
+                externalRegistry: .standard
+            )
+        }
+        meetingRecorder.onTranscriptWritten = { [weak self] url in
+            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting)
+        }
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
         audioCaptureService.onLevelUpdate = { [weak self] raw in
@@ -558,6 +582,7 @@ final class AppCoordinator {
                 audioSamples: preset.keepAudio ? samples : nil
             )
             appState.lastLogEntryURL = url
+            libraryChanges.recordWritten(markdownURL: url, kind: .log)
             logger.notice("Log entry saved: \(url.path, privacy: .public)")
         } catch {
             logger.error("Log entry write failed: \(error.localizedDescription, privacy: .public)")
@@ -863,6 +888,7 @@ final class AppCoordinator {
                     logger.warning("Could not remember transcript path: \(error.localizedDescription, privacy: .public)")
                 }
             }
+            libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript)
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
             await finishFileTranscription(error: nil)

@@ -3,17 +3,17 @@ import Foundation
 /// Builds `LibraryItem`s from files on disk. Never throws: a file that
 /// cannot be read or parsed still becomes an item, named after the file and
 /// dated by the file system, so it stays visible in the library.
-enum LibraryItemReader {
-    static let maxFirstLineLength = 200
+public enum LibraryItemReader {
+    public static let maxFirstLineLength = 200
     /// `sources` ids whose files count as the item's audio ("Open Audio").
     /// `media` is the source file of a file transcript.
-    static let audioSourceIDs: Set<String> = ["audio", "mic", "system", "media"]
+    public static let audioSourceIDs: Set<String> = ["audio", "mic", "system", "media"]
 
     /// One Markdown file. Nil only for meeting segment files
     /// (`[meeting, segment]`), which belong to their meeting. `fallbackKind`
     /// applies when the tags do not say. `folder` overrides the item's
     /// folder (meetings: the session folder).
-    static func item(markdownAt url: URL, fallbackKind: LibraryItemKind, folder: URL? = nil) -> LibraryItem? {
+    public static func item(markdownAt url: URL, fallbackKind: LibraryItemKind, folder: URL? = nil) -> LibraryItem? {
         let text = (try? Data(contentsOf: url)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
         let front = LibraryFrontmatterParser.parse(text)
         let tags = Set(front?.tags ?? [])
@@ -62,7 +62,7 @@ enum LibraryItemReader {
     /// The item for a meeting session folder: its `transcript.md`, or an
     /// "unfinished" item for a folder that still has audio but no
     /// transcript. Nil for a folder with neither.
-    static func meetingItem(sessionFolder folder: URL) -> LibraryItem? {
+    public static func meetingItem(sessionFolder folder: URL) -> LibraryItem? {
         let fm = FileManager.default
         let unfinished = MeetingSessionScanner.isUnfinished(folder)
         let transcript = folder.appendingPathComponent("transcript.md")
@@ -73,12 +73,12 @@ enum LibraryItemReader {
             return item
         }
         guard unfinished else { return nil }
-        let markers = MeetingCheckpointStore.load(from: folder)
+        let markers = MeetingMarkersSummary.read(from: folder)
         let started = markers?.sessionStartedAt
-            ?? LibraryMigration.sessionDate(for: folder)
+            ?? SessionFolderName.date(for: folder)
             ?? fileDate(folder)
             ?? .distantPast
-        let title = "Unfinished meeting \(MeetingTranscriptWriter.displayDate(started))"
+        let title = "Unfinished meeting \(SessionFolderName.displayDate(started))"
         let audio = ["mic.m4a", "system.m4a"]
             .map { folder.appendingPathComponent($0) }
             .filter { fm.fileExists(atPath: $0.path) }
@@ -92,7 +92,7 @@ enum LibraryItemReader {
             language: nil,
             preset: nil,
             speakerCount: nil,
-            screenshotCount: markers?.markers.count ?? 0,
+            screenshotCount: markers?.markerCount ?? 0,
             audioFiles: audio,
             firstLine: "Not transcribed yet.",
             searchText: title.lowercased(),
@@ -102,7 +102,7 @@ enum LibraryItemReader {
 
     /// First line of text worth showing in a list row: skips headings,
     /// images and meeting speaker headers, drops `**`.
-    static func firstLine(ofBody body: String) -> String {
+    public static func firstLine(ofBody body: String) -> String {
         for raw in body.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") || line.hasPrefix("![") || isSpeakerHeader(line) { continue }

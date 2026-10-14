@@ -17,6 +17,7 @@ Roger lives in your menu bar and turns your voice into text - in any app. Hold a
 - **Near-instant results** - release the key and a full minute of dictation transcribes in well under a second, entirely on Apple Silicon's Neural Engine
 - **Works everywhere** - Notes, Warp, VS Code, Slack, browsers - if it has a cursor, Roger can type into it
 - **Drop files to transcribe** - drag an audio or video file onto the menu bar icon (or pick Open With > Roger, or Services > Transcribe with Roger in Finder) and Roger writes a Markdown transcript into the library, or next to the source file if you prefer. Works on `.m4a`, `.mp3`, `.wav`, `.mp4`, `.mov` and anything else AVFoundation can open. Always runs locally
+- **Feeds your agents** - a small MCP server inside Roger tells Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI, Kiro and Claude Desktop what is new in your library: log entries, meetings and transcripts. Your agent picks them up, files them into its knowledge base and confirms. Nothing is read twice, nothing is missed and Roger does not even have to run
 - **Record meetings** - capture your mic and the system audio (what the other side says) on two separate tracks. Roger encodes both, transcribes each track and diarizes the remote one, then writes a diarized markdown transcript with `Me` and `Other 1, 2…` labels and absolute timestamps - ready for your knowledge base. Saved to your library, optional global hotkey, optional mic-side diarization for shared-mic setups
 - **Slide checkpoints** - drop a screenshot of a shared slide onto the recording overlay and Roger saves it next to a timestamped transcript segment of the audio since the last drop, while the recording keeps running. The session folder becomes a chronological record of what was said and shown, ready for an AI agent
 - **Mute yourself everywhere** - while a meeting is recording, tap your dictation hotkey to toggle a system-level mic mute. One press silences you in Teams, Zoom, Meet and Roger's own track at once - no per-app setup, no plugin
@@ -90,6 +91,65 @@ Log entries, meetings and file transcripts all live in one folder, `~/Documents/
 ### Log entries
 
 The Log preset does not type anything. What you say is saved as a Markdown file in the library's `Logs` folder instead, sorted by year and month. Turn on Keep audio for the preset to save the recording as an `.m4a` file next to the entry. Use it for quick notes, a work journal or ideas you want to keep for later.
+
+### Agents (MCP)
+
+Roger ships a small MCP server, `roger-mcp`, inside the app. An agent starts it and reads your library through six tools: `status`, `get_changes`, `ack`, `get_item`, `list_items` and `search`. Roger keeps a list of every change in `.roger/changes.jsonl` inside the library folder. Each agent has a bookmark there, so it gets exactly what is new since its last visit and confirms with `ack`. The server only reads your files. The only thing it writes is that bookmark. Roger does not have to run for this.
+
+The easy way: open Settings › Agents. Roger finds Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI and Kiro on your Mac. Install puts the ingest skill in place and adds the server through the agent's own command line tool. Roger never edits another app's config file. Where that is not possible, the row shows the command or JSON to copy. For Claude Desktop, "Add to Claude Desktop" builds an extension and hands it over, and "Save skill for Claude Desktop" writes a zip you upload in Claude under Settings › Capabilities › Skills.
+
+By hand, with Homebrew (the cask links `roger-mcp` into your `PATH`):
+
+```bash
+claude mcp add --scope user roger -- /opt/homebrew/bin/roger-mcp
+codex mcp add roger -- /opt/homebrew/bin/roger-mcp
+gemini mcp add --scope user roger /opt/homebrew/bin/roger-mcp
+copilot mcp add roger -- /opt/homebrew/bin/roger-mcp
+kiro-cli mcp add --name roger --command /opt/homebrew/bin/roger-mcp --scope global
+```
+
+Without Homebrew, use `/Applications/Roger.app/Contents/MacOS/roger-mcp`. For Cursor and other clients, add this to their MCP config (for example `~/.cursor/mcp.json`):
+
+```json
+{ "mcpServers": { "roger": { "command": "/opt/homebrew/bin/roger-mcp", "args": [] } } }
+```
+
+The first time an agent reads the library, macOS may ask whether Terminal (or the app that runs the agent) may access your Documents folder. Allow it. You can change it later in System Settings › Privacy & Security › Files and Folders.
+
+The skill `skills/ingest-roger/SKILL.md` files everything into [Crystalline](https://github.com/jordiboehme/crystalline): `/ingest-roger <domain>`. Log entries become observations, a meeting becomes one engram with decisions and action items and a file transcript becomes a source summary. To run it on a schedule, use `scripts/ingest-roger.sh <domain>`. It runs Claude Code with only the Roger and Crystalline tools allowed and stops with exit code 1 when something fails, so the next run tries the same range again. Run the script once by hand in Terminal first, so macOS can ask for access to your Documents folder. A LaunchAgent cannot show that prompt. The native Claude Code installer puts `claude` in `~/.local/bin`, so the example adds it to `PATH`. If `claude` is somewhere else, set `CLAUDE_BIN` to its full path. Example LaunchAgent, saved as `~/Library/LaunchAgents/com.example.ingest-roger.plist` and loaded with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.ingest-roger.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.ingest-roger</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/you/git/roger/scripts/ingest-roger.sh</string>
+    <string>work</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/you/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>18</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/ingest-roger.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/ingest-roger.log</string>
+</dict>
+</plist>
+```
 
 ### Transcript format
 

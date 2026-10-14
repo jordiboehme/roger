@@ -6,15 +6,19 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Exter
 /// Remembers transcripts Roger wrote outside the library ("next to the
 /// source file"), so the library can still list them. Stored as JSON in
 /// Application Support. Files that no longer exist are dropped on read.
-struct ExternalTranscriptRegistry {
-    let fileURL: URL
+public struct ExternalTranscriptRegistry: Sendable {
+    public let fileURL: URL
+
+    public init(fileURL: URL) {
+        self.fileURL = fileURL
+    }
 
     private struct Stored: Codable {
         var version = 1
         var paths: [String]
     }
 
-    static var standard: ExternalTranscriptRegistry {
+    public static var standard: ExternalTranscriptRegistry {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         return ExternalTranscriptRegistry(
@@ -23,7 +27,7 @@ struct ExternalTranscriptRegistry {
         )
     }
 
-    func add(_ url: URL) throws {
+    public func add(_ url: URL) throws {
         var paths = try loadForWriting()
         let path = url.standardizedFileURL.path
         guard !paths.contains(path) else { return }
@@ -32,13 +36,21 @@ struct ExternalTranscriptRegistry {
     }
 
     /// Paths that still exist. Saves the list again when some were missing.
-    func existingFiles() -> [URL] {
+    public func existingFiles() -> [URL] {
         let paths = load()
         let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }
         if existing.count != paths.count {
             try? save(existing)
         }
         return existing.map { URL(fileURLWithPath: $0).standardizedFileURL }
+    }
+
+    /// Paths that still exist. Never writes, so `roger-mcp` (which must only
+    /// write consumer bookmarks) can call it.
+    public func listedFiles() -> [URL] {
+        load()
+            .filter { FileManager.default.fileExists(atPath: $0) }
+            .map { URL(fileURLWithPath: $0).standardizedFileURL }
     }
 
     private func load() -> [String] {

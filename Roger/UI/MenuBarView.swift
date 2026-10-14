@@ -59,6 +59,14 @@ struct MenuBarView: View {
                 pendingMeetingBanner(session: session)
             }
 
+            if AgentsHint.shouldShow(
+                outdated: coordinator.agentSkillOutdated,
+                dismissedVersion: coordinator.appState.agentSkillHintDismissedVersion,
+                appVersion: AgentsHint.appVersion
+            ) {
+                agentSkillHint
+            }
+
             Divider().padding(.horizontal, 10)
 
             shortcutsSection
@@ -140,6 +148,33 @@ struct MenuBarView: View {
     private var isMeetingRecording: Bool {
         if case .recording = coordinator.meetingRecorder.state { return true }
         return false
+    }
+
+    private var agentSkillHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .foregroundStyle(.secondary)
+            SettingsLink {
+                Text("Agent skill outdated - update in Settings")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
+                coordinator.appState.pendingSettingsTab = .agents
+                activateSettingsWindow()
+            })
+            Spacer()
+            Button {
+                coordinator.appState.agentSkillHintDismissedVersion = AgentsHint.appVersion
+            } label: {
+                Image(systemName: "xmark").font(.caption2)
+            }
+            .buttonStyle(.plain)
+            .help("Hide until the next Roger version")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
     private var meetingRecordingRow: some View {

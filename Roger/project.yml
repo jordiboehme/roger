@@ -14,6 +14,9 @@ packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts.git
     from: "3.1.0"
+  MCP:
+    url: https://github.com/modelcontextprotocol/swift-sdk.git
+    exactVersion: "0.12.1"
 
 targets:
   Roger:
@@ -27,6 +30,9 @@ targets:
       - path: LLM
       - path: Resources/Assets.xcassets
         buildPhase: resources
+      - path: ../skills
+        type: folder
+        buildPhase: resources
       - path: Resources/Info.plist
         buildPhase: none
       - path: Resources/Roger.entitlements
@@ -34,7 +40,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger
-        MARKETING_VERSION: "0.24.0"
+        MARKETING_VERSION: "0.25.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_FILE: Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/Roger.entitlements
@@ -48,11 +54,68 @@ targets:
     scheme:
       testTargets:
         - RogerTests
+        - RogerKitTests
     dependencies:
+      - target: RogerKit
+      - target: roger-mcp
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
       - package: FluidAudio
         product: FluidAudio
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
+
+  RogerKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: RogerKit
+    settings:
+      base:
+        PRODUCT_NAME: RogerKit
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+
+  roger-mcp:
+    type: tool
+    platform: macOS
+    sources:
+      - path: RogerMCP
+    dependencies:
+      - target: RogerKit
+      - package: MCP
+        product: MCP
+    settings:
+      base:
+        PRODUCT_NAME: roger-mcp
+        PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.mcp
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+
+  RogerKitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: RogerKitTests
+    dependencies:
+      - target: RogerKit
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+        PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.kittests
 
   RogerTests:
     type: bundle.unit-test
@@ -69,3 +132,13 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 77PA95K95V
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.tests
+
+schemes:
+  RogerKitTests:
+    build:
+      targets:
+        RogerKit: all
+        RogerKitTests: [test]
+    test:
+      targets:
+        - RogerKitTests

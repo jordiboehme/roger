@@ -110,7 +110,7 @@ struct LibraryListView: View {
                     // Plan again: a meeting may have started finalising
                     // while the question was open. Move only what was
                     // confirmed and is still allowed.
-                    runTrash(commands.trashPlan(for: pendingTrashItems).limited(to: confirmed))
+                    runTrash(commands.trashPlan(for: pendingTrashItems).limited(to: confirmed), items: pendingTrashItems)
                 }
                 pendingTrash = nil
                 pendingTrashItems = []
@@ -135,7 +135,10 @@ struct LibraryListView: View {
         ForEach(items) { item in
             LibraryItemRow(item: item, showsDate: !model.sort.isByDate)
                 .tag(item.id)
-                .onDrag {
+                // itemProvider, not onDrag: onDrag puts a gesture on the
+                // row content that swallows clicks on its text and icon,
+                // so only the row background selected the entry.
+                .itemProvider {
                     NSItemProvider(object: item.url as NSURL)
                 }
         }
@@ -154,14 +157,17 @@ struct LibraryListView: View {
             pendingTrashItems = items
             pendingTrash = plan
         } else {
-            runTrash(plan)
+            runTrash(plan, items: items)
         }
     }
 
-    private func runTrash(_ plan: LibraryActions.TrashPlan) {
+    private func runTrash(_ plan: LibraryActions.TrashPlan, items: [LibraryItem]) {
         // Editing may have started while the question was open.
         guard !model.isEditing else { return }
         let failed = LibraryActions.moveToTrash(plan.urls)
+        coordinator.libraryChanges.recordDeleted(
+            LibraryChangeRecorder.trashedItems(items, plan: plan, failed: failed)
+        )
         model.selection = []
         if plan.meetingFolderCount > 0 {
             // A trashed unfinished meeting must leave the popover banner and
