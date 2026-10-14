@@ -9,6 +9,32 @@ extension POSIXError {
 
 /// An exclusive `flock` on a file, shared by the change log and the
 /// consumer bookmarks. The lock works across processes.
+/// Writes to a descriptor, shared by the change log and the bookmarks.
+enum FileIO {
+    /// Loops only if the kernel takes fewer bytes.
+    static func writeAll(_ fd: Int32, _ data: Data) throws {
+        try data.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            var offset = 0
+            while offset < raw.count {
+                let count = write(fd, base + offset, raw.count - offset)
+                if count < 0 {
+                    if errno == EINTR { continue }
+                    throw POSIXError.current
+                }
+                offset += count
+            }
+        }
+    }
+
+    /// `fsync`: the bytes are on the disk before the caller goes on.
+    static func sync(_ fd: Int32) throws {
+        while fsync(fd) != 0 {
+            guard errno == EINTR else { throw POSIXError.current }
+        }
+    }
+}
+
 enum FileLock {
     /// Opens `url` (flags are added to `O_CLOEXEC`), takes the exclusive
     /// lock, runs `body` with the descriptor and releases the lock.

@@ -88,4 +88,20 @@ struct ConsumerBookmarksTests {
         #expect(try bookmarks.bookmark("crystalline") == nil)
         try bookmarks.forget("crystalline")
     }
+
+    /// The temp file cannot be written: the old bookmark stays, no temp file is left.
+    @Test func aFailedWriteKeepsTheOldBookmark() throws {
+        let root = try TempDir.make()
+        let bookmarks = ConsumerBookmarks(root: root)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bookmarks.folder.path)
+            TempDir.remove(root)
+        }
+        try bookmarks.ack("crystalline", upTo: 2)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: bookmarks.folder.path)
+        #expect(throws: (any Error).self) { try bookmarks.ack("crystalline", upTo: 5) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bookmarks.folder.path)
+        #expect(try bookmarks.bookmark("crystalline")?.seq == 2)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: bookmarks.folder.path).filter { $0.hasSuffix(".tmp") }.isEmpty)
+    }
 }

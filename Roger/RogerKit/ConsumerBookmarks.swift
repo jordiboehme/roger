@@ -123,10 +123,22 @@ public struct ConsumerBookmarks: Sendable {
         ) { _ in try body() }
     }
 
+    /// The temp file is `fsync`ed before the `rename`, so a crash never
+    /// leaves an empty bookmark in place of a good one.
     private func write(_ bookmark: ConsumerBookmark, name: String) throws {
         let text = "{\"seq\":\(bookmark.seq),\"updatedAt\":\"\(RFC3339.string(bookmark.updatedAt))\"}\n"
         let temp = folder.appendingPathComponent(".\(name).json.\(UUID().uuidString).tmp")
-        try Data(text.utf8).write(to: temp)
+        let fd = open(temp.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { throw POSIXError.current }
+        do {
+            try FileIO.writeAll(fd, Data(text.utf8))
+            try FileIO.sync(fd)
+            close(fd)
+        } catch {
+            close(fd)
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
         guard rename(temp.path, fileURL(name).path) == 0 else {
             let error = POSIXError.current
             try? FileManager.default.removeItem(at: temp)
