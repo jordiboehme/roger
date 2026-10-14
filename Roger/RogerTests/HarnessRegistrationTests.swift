@@ -274,6 +274,48 @@ struct HarnessRegistrationTests {
         #expect(row.primaryAction == "Show setup")
     }
 
+    /// Cursor reads the skill Claude Code installed; its row still only
+    /// needs the server, which Roger cannot add.
+    @MainActor
+    @Test func coveredRowWithoutACLIShowsSetup() async throws {
+        let (home, bin) = try home(with: ["claude"])
+        defer { TempFolder.remove(home) }
+        for folder in [".claude", ".cursor"] {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
+        let controller = AgentsController(home: home, installer: installer, runner: FakeRunner([ok]), appBundle: app, searchPath: [bin.path], links: [])
+        await controller.refresh()
+        await controller.install(.claudeCode)
+        let cursor = try #require(controller.rows.first { $0.id == .cursor })
+        #expect(cursor.coveredBy == .claudeCode)
+        #expect(cursor.connection == .notConnected)
+        #expect(cursor.primaryAction == "Show setup")
+    }
+
+    /// The rows show before the login shell answered; the CLI check
+    /// follows once it did.
+    @MainActor
+    @Test func cliIsCheckedAfterTheLoginShellAnswered() async throws {
+        let (home, bin) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
+        let shell = CommandResult(status: .exited(0), stdout: "__ROGER_PATH__\(bin.path)__ROGER_PATH__", stderr: "")
+        let runner = FakeRunner([shell])
+        let controller = AgentsController(home: home, installer: installer, runner: runner, appBundle: app, links: [])
+        await controller.refresh()
+        // Homebrew's folders are always searched, so a real claude there counts.
+        let expected = CLILocator.find("claude", in: CLILocator.searchPath(loginShellPATH: bin.path, home: home)) != nil
+        #expect(runner.calls.count == 1)
+        #expect(controller.rows.map(\.id) == [.claudeCode])
+        #expect(controller.rows.first?.hasCLI == expected)
+    }
+
     @MainActor
     @Test func failedRegistrationWithTheCLIOffersUpdate() async throws {
         let failed = CommandResult(status: .exited(1), stdout: "", stderr: "boom")

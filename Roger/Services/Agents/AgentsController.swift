@@ -40,15 +40,15 @@ final class AgentsController {
         /// An unreadable config counts as not connected: Roger cannot tell.
         private var serverAbsent: Bool { connection == .notConnected || connection == .unknown }
 
-        /// "Install" while the row has nothing of its own, "Update" when
-        /// something is out of date, "Show setup" when only the server is
-        /// missing and Roger cannot add it (no CLI), nil when all is well.
+        /// "Show setup" when only the server is missing and Roger cannot
+        /// add it (no CLI), "Install" while the row has nothing of its own,
+        /// "Update" when something is out of date, nil when all is well.
         var primaryAction: String? {
+            let skillOK = coveredBy != nil || skillState == .upToDate
+            if skillOK, connection != .connected, !hasCLI { return "Show setup" }
             let skillFresh = coveredBy != nil || skillState == .notInstalled
             if skillFresh, serverAbsent { return "Install" }
-            let skillOK = coveredBy != nil || skillState == .upToDate
-            if !skillOK { return "Update" }
-            if connection != .connected { return hasCLI ? "Update" : "Show setup" }
+            if !skillOK || connection != .connected { return "Update" }
             return nil
         }
 
@@ -110,14 +110,16 @@ final class AgentsController {
         let home = self.home
         let installer = self.installer
         let executable = self.executable
-        let searchPath = await resolvedSearchPath()
+        // Until the login shell answered, a harness with a CLI counts as
+        // having it, so the rows show at once.
+        let knownPath = searchPath
         let snapshots = await Task.detached(priority: .userInitiated) {
             SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home), home: home).map { plan in
                 Snapshot(
                     plan: plan,
                     skillState: installer.state(of: plan.skillFolder),
                     connection: HarnessRegistration.connection(plan.harness, home: home, executable: executable),
-                    hasCLI: plan.harness.cli.map { CLILocator.find($0, in: searchPath) != nil } ?? false
+                    hasCLI: Self.hasCLI(plan.harness, in: knownPath)
                 )
             }
         }.value
@@ -137,6 +139,19 @@ final class AgentsController {
                 hasCLI: snapshot.hasCLI
             )
         }
+        guard knownPath == nil else { return }
+        let path = await resolvedSearchPath()
+        guard generation == refreshGeneration else { return }
+        for index in rows.indices {
+            rows[index].hasCLI = Self.hasCLI(rows[index].spec, in: path)
+        }
+    }
+
+    /// Nil `searchPath`: not looked up yet, so any CLI counts.
+    nonisolated private static func hasCLI(_ spec: HarnessSpec, in searchPath: [String]?) -> Bool {
+        guard let cli = spec.cli else { return false }
+        guard let searchPath else { return true }
+        return CLILocator.find(cli, in: searchPath) != nil
     }
 
     /// Installs or updates the skill (unless another row covers it), then
