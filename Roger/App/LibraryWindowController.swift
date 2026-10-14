@@ -3,15 +3,16 @@ import SwiftUI
 
 /// Owns the library window: an NSWindow hosting `LibraryView`, created once
 /// and reused. While it is open, Roger is a regular app (Dock icon, Cmd-Tab,
-/// main menu with Settings and Cmd-,). When it closes, Roger is a menu bar
-/// app again. A SwiftUI `Window` scene is not used because `openWindow` is
-/// not reachable from the AppKit popover.
+/// main menu with Settings and Cmd-,), counted by `AppWindowPresence`
+/// together with the settings window. A SwiftUI `Window` scene is not used
+/// because `openWindow` is not reachable from the AppKit popover.
 @MainActor
 final class LibraryWindowController: NSObject, NSWindowDelegate {
     private static let frameName = "RogerLibraryWindow"
 
     private let coordinator: AppCoordinator
     private let indexStore: LibraryIndexStore
+    private let presence: AppWindowPresence
     private var window: NSWindow?
     private var model: LibraryModel?
     private var scope: LibraryScanScope?
@@ -25,9 +26,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
     var snapshotModel: LibraryModel? { model }
     #endif
 
-    init(coordinator: AppCoordinator, indexStore: LibraryIndexStore) {
+    init(coordinator: AppCoordinator, indexStore: LibraryIndexStore, presence: AppWindowPresence = .shared) {
         self.coordinator = coordinator
         self.indexStore = indexStore
+        self.presence = presence
         super.init()
         // A library folder on a drive that was connected meanwhile, or
         // one that was deleted: look again whenever Roger becomes active.
@@ -51,7 +53,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
         // drive connected meanwhile is noticed here.
         if let model { Task { await model.recheckLibraryRoot() } }
         isOpen = true
-        NSApp.setActivationPolicy(.regular)
+        // Before the window is shown, so the Dock icon does not flash.
+        presence.enter(.library)
+        if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         // Right after the policy change the menu bar can still belong to the
         // previous app. Activating on the next run loop turn fixes that.
@@ -112,11 +116,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        guard let closing = notification.object as? NSWindow, closing === window else { return }
         isOpen = false
         // Ends an edit without changes (so the list is not locked on the
         // next opening), then no reloads while nobody looks at the list.
         model?.windowClosed()
-        NSApp.setActivationPolicy(.accessory)
+        // Roger stays in the Dock while the settings window is open.
+        presence.leave(.library)
     }
 
     private func currentScope() -> LibraryScanScope {
