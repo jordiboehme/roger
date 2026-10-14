@@ -120,9 +120,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
     }
 
-    /// An unsaved edit in the library window is asked about first.
+    /// An unsaved edit in the library window is asked about first. A
+    /// relaunch ("Relaunch Roger") starts its helper only after that.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        (libraryWindowController?.confirmUnsavedEdit() ?? true) ? .terminateNow : .terminateCancel
+        let mayQuit = libraryWindowController?.confirmUnsavedEdit() ?? true
+        return AppRelauncher.terminateReply(mayQuit: mayQuit)
     }
 
     // MARK: - Open With / Services
