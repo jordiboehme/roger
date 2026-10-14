@@ -174,7 +174,7 @@ struct LibraryItemDetail: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if item.kind == .meeting {
-                        LibraryExtraFilesSection(item: item)
+                        LibraryExtraFilesSection(item: item, reloadCount: model.reloadCount)
                     }
                     let baseURL = item.url.deletingLastPathComponent()
                     LibraryMarkdownView(

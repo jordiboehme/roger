@@ -406,4 +406,12 @@ struct LibraryModelTests {
         #expect(model.results.map(\.id) == [items[2].id])
         #expect(model.selection.isEmpty)
     }
+
+    @Test func everyAppliedReloadIsCounted() async {
+        let model = LibraryModel(index: FakeLibraryIndex(items))
+        #expect(model.reloadCount == 0)
+        await model.reload()
+        await model.reload()
+        #expect(model.reloadCount == 2)
+    }
 }

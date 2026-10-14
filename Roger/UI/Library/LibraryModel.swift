@@ -80,6 +80,9 @@ final class LibraryModel {
     private(set) var libraryMissing = false
     /// The search text in effect.
     private(set) var appliedSearch = ""
+    /// Grows with every reload that was applied. The Extra files section
+    /// lists its folder again when it changes.
+    private(set) var reloadCount = 0
 
     @ObservationIgnored private var pendingSelectionID: String?
     /// The entry that was just saved or renamed. It stays in `results`
@@ -276,6 +279,7 @@ final class LibraryModel {
         // cancelled or a newer reload has already been applied.
         guard generation == indexGeneration, !Task.isCancelled, reloadNumber > lastAppliedReload else { return }
         lastAppliedReload = reloadNumber
+        reloadCount += 1
         counts = Dictionary(grouping: all, by: \.kind).mapValues(\.count)
         totalCount = all.count
         libraryMissing = missing

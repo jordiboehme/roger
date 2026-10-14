@@ -67,6 +67,9 @@ actor InMemoryLibraryIndex: LibraryIndex {
     private var itemsByID: [String: LibraryItem] = [:]
     private var externalIDs: Set<String> = []
     private var isBuilt = false
+    /// How often `changes` yielded. For tests: a missing yield would make
+    /// them wait forever on the stream.
+    private(set) var changeCount = 0
     /// Set by every full build: the root is not a folder.
     private var rootMissing = false
     private let watchesFileSystem: Bool
@@ -128,7 +131,7 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let count = itemsByID.count
         let milliseconds = Int(Date().timeIntervalSince(start) * 1000)
         logger.info("Library index built: \(count) items in \(milliseconds) ms")
-        continuation.yield()
+        notifyChange()
         if watchesFileSystem { restartWatcherIfNeeded() }
     }
 
@@ -150,7 +153,15 @@ actor InMemoryLibraryIndex: LibraryIndex {
         let before = itemsByID
         scanEventId = FSEventsGetCurrentEventId()
         for unit in units { reload(unit) }
-        if itemsByID != before { continuation.yield() }
+        // A change inside a meeting folder is reported even when the meeting
+        // item stayed the same: the Extra files section lists the folder again.
+        let touchedSession = units.contains { if case .session = $0 { return true } else { return false } }
+        if itemsByID != before || touchedSession { notifyChange() }
+    }
+
+    private func notifyChange() {
+        changeCount += 1
+        continuation.yield()
     }
 
     /// Maps one changed path to what must be read again. Nil for paths

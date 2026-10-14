@@ -1,8 +1,9 @@
 import Foundation
 
 /// Files a retry can leave in a meeting folder: leftover and previous
-/// audio archives, the previous transcript and previous segments. Nothing
-/// here moves or deletes them.
+/// audio archives, the previous transcript and previous segments. Also
+/// the folder's subfolders, which Roger never writes: they are listed so
+/// the user sees them, but never moved. Nothing here moves or deletes.
 enum MeetingExtraFiles {
     enum Kind: String, CaseIterable, Sendable {
         case micLeftover = "mic-leftover"
@@ -11,13 +12,18 @@ enum MeetingExtraFiles {
         case systemPrevious = "system-previous"
         case transcriptPrevious = "transcript-previous"
         case segmentPrevious = "segment-previous"
+        /// A folder inside the meeting folder (also one named like an extra file).
+        case subfolder = "subfolder"
 
         var isAudio: Bool {
             switch self {
             case .micLeftover, .systemLeftover, .micPrevious, .systemPrevious: return true
-            case .transcriptPrevious, .segmentPrevious: return false
+            case .transcriptPrevious, .segmentPrevious, .subfolder: return false
             }
         }
+
+        /// Clean Up and the row's Trash button may move it. Folders never.
+        var isTrashable: Bool { self != .subfolder }
     }
 
     struct File: Equatable, Sendable {
@@ -49,13 +55,23 @@ enum MeetingExtraFiles {
         return nil
     }
 
-    /// Extra files in `folder`, ordered by kind, then number.
+    /// Extra files and subfolders in `folder` (hidden names left out),
+    /// ordered by kind, then number, then name. A directory is always a
+    /// `.subfolder`, whatever its name.
     static func find(in folder: URL) -> [File] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: folder.path)) ?? []
         let order = Dictionary(uniqueKeysWithValues: Kind.allCases.enumerated().map { ($1, $0) })
         return names
+            .filter { !$0.hasPrefix(".") }
             .compactMap { name in
-                classify(name).map { File(url: folder.appendingPathComponent(name), kind: $0.kind, number: $0.number) }
+                let url = folder.appendingPathComponent(name)
+                var isDirectory: ObjCBool = false
+                // fileExists follows symlinks, so a link to a folder counts as one.
+                if fm.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                    return File(url: url, kind: .subfolder, number: 0)
+                }
+                return classify(name).map { File(url: url, kind: $0.kind, number: $0.number) }
             }
             .sorted { a, b in
                 if a.kind != b.kind { return order[a.kind, default: 0] < order[b.kind, default: 0] }

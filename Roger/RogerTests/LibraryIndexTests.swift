@@ -338,4 +338,21 @@ struct LibraryIndexTests {
         await index.refresh(paths: [url.path])
         #expect(await index.items().first?.firstLine == "After")
     }
+
+    /// A leftover file appearing in a meeting folder does not change the
+    /// meeting item, but the change is still reported (Extra files).
+    @Test func aChangeInsideAMeetingFolderIsReported() async throws {
+        let base = try TempFolder.make()
+        defer { TempFolder.remove(base) }
+        let layout = LibraryLayout(root: base)
+        let folder = try writeMeeting(in: layout.monthFolder(.meetings, for: date), name: "s", text: "Hello")
+        let index = makeIndex(layout)
+        let before = await index.items()
+        let reported = await index.changeCount
+        let leftover = folder.appendingPathComponent("mic.leftover.m4a")
+        try Data().write(to: leftover)
+        await index.apply(changedPaths: [leftover.path])
+        #expect(await index.items() == before)
+        #expect(await index.changeCount == reported + 1)
+    }
 }

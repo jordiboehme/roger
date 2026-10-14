@@ -412,4 +412,20 @@ struct LibraryActionsTests {
             .write(to: folder.appendingPathComponent("transcript.md"))
         #expect(LibraryActions.isRogerSessionFolder(folder, layout: layout(root.appendingPathComponent("Roger")), extraFolders: [extra]))
     }
+
+    /// The Extra files section shows up for a session folder with a
+    /// subfolder, but the whole meeting still does not go to the Trash.
+    @Test func aSessionWithASubfolderListsExtraFilesButIsNotTrashed() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let library = layout(root.appendingPathComponent("Roger"))
+        let session = library.root.appendingPathComponent("Meetings/2026/10/2026-10-13 09-00", isDirectory: true)
+        try meetingTranscript(in: session)
+        try FileManager.default.createDirectory(at: session.appendingPathComponent("Slides"), withIntermediateDirectories: true)
+        let item = LibraryFixtures.item("transcript", kind: .meeting, folder: session.path)
+        #expect(LibraryActions.listsExtraFiles(item, layout: library, extraFolders: []))
+        let plan = LibraryActions.trashPlan(for: [item], layout: library, extraFolders: [], activeSessionFolder: nil)
+        #expect(plan.urls.isEmpty)
+        #expect(plan.skipped == [item])
+    }
 }
