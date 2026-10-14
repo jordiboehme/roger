@@ -106,6 +106,7 @@ targets:
     platform: macOS
     sources:
       - path: RogerKitTests
+      - path: TestSupport
     dependencies:
       - target: RogerKit
     settings:
@@ -122,6 +123,7 @@ targets:
     platform: macOS
     sources:
       - path: RogerTests
+      - path: TestSupport
     dependencies:
       - target: Roger
     settings:
