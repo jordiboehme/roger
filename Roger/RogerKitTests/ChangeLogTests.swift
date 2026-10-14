@@ -120,4 +120,21 @@ struct ChangeLogTests {
         }
         #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Drive").path))
     }
+
+    /// The parse uses one decoder and two date formatters for every line.
+    /// Several readers at once (roger-mcp answers tool calls in parallel)
+    /// must all get every event.
+    @Test func parsingIsSafeFromSeveralTasks() async throws {
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        let lines = (1...2_000).map { seq in
+            ChangeEvent(seq: seq, at: at, event: .created, kind: .log, key: "Logs/2026/10/\(seq)", path: "Logs/2026/10/\(seq).md").jsonLine()
+        }
+        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+        let counts = await withTaskGroup(of: Int.self) { group in
+            for _ in 0..<8 { group.addTask { ChangeLogFile.parse(data).count } }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        #expect(counts == Array(repeating: 2_000, count: 8))
+        #expect(RFC3339.date("2026-10-13T14:32:41.250+02:00") != nil)
+    }
 }

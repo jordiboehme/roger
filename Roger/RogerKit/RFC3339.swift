@@ -11,11 +11,22 @@ public enum RFC3339 {
 
     /// Accepts any offset or `Z`, with or without fractional seconds.
     public static func date(_ text: String) -> Date? {
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        if let date = plain.date(from: text) { return date }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: text)
+        plain.date(from: text) ?? fractional.date(from: text)
     }
+
+    // Made once: the change log parses one date per event. Formatters are
+    // thread-safe on macOS, and these two are never changed after they are
+    // made; `ISO8601DateFormatter` is not marked `Sendable`, hence the
+    // `nonisolated(unsafe)`.
+    nonisolated(unsafe) private static let plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    nonisolated(unsafe) private static let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
