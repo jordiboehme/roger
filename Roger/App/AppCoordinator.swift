@@ -508,7 +508,7 @@ final class AppCoordinator {
                         if activePreset.output == .logEntry {
                             // A file surprises nobody: save the non-AI text.
                             await saveLogEntry(safeText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
-                                               language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                                               detectedLanguage: result.detectedLanguage, samples: samples)
                             return
                         }
                         appState.lastTranscription = safeText
@@ -530,7 +530,7 @@ final class AppCoordinator {
 
             if activePreset.output == .logEntry {
                 await saveLogEntry(processedText, preset: activePreset, startedAt: startedAt, endedAt: endedAt,
-                                   language: result.detectedLanguage ?? activePreset.language, samples: samples)
+                                   detectedLanguage: result.detectedLanguage, samples: samples)
                 return
             }
 
@@ -573,48 +573,52 @@ final class AppCoordinator {
         logSavedGeneration += 1
     }
 
-    /// Writes a log entry instead of typing. On failure the text stays in
-    /// `lastTranscription` so nothing is lost.
+    /// Writes a log entry instead of typing (`LogEntrySaver`). On failure
+    /// the text stays in `lastTranscription` so nothing is lost.
     private func saveLogEntry(
         _ text: String,
         preset: DictationPreset,
         startedAt: Date,
         endedAt: Date,
-        language: String?,
+        detectedLanguage: String?,
         samples: [Float]?
     ) async {
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let outcome = await LogEntrySaver(layout: appState.libraryLayout).save(
+            text, preset: preset, startedAt: startedAt, endedAt: endedAt,
+            detectedLanguage: detectedLanguage, samples: samples
+        ) { [libraryChanges] url in
+            libraryChanges.recordWritten(markdownURL: url, kind: .log)
+        }
+        switch outcome {
+        case .empty:
             logger.info("Log entry skipped: empty text after processing")
             appState.lastLogEntryURL = nil
             floatingPanel.hide()
             audioLevelMeter.reset()
             appState.dictationState = .error("No speech detected - try speaking louder or closer to the mic")
             return
-        }
-        appState.lastTranscription = text
-        let entry = LogEntry(text: text, startedAt: startedAt, endedAt: endedAt, presetName: preset.name, language: language)
-        do {
-            let url = try await LogEntryWriter.write(
-                entry,
-                layout: appState.libraryLayout,
-                audioSamples: preset.keepAudio ? samples : nil
-            )
+        case .saved(let url):
+            appState.lastTranscription = text
             appState.lastLogEntryURL = url
-            libraryChanges.recordWritten(markdownURL: url, kind: .log)
             logger.notice("Log entry saved: \(url.path, privacy: .public)")
-        } catch {
-            logger.error("Log entry write failed: \(error.localizedDescription, privacy: .public)")
+        case .libraryMissing(let message):
+            logger.error("Log entry write failed: \(message, privacy: .public)")
+            appState.lastTranscription = text
             appState.lastLogEntryURL = nil
             floatingPanel.hide()
             audioLevelMeter.reset()
-            if let missing = error as? LibraryRootMissingError {
-                // The text must not be lost: it goes to the clipboard.
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                appState.dictationState = .error("\(missing.localizedDescription) The text is on the clipboard.")
-            } else {
-                appState.dictationState = .error("Could not save the log entry. Copy the text from the menu bar.")
-            }
+            // The text must not be lost: it goes to the clipboard.
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            appState.dictationState = .error("\(message) The text is on the clipboard.")
+            return
+        case .failed(let message):
+            logger.error("Log entry write failed: \(message, privacy: .public)")
+            appState.lastTranscription = text
+            appState.lastLogEntryURL = nil
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error("Could not save the log entry. Copy the text from the menu bar.")
             return
         }
 
