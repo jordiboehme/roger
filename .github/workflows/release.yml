@@ -99,6 +99,19 @@ jobs:
             -exportOptionsPlist ${{ runner.temp }}/ExportOptions.plist \
             -exportPath ${{ runner.temp }}/export
 
+      - name: Verify roger-mcp signature
+        run: |
+          APP="${{ runner.temp }}/export/Roger.app"
+          BIN="$APP/Contents/MacOS/roger-mcp"
+          test -x "$BIN"
+          codesign --verify --strict --verbose=2 "$BIN"
+          codesign -dv --verbose=4 "$BIN" > "${{ runner.temp }}/roger-mcp-sign.txt" 2>&1
+          cat "${{ runner.temp }}/roger-mcp-sign.txt"
+          grep -q "Authority=Developer ID Application" "${{ runner.temp }}/roger-mcp-sign.txt"
+          grep -Eq "flags=0x[0-9a-f]*\(.*runtime.*\)" "${{ runner.temp }}/roger-mcp-sign.txt"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          "$BIN" --version
+
       - name: Notarize
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -117,6 +130,13 @@ jobs:
             --wait
 
           xcrun stapler staple "${{ runner.temp }}/export/Roger.app"
+
+      - name: Check notarization of the app and the helper
+        run: |
+          APP="${{ runner.temp }}/export/Roger.app"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+          codesign --verify --strict --verbose=2 "$APP/Contents/MacOS/roger-mcp"
 
       - name: Create DMG
         run: |
@@ -179,6 +199,7 @@ jobs:
             depends_on macos: :sequoia
 
             app "Roger.app"
+            binary "#{appdir}/Roger.app/Contents/MacOS/roger-mcp"
 
             uninstall quit:   "com.jordiboehme.roger",
                       signal: ["TERM", "com.jordiboehme.roger"]

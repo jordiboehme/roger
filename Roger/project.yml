@@ -14,6 +14,9 @@ packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts.git
     from: "3.1.0"
+  MCP:
+    url: https://github.com/modelcontextprotocol/swift-sdk.git
+    exactVersion: "0.12.1"
 
 targets:
   Roger:
@@ -51,6 +54,11 @@ targets:
         - RogerKitTests
     dependencies:
       - target: RogerKit
+      - target: roger-mcp
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
       - package: FluidAudio
         product: FluidAudio
       - package: KeyboardShortcuts
@@ -66,6 +74,26 @@ targets:
         PRODUCT_NAME: RogerKit
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "15.0"
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 77PA95K95V
+
+  roger-mcp:
+    type: tool
+    platform: macOS
+    sources:
+      - path: RogerMCP
+    dependencies:
+      - target: RogerKit
+      - package: MCP
+        product: MCP
+    settings:
+      base:
+        PRODUCT_NAME: roger-mcp
+        PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger.mcp
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        ENABLE_HARDENED_RUNTIME: YES
         SKIP_INSTALL: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 77PA95K95V
