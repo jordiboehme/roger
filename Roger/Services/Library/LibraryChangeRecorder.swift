@@ -29,10 +29,12 @@ final class LibraryChangeRecorder {
     }
 
     /// The item's Markdown is on disk (new, edited, renamed or rewritten).
-    func recordWritten(markdownURL: URL, kind: LibraryItemKind) {
+    /// `root` is the library root the writer used: the event goes into that
+    /// library's log, also when the library setting changed meanwhile.
+    func recordWritten(markdownURL: URL, kind: LibraryItemKind, root: URL) {
         guard let env = environment?() else { return }
-        let subject = ChangeKey.subject(markdownURL: markdownURL, kind: kind, root: env.layout.root)
-        enqueue(env) { log in
+        let subject = ChangeKey.subject(markdownURL: markdownURL, kind: kind, root: root)
+        enqueue(env, root: root) { log in
             try await log.record(.written, subject)
         }
     }
@@ -61,12 +63,20 @@ final class LibraryChangeRecorder {
         await tail?.value
     }
 
-    private func enqueue(_ env: LibraryChangeEnvironment, _ operation: @escaping @Sendable (ChangeLog) async throws -> Void) {
-        let rootKey = env.layout.root.standardizedFileURL.path
-        let log = logs[rootKey] ?? ChangeLog(root: env.layout.root)
+    /// Runs `operation` on the log of `root` (default: the current root).
+    /// Only the current root is caught up.
+    private func enqueue(
+        _ env: LibraryChangeEnvironment,
+        root: URL? = nil,
+        _ operation: @escaping @Sendable (ChangeLog) async throws -> Void
+    ) {
+        let target = root ?? env.layout.root
+        let rootKey = target.standardizedFileURL.path
+        let isCurrent = rootKey == env.layout.root.standardizedFileURL.path
+        let log = logs[rootKey] ?? ChangeLog(root: target)
         logs[rootKey] = log
-        let needsCatchUp = caughtUpRoot != rootKey
-        caughtUpRoot = rootKey
+        let needsCatchUp = isCurrent && caughtUpRoot != rootKey
+        if isCurrent { caughtUpRoot = rootKey }
         let previous = tail
         tail = Task.detached(priority: .utility) {
             await previous?.value

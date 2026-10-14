@@ -132,8 +132,8 @@ final class AppCoordinator {
                 externalRegistry: .standard
             )
         }
-        meetingRecorder.onTranscriptWritten = { [weak self] url in
-            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting)
+        meetingRecorder.onTranscriptWritten = { [weak self] url, root in
+            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
         }
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
@@ -562,11 +562,12 @@ final class AppCoordinator {
         detectedLanguage: String?,
         samples: [Float]?
     ) async {
-        let outcome = await LogEntrySaver(layout: appState.libraryLayout).save(
+        let layout = appState.libraryLayout
+        let outcome = await LogEntrySaver(layout: layout).save(
             text, preset: preset, startedAt: startedAt, endedAt: endedAt,
             detectedLanguage: detectedLanguage, samples: samples
         ) { [libraryChanges] url in
-            libraryChanges.recordWritten(markdownURL: url, kind: .log)
+            libraryChanges.recordWritten(markdownURL: url, kind: .log, root: layout.root)
         }
         switch outcome {
         case .empty:
@@ -873,10 +874,11 @@ final class AppCoordinator {
                 return
             }
 
+            let layout = appState.libraryLayout
             let outputURL = try TranscriptOutputWriter.write(
                 source: job.sourceURL,
                 location: appState.fileTranscriptOutputLocation,
-                layout: appState.libraryLayout
+                layout: layout
             ) { destination in
                 MediaTranscriptFormatter.content(
                     source: job.sourceURL,
@@ -896,7 +898,7 @@ final class AppCoordinator {
                     logger.warning("Could not remember transcript path: \(error.localizedDescription, privacy: .public)")
                 }
             }
-            libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript)
+            libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript, root: layout.root)
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
             await finishFileTranscription(error: nil)

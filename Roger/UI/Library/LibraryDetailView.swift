@@ -245,7 +245,9 @@ struct LibraryItemDetail: View {
             )
             switch outcome {
             case .saved:
-                coordinator.libraryChanges.recordWritten(markdownURL: item.url, kind: item.kind)
+                coordinator.libraryChanges.recordWritten(
+                    markdownURL: item.url, kind: item.kind, root: coordinator.appState.libraryLayout.root
+                )
                 // The new modification date, or the next save sees this
                 // write as a change by another app.
                 reloadNow()
@@ -291,7 +293,9 @@ struct LibraryItemDetail: View {
         }
         do {
             try LibraryDocumentEditor.rename(fileAt: item.url, to: title)
-            coordinator.libraryChanges.recordWritten(markdownURL: item.url, kind: item.kind)
+            coordinator.libraryChanges.recordWritten(
+                    markdownURL: item.url, kind: item.kind, root: coordinator.appState.libraryLayout.root
+                )
             reloadNow()
             let written = item
             Task { await model.didWrite(written) }

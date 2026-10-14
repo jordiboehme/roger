@@ -57,7 +57,7 @@ struct LibraryChangeRecorderTests {
         for i in 0..<10 {
             let url = try writeLog(root, at: date.addingTimeInterval(Double(i) * 60), text: "entry \(i)")
             keys.append(ChangeKey.subject(markdownURL: url, kind: .log, root: root).key)
-            recorder.recordWritten(markdownURL: url, kind: .log)
+            recorder.recordWritten(markdownURL: url, kind: .log, root: root)
         }
         await recorder.waitUntilIdle()
         let events = try ChangeLogFile.readEvents(root: root)
@@ -76,8 +76,8 @@ struct LibraryChangeRecorderTests {
         try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
         let transcript = session.appendingPathComponent("transcript.md")
         try Data("---\ntags: [meeting, transcript]\n---\n# Meeting\n".utf8).write(to: transcript)
-        recorder.recordWritten(markdownURL: transcript, kind: .meeting)
-        recorder.recordWritten(markdownURL: transcript, kind: .meeting)
+        recorder.recordWritten(markdownURL: transcript, kind: .meeting, root: root)
+        recorder.recordWritten(markdownURL: transcript, kind: .meeting, root: root)
         await recorder.waitUntilIdle()
         let events = try ChangeLogFile.readEvents(root: root)
         #expect(events.map(\.event) == [.created, .updated])
@@ -94,19 +94,39 @@ struct LibraryChangeRecorderTests {
         let recorder = recorder(box, registry: home.appendingPathComponent("external.json"))
         recorder.reconcile()
         await recorder.waitUntilIdle()
-        recorder.recordWritten(markdownURL: try writeLog(rootA, at: date, text: "in A"), kind: .log)
+        recorder.recordWritten(markdownURL: try writeLog(rootA, at: date, text: "in A"), kind: .log, root: rootA)
 
         // The user picks folder B in Settings; a log entry follows before
         // the settings view calls reconcile().
         box.root = rootB
         let newInB = try writeLog(rootB, at: date.addingTimeInterval(120), text: "new in B")
-        recorder.recordWritten(markdownURL: newInB, kind: .log)
+        recorder.recordWritten(markdownURL: newInB, kind: .log, root: rootB)
         await recorder.waitUntilIdle()
 
         #expect(try ChangeLogFile.readEvents(root: rootA).count == 1)
         let inB = try ChangeLogFile.readEvents(root: rootB)
         #expect(Set(inB.map(\.key)).count == 2)
         #expect(inB.first?.event == .created)
+    }
+
+    /// A log entry written into library A just before the user switched to
+    /// B is recorded in A's log under its library key, not in B's.
+    @Test func aWriteGoesToTheLibraryItWasWrittenTo() async throws {
+        let home = try TempFolder.make()
+        defer { TempFolder.remove(home) }
+        let rootA = home.appendingPathComponent("A", isDirectory: true)
+        let rootB = home.appendingPathComponent("B", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootB, withIntermediateDirectories: true)
+        let box = RootBox(rootA)
+        let recorder = recorder(box, registry: home.appendingPathComponent("external.json"))
+        let url = try writeLog(rootA, at: date, text: "in A")
+        box.root = rootB
+        recorder.recordWritten(markdownURL: url, kind: .log, root: rootA)
+        await recorder.waitUntilIdle()
+        let inA = try ChangeLogFile.readEvents(root: rootA)
+        #expect(inA.map(\.key) == [ChangeKey.subject(markdownURL: url, kind: .log, root: rootA).key])
+        #expect(inA.first?.key.hasPrefix("Logs/") == true)
+        #expect(!FileManager.default.fileExists(atPath: ChangeLogFile.url(root: rootB).path))
     }
 
     @Test func trashedItemIsDeletedOnce() async throws {
@@ -135,7 +155,7 @@ struct LibraryChangeRecorderTests {
         await recorder.waitUntilIdle()
         let root = home.appendingPathComponent("Library", isDirectory: true)
         box.root = root
-        recorder.recordWritten(markdownURL: try writeLog(root, at: date, text: "one"), kind: .log)
+        recorder.recordWritten(markdownURL: try writeLog(root, at: date, text: "one"), kind: .log, root: root)
         await recorder.waitUntilIdle()
         #expect(try ChangeLogFile.readEvents(root: root).count == 1)
     }
@@ -144,7 +164,7 @@ struct LibraryChangeRecorderTests {
         let folder = try TempFolder.make()
         defer { TempFolder.remove(folder) }
         let recorder = LibraryChangeRecorder()
-        recorder.recordWritten(markdownURL: folder.appendingPathComponent("Logs/2026/10/x.md"), kind: .log)
+        recorder.recordWritten(markdownURL: folder.appendingPathComponent("Logs/2026/10/x.md"), kind: .log, root: folder)
         recorder.recordDeleted([])
         recorder.reconcile()
         await recorder.waitUntilIdle()

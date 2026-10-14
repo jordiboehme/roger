@@ -41,14 +41,18 @@ final class MeetingRecordingService {
     private(set) var lastSession: MeetingSession?
 
     /// Called after `transcript.md` is on disk, on the first finalisation
-    /// and on every retry. The coordinator records the change for agents.
-    @ObservationIgnored var onTranscriptWritten: (@MainActor (URL) -> Void)?
+    /// and on every retry, with the library root the session was written
+    /// under. The coordinator records the change for agents.
+    @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL) -> Void)?
 
     private let appState: AppState
     private let transcriptionEngine: TranscriptionEngine
     private let diarization: DiarizationService
 
     private var session: MeetingSession?
+    /// The library root `start()` created the session under (recovery: the
+    /// root at the time of the retry).
+    @ObservationIgnored private var sessionRoot: URL?
     private var micTap: MicrophoneTap?
     private var systemTap: SystemAudioTap?
     private var micWriter: SegmentedAudioFileWriter?
@@ -100,9 +104,10 @@ final class MeetingRecordingService {
         state = .starting
 
         let startedAt = Date()
+        let layout = appState.libraryLayout
         let session: MeetingSession
         do {
-            session = try MeetingSession.create(layout: appState.libraryLayout, startedAt: startedAt)
+            session = try MeetingSession.create(layout: layout, startedAt: startedAt)
         } catch {
             let failure: MeetingRecordingError = error is LibraryRootMissingError
                 ? .libraryMissing(error.localizedDescription)
@@ -111,6 +116,7 @@ final class MeetingRecordingService {
             throw failure
         }
         self.session = session
+        sessionRoot = layout.root
         checkpointStore = MeetingCheckpointStore(folder: session.folder, sessionStartedAt: session.startedAt)
         checkpointCount = 0
         pendingCheckpointTranscriptions = 0
@@ -238,6 +244,7 @@ final class MeetingRecordingService {
             return
         }
         self.session = session
+        sessionRoot = appState.libraryLayout.root
         // A live store left over from an earlier session must not lend its
         // markers or start time to this one; the pipeline loads the
         // session's own markers.json instead.
@@ -611,6 +618,7 @@ final class MeetingRecordingService {
             systemAudioFailed: systemTrack.audioFailed
         )
 
+        let root = sessionRoot ?? appState.libraryLayout.root
         let outcome = MeetingFinalisationSteps.run(
             MeetingFinalisationSteps.Input(
                 session: session,
@@ -623,7 +631,7 @@ final class MeetingRecordingService {
                 system: systemTrack,
                 sleepInterrupted: sleepInterrupted
             ),
-            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url) }
+            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url, root) }
         )
         switch outcome {
         case .failed(let reason):
