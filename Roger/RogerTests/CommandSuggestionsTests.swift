@@ -164,6 +164,11 @@ struct CommandSuggestionsTests {
         #expect(merged.crystallineToolPrefix == "mcp__claude_ai_Crystalline")
     }
 
+    @Test func claudeMcpListSkipsNoiseLines() {
+        let output = "Checking MCP server health...\n\n   \nroger: /x/roger-mcp - ✔ Connected\n\n"
+        #expect(ClaudeMcpList.parse(output) == [ConfiguredServer(name: "roger", command: "/x/roger-mcp")])
+    }
+
     @Test func emptyClaudeMcpList() {
         #expect(ClaudeMcpList.parse("No MCP servers configured. Use `claude mcp add` to add a server.\n").isEmpty)
     }
@@ -252,5 +257,39 @@ struct HarnessServerLookupTests {
             ConfiguredServer(name: "roger", command: "/r"),
             ConfiguredServer(name: "Crystalline", command: nil),
         ])
+    }
+
+    @Test func tomlInlineTables() {
+        let text = """
+        [mcp_servers]
+        roger = { command = "/r", args = ["a, b", "}"] } # Roger
+        "crystalline" = { args = ["serve"], env = { KEY = "x,y" }, command = '/c' }
+        remote = { url = "https://example.invalid" }
+        [mcp_servers.other]
+        command = "/o"
+        """
+        #expect(HarnessRegistration.tomlCommand(text) == .command("/r"))
+        #expect(HarnessRegistration.tomlCommand(text, server: "crystalline") == .command("/c"))
+        #expect(HarnessRegistration.tomlCommand(text, server: "remote") == .absent)
+        #expect(HarnessRegistration.tomlCommand(text, server: "other") == .command("/o"))
+        #expect(HarnessRegistration.tomlCommand(text, server: "missing") == .absent)
+        #expect(HarnessRegistration.tomlServers(text) == [
+            ConfiguredServer(name: "roger", command: "/r"),
+            ConfiguredServer(name: "crystalline", command: "/c"),
+            ConfiguredServer(name: "remote", command: nil),
+            ConfiguredServer(name: "other", command: "/o"),
+        ])
+    }
+
+    @Test func tomlInlineCommand() {
+        #expect(HarnessRegistration.tomlInlineCommand(#"{ command = "/r" }"#) == .command("/r"))
+        #expect(HarnessRegistration.tomlInlineCommand(#"{command="/r"}"#) == .command("/r"))
+        #expect(HarnessRegistration.tomlInlineCommand(#"{ "command" = "/r" }"#) == .command("/r"))
+        #expect(HarnessRegistration.tomlInlineCommand(#"{ args = [1, [2, 3]], command = "/r" }"#) == .command("/r"))
+        #expect(HarnessRegistration.tomlInlineCommand("{ }") == .absent)
+        #expect(HarnessRegistration.tomlInlineCommand(#"{ startup_timeout_sec = 20 }"#) == .absent)
+        #expect(HarnessRegistration.tomlInlineCommand(#"{ command = /r }"#) == .unreadable)
+        #expect(HarnessRegistration.tomlInlineCommand(#"{ args = ["open"#) == .unreadable)
+        #expect(HarnessRegistration.tomlInlineCommand(#""/r""#) == .unreadable)
     }
 }

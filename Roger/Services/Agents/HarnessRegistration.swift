@@ -112,18 +112,28 @@ enum HarnessRegistration {
     /// `command = "..."` inside `[mcp_servers.roger]`. Accepts what Codex
     /// and people write: spaces, a `# comment` after the header or the
     /// value, and the header as `[mcp_servers."roger"]` or
-    /// `[mcp_servers.'roger']`. The text comes from `TextFile` (LF).
+    /// `[mcp_servers.'roger']`. Also the inline form
+    /// `roger = { command = "..." }` inside `[mcp_servers]`. The text comes
+    /// from `TextFile` (LF).
     static func tomlCommand(_ text: String, server: String = "roger") -> ConfigLookup {
         var inSection = false
+        var inServersTable = false
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
-                inSection = tomlTableName(line) == ["mcp_servers", server]
+                let name = tomlTableName(line)
+                inSection = name == ["mcp_servers", server]
+                inServersTable = name == ["mcp_servers"]
                 continue
             }
-            guard inSection, !line.hasPrefix("#") else { continue }
+            guard inSection || inServersTable, !line.hasPrefix("#") else { continue }
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, unquotedTOMLKey(parts[0]) == "command" else { continue }
+            guard parts.count == 2 else { continue }
+            if inServersTable {
+                if unquotedTOMLKey(parts[0]) == server { return tomlInlineCommand(parts[1]) }
+                continue
+            }
+            guard unquotedTOMLKey(parts[0]) == "command" else { continue }
             guard let (value, rest) = tomlString(parts[1]) else { return .unreadable }
             let tail = rest.trimmingCharacters(in: .whitespaces)
             guard tail.isEmpty || tail.hasPrefix("#") else { return .unreadable }
@@ -132,16 +142,21 @@ enum HarnessRegistration {
         return .absent
     }
 
-    /// Every `[mcp_servers.<name>]` table in file order, with its `command`
-    /// when it has a readable one. Sub-tables such as `.tools.x` are skipped.
+    /// Every `[mcp_servers.<name>]` table and every inline
+    /// `<name> = { ... }` inside `[mcp_servers]`, in file order, with its
+    /// `command` when it has a readable one. Sub-tables such as `.tools.x`
+    /// are skipped.
     static func tomlServers(_ text: String) -> [ConfiguredServer] {
         var servers: [ConfiguredServer] = []
         var current: Int?
+        var inServersTable = false
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
                 current = nil
-                if let parts = tomlTableName(line), parts.count == 2, parts[0] == "mcp_servers" {
+                let name = tomlTableName(line)
+                inServersTable = name == ["mcp_servers"]
+                if let parts = name, parts.count == 2, parts[0] == "mcp_servers" {
                     if let index = servers.firstIndex(where: { $0.name == parts[1] }) {
                         current = index
                     } else {
@@ -151,12 +166,90 @@ enum HarnessRegistration {
                 }
                 continue
             }
-            guard let index = current, !line.hasPrefix("#") else { continue }
+            guard !line.hasPrefix("#") else { continue }
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, unquotedTOMLKey(parts[0]) == "command", let (value, _) = tomlString(parts[1]) else { continue }
+            guard parts.count == 2 else { continue }
+            if inServersTable, parts[1].hasPrefix("{") {
+                let name = unquotedTOMLKey(parts[0])
+                guard !name.isEmpty, !servers.contains(where: { $0.name == name }) else { continue }
+                var command: String?
+                if case .command(let value) = tomlInlineCommand(parts[1]) { command = value }
+                servers.append(ConfiguredServer(name: name, command: command))
+                continue
+            }
+            guard let index = current, unquotedTOMLKey(parts[0]) == "command", let (value, _) = tomlString(parts[1]) else { continue }
             servers[index].command = value
         }
         return servers
+    }
+
+    /// The `command` of an inline table such as
+    /// `{ command = "/x/roger-mcp", args = ["a, b"] }`. `.absent` when the
+    /// table has none, `.unreadable` when it is not a one-line inline table.
+    static func tomlInlineCommand(_ text: String) -> ConfigLookup {
+        let isBlank: (Character) -> Bool = { $0 == " " || $0 == "\t" }
+        var rest = Substring(text).drop(while: isBlank)
+        guard rest.first == "{" else { return .unreadable }
+        rest = rest.dropFirst()
+        while true {
+            rest = rest.drop(while: isBlank)
+            guard let first = rest.first else { return .unreadable }
+            if first == "}" { return .absent }
+            let key: String
+            if first == "\"" || first == "'" {
+                guard let (quoted, after) = tomlString(String(rest)) else { return .unreadable }
+                key = quoted
+                rest = rest.suffix(after.count)
+            } else {
+                let bare = rest.prefix { !isBlank($0) && $0 != "=" && $0 != "," && $0 != "}" }
+                key = String(bare)
+                rest = rest.dropFirst(bare.count)
+            }
+            rest = rest.drop(while: isBlank)
+            guard !key.isEmpty, rest.first == "=" else { return .unreadable }
+            rest = rest.dropFirst().drop(while: isBlank)
+            if key == "command" {
+                guard let (value, _) = tomlString(String(rest)) else { return .unreadable }
+                return .command(value)
+            }
+            guard let after = skipTOMLValue(rest) else { return .unreadable }
+            rest = after.drop(while: isBlank)
+            if rest.first == "," {
+                rest = rest.dropFirst()
+            } else if rest.first == "}" {
+                return .absent
+            } else {
+                return .unreadable
+            }
+        }
+    }
+
+    /// What follows the value at the start of `text`: a string, an array or
+    /// an inline table (also nested), or a bare value up to `,` or `}`.
+    private static func skipTOMLValue(_ text: Substring) -> Substring? {
+        var depth = 0
+        var index = text.startIndex
+        while index < text.endIndex {
+            let ch = text[index]
+            if ch == "\"" || ch == "'" {
+                guard let (_, after) = tomlString(String(text[index...])) else { return nil }
+                index = text.index(text.endIndex, offsetBy: -after.count)
+                if depth == 0 { return text[index...] }
+                continue
+            }
+            if ch == "[" || ch == "{" {
+                depth += 1
+            } else if ch == "]" || ch == "}" {
+                // A closing brace at depth 0 ends the enclosing table.
+                if depth == 0 { return text[index...] }
+                depth -= 1
+                if depth == 0 { return text[text.index(after: index)...] }
+            } else if ch == ",", depth == 0 {
+                return text[index...]
+            }
+            index = text.index(after: index)
+        }
+        return nil
     }
 
     /// The dotted parts of `[a."b"]`, unquoted. Nil for `[[array]]` or a
