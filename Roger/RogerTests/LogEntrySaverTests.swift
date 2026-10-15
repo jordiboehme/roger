@@ -50,7 +50,9 @@ struct LogEntrySaverTests {
         var all: [[Float]] { lock.lock(); defer { lock.unlock() }; return calls }
     }
 
-    private func saveWithParagraphs(keepAudio: Bool, captured: Captured) async throws -> LogEntrySaver.Outcome {
+    private func saveWithParagraphs(
+        keepAudio: Bool, captured: Captured, mic: [Float]? = [0.1, 0.2]
+    ) async throws -> LogEntrySaver.Outcome {
         let root = try TempFolder.make()
         defer { TempFolder.remove(root) }
         let saver = LogEntrySaver(
@@ -67,7 +69,7 @@ struct LogEntrySaverTests {
         ]
         return await saver.save(
             "Hello there\n\nHi", preset: preset(keepAudio: keepAudio), startedAt: start,
-            endedAt: start.addingTimeInterval(12), detectedLanguage: nil, samples: [0.1, 0.2],
+            endedAt: start.addingTimeInterval(12), detectedLanguage: nil, samples: mic,
             paragraphs: paragraphs, systemSamples: [0.3, 0.3, 0.3], recordWritten: { _ in }
         )
     }
@@ -80,6 +82,16 @@ struct LogEntrySaverTests {
             return
         }
         #expect(captured.all == [AudioMix.mix([0.1, 0.2], [0.3, 0.3, 0.3])])
+    }
+
+    @Test func aLogWithoutMicSamplesKeepsTheSystemTrack() async throws {
+        let captured = Captured()
+        let outcome = try await saveWithParagraphs(keepAudio: true, captured: captured, mic: nil)
+        guard case .saved = outcome else {
+            Issue.record("expected saved, got \(outcome)")
+            return
+        }
+        #expect(captured.all == [[0.3, 0.3, 0.3]])
     }
 
     @Test func paragraphsWithoutKeepAudioCallNoEncoder() async throws {

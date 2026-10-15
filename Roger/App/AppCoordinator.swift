@@ -431,7 +431,17 @@ final class AppCoordinator {
             try audioCaptureService.startCapture()
 
             systemAudioUnavailable = false
-            if resolvedPreset.output == .logEntry && resolvedPreset.recordSystemAudio {
+            switch SystemAudioRecorder.plan(
+                isLog: resolvedPreset.output == .logEntry,
+                recordSystemAudio: resolvedPreset.recordSystemAudio,
+                meetingActive: meetingRecorder.isActive
+            ) {
+            case .off:
+                break
+            case .unavailable:
+                logger.info("Log during a meeting: recording the mic only, the meeting records system audio")
+                systemAudioUnavailable = true
+            case .record:
                 let recorder = SystemAudioRecorder.live()
                 do {
                     try recorder.start()
@@ -532,10 +542,25 @@ final class AppCoordinator {
         appState.dictationState = .transcribing
         let presetID = activeRecordingPresetID
         Task {
-            let systemSamples = await systemRecorder?.stop()
-            if let systemSamples, !systemSamples.isEmpty, let samples, !samples.isEmpty {
-                await self.runLogWithSystemAudio(mic: samples, system: systemSamples, presetID: presetID,
-                                                 languageOverride: languageOverride,
+            var systemSamples: [Float]?
+            if let systemRecorder {
+                systemSamples = await systemRecorder.stop()
+                if systemSamples == nil {
+                    logger.error("System audio tap did not stop within \(SystemAudioRecorder.stopTimeout, privacy: .public), saving the log with the mic only")
+                    self.systemAudioUnavailable = true
+                } else if systemSamples?.isEmpty == true {
+                    logger.warning("System audio tap delivered no samples, saving the log with the mic only")
+                    self.systemAudioUnavailable = true
+                }
+            }
+            if let system = systemSamples, !system.isEmpty {
+                let mic = (samples?.isEmpty == false) ? samples : nil
+                if mic == nil {
+                    logger.warning("Microphone delivered no samples, the log has system audio only")
+                }
+                await self.runLogWithSystemAudio(mic: mic, micStartedAt: capture.startedAt,
+                                                 system: system, systemStartedAt: systemRecorder?.startedAt,
+                                                 presetID: presetID, languageOverride: languageOverride,
                                                  startedAt: startedAt, endedAt: endedAt)
                 return
             }
@@ -553,10 +578,26 @@ final class AppCoordinator {
 
     /// A log preset with system audio: both tracks through the meeting
     /// pipeline ("Me" from the mic alone, "Other N" from the system track),
-    /// then saved as a log with paragraphs.
-    private func runLogWithSystemAudio(mic: [Float], system: [Float], presetID: UUID?, languageOverride: String?,
+    /// then saved as a log with paragraphs. `mic` is nil when the mic gave
+    /// nothing; the log then holds the system track only.
+    private func runLogWithSystemAudio(mic rawMic: [Float]?, micStartedAt: Date?,
+                                       system rawSystem: [Float], systemStartedAt: Date?,
+                                       presetID: UUID?, languageOverride: String?,
                                        startedAt: Date, endedAt: Date) async {
         appState.dictationState = .transcribing
+        // The tap starts a moment after the mic. Pad the later track so
+        // paragraph times and the kept mix line up.
+        var mic = rawMic
+        var system = rawSystem
+        if let rawMic {
+            let aligned = AudioMix.alignStarts(rawMic, startedAt: micStartedAt, rawSystem, startedAt: systemStartedAt)
+            mic = aligned.a
+            system = aligned.b
+            if let micStartedAt, let systemStartedAt {
+                let offset = systemStartedAt.timeIntervalSince(micStartedAt)
+                logger.info("Log tracks start offset: \(String(format: "%.3f", offset), privacy: .public)s (system after mic)")
+            }
+        }
         defer { activeRecordingPresetID = nil }
         let preset = appState.presets.first { $0.id == presetID } ?? appState.activePreset
         var llm: (any LLMService)?
@@ -571,7 +612,7 @@ final class AppCoordinator {
         let pipeline = MeetingTranscriptionPipeline(engine: transcriptionEngine, diarization: diarizationService)
         do {
             let output = try await pipeline.run(
-                mic: .samples(mic),
+                mic: mic.map { .samples($0) } ?? .absent,
                 system: .samples(system),
                 config: .init(
                     diarizeMic: appState.meetingDiarizeMic,

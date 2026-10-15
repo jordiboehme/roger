@@ -49,6 +49,9 @@ final class AudioCaptureService: @unchecked Sendable {
     struct CaptureResult: Sendable {
         let samples: [Float]?
         let health: CaptureHealth
+        /// When the engine started, nil when it never ran. Lines the mic
+        /// track up with the system track of a log.
+        var startedAt: Date? = nil
     }
 
     /// UID of the input device to use, or nil for system default.
@@ -226,7 +229,8 @@ final class AudioCaptureService: @unchecked Sendable {
         audioEngine?.stop()
         audioEngine = nil
 
-        let observed = captureStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let startedAt = captureStartedAt
+        let observed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         captureStartedAt = nil
 
         lock.lock()
@@ -251,12 +255,12 @@ final class AudioCaptureService: @unchecked Sendable {
 
         guard !samples.isEmpty else {
             logger.warning("No samples captured")
-            return CaptureResult(samples: nil, health: health)
+            return CaptureResult(samples: nil, health: health, startedAt: startedAt)
         }
 
         let peakAmplitude = samples.map { abs($0) }.max() ?? 0
         logger.notice("Captured \(samples.count) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate))s), peak amplitude: \(String(format: "%.4f", peakAmplitude))")
-        return CaptureResult(samples: samples, health: health)
+        return CaptureResult(samples: samples, health: health, startedAt: startedAt)
     }
 
     /// Short capture probe for the settings test buttons. Retries once when

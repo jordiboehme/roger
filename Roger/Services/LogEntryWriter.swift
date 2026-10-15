@@ -12,6 +12,7 @@ struct LogEntry: Sendable {
     /// ISO code when known (preset pin or detected), else nil.
     let language: String?
     /// Speaker paragraphs when the log recorded system audio, else nil.
+    /// Never empty: no paragraphs is stored as nil, so the entry is a plain log.
     let paragraphs: [MeetingTranscriptMerger.Paragraph]?
 
     init(
@@ -23,7 +24,7 @@ struct LogEntry: Sendable {
         self.endedAt = endedAt
         self.presetName = presetName
         self.language = language
-        self.paragraphs = paragraphs
+        self.paragraphs = paragraphs?.isEmpty == true ? nil : paragraphs
     }
 }
 

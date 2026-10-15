@@ -52,9 +52,10 @@ struct LogEntrySaver: Sendable {
             paragraphs: paragraphs
         )
         let kept: [Float]? = {
-            guard preset.keepAudio, let samples else { return nil }
+            guard preset.keepAudio else { return nil }
+            // A log whose mic gave nothing still keeps the system track.
             guard let systemSamples, !systemSamples.isEmpty else { return samples }
-            return AudioMix.mix(samples, systemSamples)
+            return AudioMix.mix(samples ?? [], systemSamples)
         }()
         do {
             let url = try await LogEntryWriter.write(

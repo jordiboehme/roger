@@ -14,3 +14,28 @@ enum AudioMix {
         return out
     }
 }
+
+extension AudioMix {
+    /// Offsets at or above this are not trusted as a start delay (a clock
+    /// jump or a stale date); the tracks are then left as they are.
+    static let maxStartOffset: TimeInterval = 2
+
+    /// Lines up two tracks that started at different moments: the track that
+    /// started later gets `offset` seconds of silence at the front, so both
+    /// count from the earlier start. `offset` is `bStart - aStart`.
+    static func alignStarts(
+        _ a: [Float], _ b: [Float], offset: TimeInterval, sampleRate: Double = 16_000
+    ) -> (a: [Float], b: [Float]) {
+        guard offset != 0, abs(offset) < maxStartOffset else { return (a, b) }
+        let padding = [Float](repeating: 0, count: Int((abs(offset) * sampleRate).rounded()))
+        return offset > 0 ? (a, padding + b) : (padding + a, b)
+    }
+
+    /// `alignStarts` from the two start dates. Unchanged when either is unknown.
+    static func alignStarts(
+        _ a: [Float], startedAt aStart: Date?, _ b: [Float], startedAt bStart: Date?, sampleRate: Double = 16_000
+    ) -> (a: [Float], b: [Float]) {
+        guard let aStart, let bStart else { return (a, b) }
+        return alignStarts(a, b, offset: bStart.timeIntervalSince(aStart), sampleRate: sampleRate)
+    }
+}

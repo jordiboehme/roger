@@ -36,4 +36,12 @@ struct LogEntryParagraphsTests {
         #expect(md.contains("speaker_count: 1"))
         #expect(md.contains("**Me** [00:00:00"))
     }
+
+    @Test func emptyParagraphsAreAPlainLog() {
+        let e = LogEntry(text: "Plain words here", startedAt: start, endedAt: start.addingTimeInterval(65),
+                         presetName: "Log", language: "en", paragraphs: [])
+        #expect(e.paragraphs == nil)
+        let md = LogEntryWriter.content(for: e, audioFileName: nil, generatedAt: start)
+        #expect(!md.contains("speaker_count"))
+    }
 }
