@@ -40,11 +40,11 @@ final class MeetingRecordingService {
     private(set) var state: State = .idle
     private(set) var lastSession: MeetingSession?
 
-    /// Called after `transcript.md` is on disk, on the first finalisation
-    /// and on every retry, with the library root the session was written
-    /// under. The coordinator records the change for agents.
-    /// Called once `transcript.md` is on disk. `isFirst` is false for a
-    /// retry of a session that had a transcript before.
+    /// Called each time `transcript.md` is on disk, on the first
+    /// finalisation and on every retry, with the library root the session
+    /// was written under. The coordinator records the change for agents.
+    /// `isFirst` is false for a retry of a session that had a transcript
+    /// before; only the first one runs the meeting command.
     @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL, _ isFirst: Bool) -> Void)?
 
     private let appState: AppState
