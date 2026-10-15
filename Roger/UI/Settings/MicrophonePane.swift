@@ -77,6 +77,7 @@ struct MicrophonePane: View {
             }
         }
         .onAppear { refresh() }
+        .onChange(of: coordinator.inputDevicesGeneration) { refresh() }
         .onReceive(Timer.publish(every: 3, on: .main, in: .common).autoconnect()) { _ in
             refresh()
         }

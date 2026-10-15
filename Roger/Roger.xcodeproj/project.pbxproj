@@ -73,6 +73,7 @@
 		3D373E4CE78850BF325A531F /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54350DBC63A7410F5740729D /* SettingsWindowController.swift */; };
 		3DC61A2BFB150E7588739A01 /* LogEntryWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A30F7C94DC4E26D9241B863 /* LogEntryWriterTests.swift */; };
 		3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60172AF22E507A9E6C7B0C69 /* ClaudeService.swift */; };
+		3FE455F75363D99D579A7683 /* InputDeviceMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CE6D5155D3FFEB0AE5D732B /* InputDeviceMonitorTests.swift */; };
 		40AFF193C01DE1AA39AEB2D9 /* LibraryDayGroupingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC9FC37881BBEBF2A7B1A127 /* LibraryDayGroupingTests.swift */; };
 		41E1890AA5C571B933F51B52 /* MeetingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CAA84EF72C5EA4EE9B47743 /* MeetingSession.swift */; };
 		42F754456471DE0EA6EF44DC /* AudioMixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA179B8E80FC2059C7FC559 /* AudioMixTests.swift */; };
@@ -251,6 +252,7 @@
 		FB1545A62C007EA4AEEBB599 /* LibraryLayoutRootTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA01C8724AB9ED3934CF5E4 /* LibraryLayoutRootTests.swift */; };
 		FC3017E7BFE3DB9638FA03C4 /* AboutPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5716D23541C7E8416FCC51 /* AboutPane.swift */; };
 		FC3E2727AD8FB9B7357183B3 /* MeetingRecordingErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A98D16722DAB7EBA7ACD4E6 /* MeetingRecordingErrorTests.swift */; };
+		FDFC51230AA3FABBF7EC5AF3 /* InputDeviceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 078CBAF3AB15D0D9A1D34D91 /* InputDeviceMonitor.swift */; };
 		FE64AEE138066D2C8AE21053 /* RogerToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43C2C5AF4B40DD4D6E92BFD /* RogerToolsTests.swift */; };
 		FF0470CEC2ED70AAEBE43398 /* LibraryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660D8E86BCACE7AB1DC5B76E /* LibraryDetailView.swift */; };
 /* End PBXBuildFile section */
@@ -315,6 +317,7 @@
 		0473EEFBF3577B6F52856DDB /* CapsLockRemapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapsLockRemapTests.swift; sourceTree = "<group>"; };
 		0609432308A2B9928260FDB7 /* MeetingSegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSegmentWriter.swift; sourceTree = "<group>"; };
 		0694D07DD50726E0AD1BF6F4 /* MeetingRecordingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingError.swift; sourceTree = "<group>"; };
+		078CBAF3AB15D0D9A1D34D91 /* InputDeviceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputDeviceMonitor.swift; sourceTree = "<group>"; };
 		0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMicMute.swift; sourceTree = "<group>"; };
 		0997DA52F9A4F91DEB55F863 /* LibraryPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPane.swift; sourceTree = "<group>"; };
 		0A2A10D37FF70683D53D8418 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
@@ -397,6 +400,7 @@
 		5A30F7C94DC4E26D9241B863 /* LogEntryWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntryWriterTests.swift; sourceTree = "<group>"; };
 		5A714446F3E75A567DF819F1 /* ChangeEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeEvent.swift; sourceTree = "<group>"; };
 		5A97BC097A0F02C2BCDCB2BE /* MeetingSegmentWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSegmentWriterTests.swift; sourceTree = "<group>"; };
+		5CE6D5155D3FFEB0AE5D732B /* InputDeviceMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputDeviceMonitorTests.swift; sourceTree = "<group>"; };
 		5E99BB54A3C69D5F4DBB2992 /* MeetingExtraFilesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExtraFilesTests.swift; sourceTree = "<group>"; };
 		60172AF22E507A9E6C7B0C69 /* ClaudeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeService.swift; sourceTree = "<group>"; };
 		60C6A47789997F25F9450E3A /* MediaTranscriptFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTranscriptFormatter.swift; sourceTree = "<group>"; };
@@ -907,6 +911,7 @@
 				C408158DEDF8423756E87B9E /* GeneralSettingsTests.swift */,
 				C391930AD0315F22CBA0A101 /* HarnessRegistrationTests.swift */,
 				340C4CF1F177E8195BF12265 /* InputChoiceTests.swift */,
+				5CE6D5155D3FFEB0AE5D732B /* InputDeviceMonitorTests.swift */,
 				F42460F39AD2062C61FBC6E1 /* LibraryActionsTests.swift */,
 				E02561A7ACADCB2ADD63D6AE /* LibraryChangeRecorderTests.swift */,
 				CC9FC37881BBEBF2A7B1A127 /* LibraryDayGroupingTests.swift */,
@@ -964,6 +969,7 @@
 				7BB7EF6DCB747C39ABC4C31B /* AudioMix.swift */,
 				781157CAABCA4DE4A5912EE7 /* CapsLockRemap.swift */,
 				83E66D0A924C57BD54A258ED /* HotkeyManager.swift */,
+				078CBAF3AB15D0D9A1D34D91 /* InputDeviceMonitor.swift */,
 				B6DCE169264032BC365088F8 /* KeychainManager.swift */,
 				60DACC0A49F248A6E150F7F7 /* LibraryMigration.swift */,
 				1170DD82879908D901D781E4 /* LibraryMigrationRun.swift */,
@@ -1234,6 +1240,7 @@
 				D996F8C52ACF7DE4E574ED93 /* HarnessRegistration.swift in Sources */,
 				BDC5E4A104A1D4B719B8B897 /* HotkeyManager.swift in Sources */,
 				BBCC0D21592EDA167B9550F3 /* InputChoice.swift in Sources */,
+				FDFC51230AA3FABBF7EC5AF3 /* InputDeviceMonitor.swift in Sources */,
 				D3166B29587CA700D443E718 /* KeyComboBadge.swift in Sources */,
 				A70033CDF03B5F0F6D4386CE /* KeychainManager.swift in Sources */,
 				9CCFE22AD4EA6C7BEF74F76D /* LLMProviderType.swift in Sources */,
@@ -1407,6 +1414,7 @@
 				70BB3E88FA98A7C3729116D2 /* GeneralSettingsTests.swift in Sources */,
 				30BDB5724D517172D44A8AF9 /* HarnessRegistrationTests.swift in Sources */,
 				30A6FF04167EA38572F27E28 /* InputChoiceTests.swift in Sources */,
+				3FE455F75363D99D579A7683 /* InputDeviceMonitorTests.swift in Sources */,
 				5F1C9E3ED837540D0ABEE309 /* LibraryActionsTests.swift in Sources */,
 				A2221BFFACCC1DECCB9B497D /* LibraryChangeRecorderTests.swift in Sources */,
 				40AFF193C01DE1AA39AEB2D9 /* LibraryDayGroupingTests.swift in Sources */,

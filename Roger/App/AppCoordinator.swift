@@ -50,6 +50,10 @@ final class AppCoordinator {
     private var activeRecordingLanguageOverride: String?
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
+    private var warmUpTracker = MicWarmUpTracker()
+    private var inputDeviceMonitor: InputDeviceMonitor?
+    /// Bumped after every debounced device change, so the Microphone pane can refresh.
+    private(set) var inputDevicesGeneration = 0
     private var maxDurationTask: Task<Void, Never>?
     /// Currently-transcribing file, or nil when nothing is in flight. The
     /// floating indicator observes this to show the "Transcribing X" overlay.
@@ -845,8 +849,26 @@ final class AppCoordinator {
         guard appState.dictationState == .idle else { return }
         isWarmingUp = true
         defer { isWarmingUp = false }
-        audioCaptureService.preferredInputUID = appState.resolvedInputDeviceUID
+        let resolved = appState.resolvedInputDeviceUID
+        audioCaptureService.preferredInputUID = resolved
+        warmUpTracker.didWarmUp(resolved: resolved)
         await audioCaptureService.warmUp()
+    }
+
+    /// Warms the microphone up again when a device connects or disconnects and
+    /// the priority list now resolves to another one. Lives for the app lifetime.
+    func startInputDeviceMonitoring() {
+        guard inputDeviceMonitor == nil else { return }
+        let monitor = InputDeviceMonitor { [weak self] in
+            guard let self else { return }
+            self.inputDevicesGeneration += 1
+            let resolved = self.appState.resolvedInputDeviceUID
+            guard self.warmUpTracker.shouldWarmUp(resolved: resolved) else { return }
+            logger.info("Input devices changed, Roger now uses \(resolved ?? "default", privacy: .public)")
+            Task { await self.warmUpMicrophone() }
+        }
+        inputDeviceMonitor = monitor
+        monitor.start()
     }
 
     // MARK: - Model Management
