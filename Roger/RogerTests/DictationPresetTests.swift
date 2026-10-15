@@ -46,4 +46,39 @@ struct DictationPresetTests {
         #expect(fallback.enableCustomDictionary == preset.enableCustomDictionary)
         #expect(fallback.id == preset.id)
     }
+
+    @Test func legacyPresetDecodesWithSystemAudioDefaults() throws {
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000008","name":"Log","isBuiltIn":true,
+         "enableFillerRemoval":true,"enableDedup":true,"enableAIFormatting":false,
+         "enableCustomDictionary":false,"enableRewrite":false,"aiPrompt":"","rewritePrompt":"",
+         "dictionaryEntries":[],"output":"logEntry","keepAudio":true}
+        """
+        let preset = try JSONDecoder().decode(DictationPreset.self, from: Data(json.utf8))
+        #expect(preset.recordSystemAudio == false)
+        #expect(preset.commandID == nil)
+        #expect(preset.keepAudio == true)
+    }
+
+    @Test func systemAudioAndCommandRoundTrip() throws {
+        var preset = DictationPreset.log
+        preset.recordSystemAudio = true
+        preset.commandID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")
+        let data = try JSONEncoder().encode(preset)
+        let back = try JSONDecoder().decode(DictationPreset.self, from: data)
+        #expect(back == preset)
+    }
+
+    @Test func withoutAIKeepsSystemAudioAndCommand() {
+        var preset = DictationPreset.log
+        preset.recordSystemAudio = true
+        preset.commandID = UUID()
+        #expect(preset.withoutAI.recordSystemAudio == true)
+        #expect(preset.withoutAI.commandID == preset.commandID)
+    }
+
+    @Test func builtInLogPresetShipsWithSystemAudioOff() {
+        #expect(DictationPreset.log.recordSystemAudio == false)
+        #expect(DictationPreset.log.commandID == nil)
+    }
 }
