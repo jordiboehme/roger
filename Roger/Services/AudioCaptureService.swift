@@ -6,6 +6,9 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Audio
 
 final class AudioCaptureService: @unchecked Sendable {
     private var audioEngine: AVAudioEngine?
+    /// The engine a running warm-up started, nil otherwise. A recording or probe
+    /// that starts meanwhile takes over; the warm-up then leaves its engine alone.
+    private var warmUpEngine: AVAudioEngine?
     private var capturedSamples: [Float] = []
     private var tapBufferCount = 0
     private var captureStartedAt: Date?
@@ -55,9 +58,17 @@ final class AudioCaptureService: @unchecked Sendable {
     /// Runs a short silent capture to wake the audio HAL so the next real
     /// capture gets samples immediately. Never throws; logs and returns.
     func warmUp() async {
+        guard audioEngine == nil else { return }
         do {
-            try startCapture()
+            try startCapture(forWarmUp: true)
+            guard let mine = warmUpEngine else { return }
             try? await Task.sleep(nanoseconds: UInt64(Self.warmUpDuration * 1_000_000_000))
+            // A recording took over while we slept: it owns the engine now.
+            guard warmUpEngine === mine, audioEngine === mine else {
+                logger.info("Mic warm-up superseded by a recording")
+                return
+            }
+            warmUpEngine = nil
             let result = stopCapture()
             let count = result.samples?.count ?? 0
             if result.health == .halStarved {
@@ -73,8 +84,21 @@ final class AudioCaptureService: @unchecked Sendable {
     }
 
     func startCapture() throws {
+        try startCapture(forWarmUp: false)
+    }
+
+    private func startCapture(forWarmUp: Bool) throws {
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw AudioCaptureError.permissionDenied
+        }
+
+        // A recording always wins: drop a warm-up that is still running.
+        if !forWarmUp, let stale = warmUpEngine {
+            stale.inputNode.removeTap(onBus: 0)
+            stale.stop()
+            if audioEngine === stale { audioEngine = nil }
+            warmUpEngine = nil
+            logger.info("Stopped a running mic warm-up for a recording")
         }
 
         let engine = AVAudioEngine()
@@ -151,6 +175,7 @@ final class AudioCaptureService: @unchecked Sendable {
         engine.prepare()
         try engine.start()
         audioEngine = engine
+        if forWarmUp { warmUpEngine = engine }
         captureStartedAt = Date()
         let boundDeviceID = currentDeviceID(for: inputNode)
         let boundDeviceDescription: String
