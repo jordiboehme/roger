@@ -3,19 +3,21 @@
 #
 # Usage: scripts/ingest-roger.sh <prompt> [max-runs]
 #
-# Example:
-#   scripts/ingest-roger.sh "Use /ingest-roger to read what is new in Roger and fold it into Crystalline with crystalline-capture."
+# Examples:
+#   scripts/ingest-roger.sh "Use the ingest-roger skill to read what is new in Roger. Summarize it."
+#   EXTRA_MCP_SERVERS=crystalline scripts/ingest-roger.sh "Use the ingest-roger skill to read what is new in Roger and fold it into Crystalline with crystalline-capture."
 #
 # Environment:
-#   CLAUDE_BIN              Claude Code binary (default: claude)
-#   ROGER_MCP_SERVER        name of the Roger MCP server (default: roger)
-#   CRYSTALLINE_MCP_SERVER  name of the Crystalline MCP server (default: crystalline)
+#   CLAUDE_BIN         Claude Code binary (default: claude)
+#   ROGER_MCP_SERVER   name of the Roger MCP server (default: roger)
+#   EXTRA_MCP_SERVERS  more MCP servers whose tools are allowed, separated by
+#                      spaces or commas, for example "crystalline" (default: none)
 #
-# Only the tools of these two servers are allowed. Exits 0 when everything
-# was ingested, 1 when a run failed (the next run repeats the same range),
-# 2 for wrong arguments. Also exits 0 when max-runs ran out and there is
-# still more: the next call goes on. A run counts only by its last
-# non-empty line (RESULT: ...). Installs nothing.
+# Only the tools of the Roger server and of EXTRA_MCP_SERVERS are allowed.
+# Exits 0 when everything was ingested, 1 when a run failed (the next run
+# repeats the same range), 2 for wrong arguments. Also exits 0 when max-runs
+# ran out and there is still more: the next call goes on. A run counts only
+# by its last non-empty line (RESULT: ...). Installs nothing.
 set -euo pipefail
 
 prompt="${1:-}"
@@ -31,7 +33,11 @@ if ! [[ "$runs" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 claude_bin="${CLAUDE_BIN:-claude}"
-allowed="mcp__${ROGER_MCP_SERVER:-roger},mcp__${CRYSTALLINE_MCP_SERVER:-crystalline}"
+allowed="mcp__${ROGER_MCP_SERVER:-roger}"
+extra="${EXTRA_MCP_SERVERS:-}"
+for server in ${extra//,/ }; do
+  allowed="$allowed,mcp__$server"
+done
 
 for ((run = 1; run <= runs; run++)); do
   if ! output=$("$claude_bin" --allowedTools "$allowed" -p "$prompt" 2>&1); then

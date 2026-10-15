@@ -29,7 +29,7 @@ Call `status`. If its `state` is not `ready`, stop with `RESULT: failed: <the me
 
 ## What an entry is
 
-- Each entry is one item in its latest state. It starts with the line `==== roger entry <seq> ====`, lists its fields (`seq`, `event`, `kind`, `key`, `title`, `date`, `duration`, `paths`) and has the item's Markdown after a blank line.
+- Each entry is one item in its latest state. It starts with the line `==== roger entry <seq> ====`, lists its fields (`seq`, `event`, `kind`, `key` and, when known, `title`, `date`, `duration` and `paths`) and has the item's Markdown after a blank line.
 - Kinds: `log` (a short spoken note, sometimes with "Me" and "Other N" speakers when it also recorded the computer's sound), `meeting` (a transcript with speakers and optional screenshots) and `transcript` (a transcript of a media file).
 - Events: `created`, `updated` and `deleted`. On `updated`, read the item again as a whole: the earlier version is gone. On `deleted`, what was made from the item may need to go. An entry with `missing: true` names an item whose file is gone; skip it and mention it in your summary.
 - `roger://<key>` is the stable address of an item. Use it wherever your knowledge system records where something came from.
