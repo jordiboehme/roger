@@ -39,4 +39,26 @@ struct AudioMixTests {
         let unknown = AudioMix.alignStarts([1], startedAt: nil, [2], startedAt: mic, sampleRate: 10)
         #expect(unknown.b == [2])
     }
+
+    /// A system-only log: the mic gave nothing but its start date is known.
+    @Test func padsTheSystemTrackWhenTheMicIsEmpty() {
+        let mic = Date(timeIntervalSince1970: 100)
+        let aligned = AudioMix.alignStarts([], startedAt: mic, [2], startedAt: mic.addingTimeInterval(0.2), sampleRate: 10)
+        #expect(aligned.a == [])
+        #expect(aligned.b == [0, 0, 2])
+    }
+
+    @Test func logTracksKeepAMissingMicMissing() {
+        let mic = Date(timeIntervalSince1970: 100)
+        let later = AudioMix.alignLogTracks(mic: nil, micStartedAt: mic, system: [2], systemStartedAt: mic.addingTimeInterval(0.1), sampleRate: 10)
+        #expect(later.mic == nil)
+        #expect(later.system == [0, 2])
+        // The system track started first: the missing mic gets no silence.
+        let earlier = AudioMix.alignLogTracks(mic: nil, micStartedAt: mic, system: [2], systemStartedAt: mic.addingTimeInterval(-0.1), sampleRate: 10)
+        #expect(earlier.mic == nil)
+        #expect(earlier.system == [2])
+        let both = AudioMix.alignLogTracks(mic: [1], micStartedAt: mic, system: [2], systemStartedAt: mic.addingTimeInterval(0.1), sampleRate: 10)
+        #expect(both.mic == [1])
+        #expect(both.system == [0, 2])
+    }
 }

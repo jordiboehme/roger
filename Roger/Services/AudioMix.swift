@@ -38,4 +38,15 @@ extension AudioMix {
         guard let aStart, let bStart else { return (a, b) }
         return alignStarts(a, b, offset: bStart.timeIntervalSince(aStart), sampleRate: sampleRate)
     }
+
+    /// The two tracks of a log, lined up to the recording start (the mic
+    /// start). `mic` is nil when the mic gave nothing and stays nil, but the
+    /// system track is still padded by its delay, so paragraph times count
+    /// from the recording start.
+    static func alignLogTracks(
+        mic: [Float]?, micStartedAt: Date?, system: [Float], systemStartedAt: Date?, sampleRate: Double = 16_000
+    ) -> (mic: [Float]?, system: [Float]) {
+        let aligned = alignStarts(mic ?? [], startedAt: micStartedAt, system, startedAt: systemStartedAt, sampleRate: sampleRate)
+        return (mic == nil ? nil : aligned.a, aligned.b)
+    }
 }

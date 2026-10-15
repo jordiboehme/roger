@@ -601,16 +601,12 @@ final class AppCoordinator {
         appState.dictationState = .transcribing
         // The tap starts a moment after the mic. Pad the later track so
         // paragraph times and the kept mix line up.
-        var mic = rawMic
-        var system = rawSystem
-        if let rawMic {
-            let aligned = AudioMix.alignStarts(rawMic, startedAt: micStartedAt, rawSystem, startedAt: systemStartedAt)
-            mic = aligned.a
-            system = aligned.b
-            if let micStartedAt, let systemStartedAt {
-                let offset = systemStartedAt.timeIntervalSince(micStartedAt)
-                logger.info("Log tracks start offset: \(String(format: "%.3f", offset), privacy: .public)s (system after mic)")
-            }
+        // Also without mic samples: the mic start is the recording start.
+        let (mic, system) = AudioMix.alignLogTracks(mic: rawMic, micStartedAt: micStartedAt,
+                                                    system: rawSystem, systemStartedAt: systemStartedAt)
+        if let micStartedAt, let systemStartedAt {
+            let offset = systemStartedAt.timeIntervalSince(micStartedAt)
+            logger.info("Log tracks start offset: \(String(format: "%.3f", offset), privacy: .public)s (system after mic)")
         }
         defer { activeRecordingPresetID = nil }
         let preset = appState.presets.first { $0.id == presetID } ?? appState.activePreset
