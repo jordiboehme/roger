@@ -42,6 +42,7 @@ struct FilesPane: View {
                         : "Adds a label for each speaker.",
                     isOn: $state.fileTranscriptionDiarize
                 )
+                CommandPicker(title: "After a transcript", note: "Runs a command from Settings > Commands when the transcript is saved.", selection: $state.fileTranscriptCommandID, commands: state.commands)
             } header: {
                 Text("Processing")
             }

@@ -157,6 +157,7 @@ struct PresetsPane: View {
             PresetDetailForm(
                 preset: binding(for: id, fallback: preset),
                 provider: coordinator.appState.selectedLLMProvider,
+                commands: coordinator.appState.commands,
                 onReset: { pendingReset = preset },
                 onDelete: { pendingDelete = preset }
             )
@@ -288,6 +289,7 @@ private struct PresetKeyBadge: View {
 private struct PresetDetailForm: View {
     @Binding var preset: DictationPreset
     let provider: LLMProviderType
+    let commands: [AgentCommand]
     let onReset: () -> Void
     let onDelete: () -> Void
     @State private var advancedExpanded = false
@@ -333,6 +335,7 @@ private struct PresetDetailForm: View {
             Section {
                 if preset.output == .logEntry {
                     SettingsToggle(title: "Keep audio", note: "Also saves the recording as an .m4a file next to the entry.", isOn: $preset.keepAudio)
+                    CommandPicker(title: "After saving", note: "Runs a command from Settings > Commands.", selection: $preset.commandID, commands: commands)
                 } else {
                     Picker("Append at the end", selection: $preset.trailingCharacter) {
                         ForEach(TrailingCharacter.allCases) { choice in

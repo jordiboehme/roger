@@ -189,7 +189,9 @@ final class AppCoordinator {
             )
         }
         meetingRecorder.onTranscriptWritten = { [weak self] url, root in
-            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
+            guard let self else { return }
+            self.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
+            Task { await self.runCommand(self.appState.meetingCommandID, markdownURL: url, kind: .meeting, root: root) }
         }
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
@@ -639,6 +641,7 @@ final class AppCoordinator {
             appState.lastTranscription = text
             appState.lastLogEntryURL = url
             logger.notice("Log entry saved: \(url.path, privacy: .public)")
+            Task { await self.runCommand(preset.commandID, markdownURL: url, kind: .log, root: layout.root) }
         case .libraryMissing(let message):
             logger.error("Log entry write failed: \(message, privacy: .public)")
             appState.lastTranscription = text
@@ -958,6 +961,7 @@ final class AppCoordinator {
             }
             libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript, root: layout.root)
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
+            Task { await self.runCommand(self.appState.fileTranscriptCommandID, markdownURL: outputURL, kind: .transcript, root: layout.root) }
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
             await finishFileTranscription(error: nil)
         } catch is CancellationError {

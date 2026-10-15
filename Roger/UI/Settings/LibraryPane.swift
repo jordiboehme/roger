@@ -61,6 +61,7 @@ struct LibraryPane: View {
                     note: "When off, Roger deletes mic.m4a and system.m4a once the transcript is written.",
                     isOn: $state.keepMeetingAudio
                 )
+                CommandPicker(title: "After a meeting", note: "Runs a command from Settings > Commands when the transcript is saved.", selection: $state.meetingCommandID, commands: state.commands)
                 LocalPresetMenu(
                     title: "Preset",
                     note: "Cleans up the transcript on your Mac. Presets with AI steps cannot be picked.",
