@@ -96,6 +96,7 @@
 		63A129886E04D1A788F4BE57 /* MeetingMarkersSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97E53E2F1E7AB36765A6C95 /* MeetingMarkersSummaryTests.swift */; };
 		63E9541F098792777784F32A /* ChangeKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E33EF24B463C412CD57E5C1 /* ChangeKey.swift */; };
 		65446BE7F96162ED2CA7D589 /* LibraryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6818A8648621373E39DA643E /* LibraryListView.swift */; };
+		675D977FA1C06420F737FD90 /* CommandTemplateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF837D912FF727C9B147E49E /* CommandTemplateTests.swift */; };
 		68D726C75B0321F9393BBD39 /* LibraryPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285B04BEBD9B6CE44D48901A /* LibraryPath.swift */; };
 		6CB21C458EC0B49CE990D65E /* OllamaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD62AA2204EFE4A8FF5B753A /* OllamaService.swift */; };
 		6CF26F823C94F18A710B09A4 /* MeetingFinalisationSteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81067D8E345FEC4A864D6C3 /* MeetingFinalisationSteps.swift */; };
@@ -197,6 +198,7 @@
 		D13A328850B8D7C25C30690C /* RogerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3781C2D3C0D65D52F9F304DD /* RogerApp.swift */; };
 		D1EF3256E468DE4DBC441F4D /* TextInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166BD6B1D214E17B68F76C2D /* TextInputTests.swift */; };
 		D3166B29587CA700D443E718 /* KeyComboBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */; };
+		D3EB108FBCD7E9DD7CE5CA6A /* CommandTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A665715C3CA3A994D123E51F /* CommandTemplate.swift */; };
 		D3F67EF90A6CE6290B98AF91 /* RogerMCPLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CFAFE4614B732A2CE1C0AFE /* RogerMCPLocation.swift */; };
 		D40D8905815EB05DB08EC4F3 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FE02D8F52A5C784CB71EF8 /* OnboardingView.swift */; };
 		D4F21472903DC9415D92D6C7 /* LibraryFolderWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E056F8B4DCBF23CF6EBC783F /* LibraryFolderWatcher.swift */; };
@@ -429,6 +431,7 @@
 		A4BE6BF19D0944EB64367E88 /* MeetingMarkersSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingMarkersSummary.swift; sourceTree = "<group>"; };
 		A4F9A8C17CD80A6154B89A09 /* LibraryItemReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryItemReader.swift; sourceTree = "<group>"; };
 		A5A9E4B7A480FD5ACF0FD802 /* MeetingCheckpointDropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCheckpointDropView.swift; sourceTree = "<group>"; };
+		A665715C3CA3A994D123E51F /* CommandTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandTemplate.swift; sourceTree = "<group>"; };
 		A926583088788AE7FF75290B /* MeetingRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingService.swift; sourceTree = "<group>"; };
 		AAE14D0011E939FFE563B9FC /* AgentsStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentsStatusTests.swift; sourceTree = "<group>"; };
 		ACF49F8F0C439EFF6AB3AF92 /* Roger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Roger.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -503,6 +506,7 @@
 		EE81E697AB2197B2446740F8 /* ToolCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCatalog.swift; sourceTree = "<group>"; };
 		EF0444A920277D16F59A115F /* ChangeLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeLog.swift; sourceTree = "<group>"; };
 		EF555C8794667F4A3FA06220 /* HarnessRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessRegistration.swift; sourceTree = "<group>"; };
+		EF837D912FF727C9B147E49E /* CommandTemplateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandTemplateTests.swift; sourceTree = "<group>"; };
 		EFE3681A1C3BA74BCDC618A8 /* LibraryMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMarkdown.swift; sourceTree = "<group>"; };
 		F08E0C73B1B6D8BD8F3594FF /* TempDir.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempDir.swift; sourceTree = "<group>"; };
 		F18B373C83DA59E3DF960BDD /* LibraryLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryLocatorTests.swift; sourceTree = "<group>"; };
@@ -630,6 +634,7 @@
 				43ED8418FB9EEF9C299D055E /* ChangeKeyTests.swift */,
 				FBC9E80454FB6E973D81C0E7 /* ChangeLogTests.swift */,
 				67E0F1749590216A069999E2 /* ChangeQueryTests.swift */,
+				EF837D912FF727C9B147E49E /* CommandTemplateTests.swift */,
 				D9D8C0B3AAD9254CA1F92B19 /* ConsumerBookmarksTests.swift */,
 				CD1EFEE269145DC2A0DD49C6 /* FileIOTests.swift */,
 				7FE54556D7A08CBAEBE91A6A /* ItemResolverTests.swift */,
@@ -659,6 +664,7 @@
 				3E33EF24B463C412CD57E5C1 /* ChangeKey.swift */,
 				EF0444A920277D16F59A115F /* ChangeLog.swift */,
 				782259E31777E9CFFB808886 /* ChangeQuery.swift */,
+				A665715C3CA3A994D123E51F /* CommandTemplate.swift */,
 				4E550BEC1687CDFD45D5B8A8 /* ConsumerBookmarks.swift */,
 				C6966A9925016642A06A300E /* ExternalTranscriptRegistry.swift */,
 				C2A97190D4DE15892E9DE08F /* FileLock.swift */,
@@ -1257,6 +1263,7 @@
 				63E9541F098792777784F32A /* ChangeKey.swift in Sources */,
 				A9E180D66BA8F3AE93C40894 /* ChangeLog.swift in Sources */,
 				1B57969A1E13A99F02D0C1BC /* ChangeQuery.swift in Sources */,
+				D3EB108FBCD7E9DD7CE5CA6A /* CommandTemplate.swift in Sources */,
 				7D32597C7F32D66498356C33 /* ConsumerBookmarks.swift in Sources */,
 				E13EC582600D8932A5F9853F /* ExternalTranscriptRegistry.swift in Sources */,
 				B913CAC35D6FA07145AF403F /* FileLock.swift in Sources */,
@@ -1289,6 +1296,7 @@
 				AD71BB51006920A98AAD87C3 /* ChangeKeyTests.swift in Sources */,
 				A66EEFAEAB99F3C2FA9FDAC9 /* ChangeLogTests.swift in Sources */,
 				14FDAFC395B9BBF6B3BC3330 /* ChangeQueryTests.swift in Sources */,
+				675D977FA1C06420F737FD90 /* CommandTemplateTests.swift in Sources */,
 				91892483EDD6A9ECD1D0AC8E /* ConsumerBookmarksTests.swift in Sources */,
 				6E841ED21747789F09B7CDE3 /* FileIOTests.swift in Sources */,
 				C67D96CC7D8E25FB280D0B60 /* ItemResolverTests.swift in Sources */,
