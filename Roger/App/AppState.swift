@@ -369,15 +369,15 @@ final class AppState {
         if !defaults.bool(forKey: RecordingDurationMigration.migratedKey) {
             defaults.set(true, forKey: RecordingDurationMigration.migratedKey)
         }
-        if let data = defaults.data(forKey: "inputPriority"),
-           let stored = try? JSONDecoder().decode([InputChoice].self, from: data) {
-            self.inputPriority = InputChoice.repaired(stored)
-        } else {
-            let legacy = defaults.string(forKey: "selectedInputDeviceUID")
-            let names = Dictionary(AudioDeviceLookup.availableInputs().map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
-            let migrated = InputChoice.migrated(selectedUID: legacy, nameForUID: { names[$0] })
-            self.inputPriority = migrated
-            if let data = try? JSONEncoder().encode(migrated) { defaults.set(data, forKey: "inputPriority") }
+        let inputs = InputChoice.load(
+            stored: defaults.data(forKey: "inputPriority"),
+            legacyUID: defaults.string(forKey: "selectedInputDeviceUID"),
+            nameForUID: { uid in AudioDeviceLookup.availableInputs().first { $0.id == uid }?.name }
+        )
+        self.inputPriority = inputs.list
+        if inputs.write {
+            // didSet does not run in init.
+            if let data = try? JSONEncoder().encode(inputs.list) { defaults.set(data, forKey: "inputPriority") }
             defaults.removeObject(forKey: "selectedInputDeviceUID")
         }
 

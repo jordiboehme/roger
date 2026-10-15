@@ -40,4 +40,50 @@ struct InputChoiceTests {
         let back = try JSONDecoder().decode([InputChoice].self, from: JSONEncoder().encode(list))
         #expect(back == list)
     }
+
+    @Test func resolveAsksNothingWhenSystemDefaultComesFirst() {
+        let list: [InputChoice] = [.systemDefault, .device(uid: "webcam", name: "W")]
+        let uid = InputChoice.resolve(list) { _ in
+            Issue.record("Core Audio must not be asked for a list that starts with System default")
+            return true
+        }
+        #expect(uid == nil)
+    }
+
+    @Test func resolveAsksOnlyUpToTheFirstConnected() {
+        let list: [InputChoice] = [.device(uid: "a", name: "A"), .device(uid: "b", name: "B"), .device(uid: "c", name: "C"), .systemDefault]
+        var asked: [String] = []
+        let uid = InputChoice.resolve(list) { asked.append($0); return $0 == "b" }
+        #expect(uid == "b")
+        #expect(asked == ["a", "b"])
+    }
+
+    @Test func loadKeepsACleanStoredList() throws {
+        let list: [InputChoice] = [.device(uid: "a", name: "A"), .systemDefault]
+        let loaded = InputChoice.load(stored: try JSONEncoder().encode(list), legacyUID: "old") { _ in
+            Issue.record("no migration for a stored list")
+            return nil
+        }
+        #expect(loaded.list == list)
+        #expect(!loaded.write)
+    }
+
+    @Test func loadRepairsAndWritesBack() throws {
+        let a = InputChoice.device(uid: "a", name: "A")
+        let loaded = InputChoice.load(stored: try JSONEncoder().encode([a, a]), legacyUID: nil) { _ in nil }
+        #expect(loaded.list == [a, .systemDefault])
+        #expect(loaded.write)
+    }
+
+    @Test func loadMigratesWhenNothingIsStored() {
+        let loaded = InputChoice.load(stored: nil, legacyUID: "usb-1") { _ in "Webcam" }
+        #expect(loaded.list == [.device(uid: "usb-1", name: "Webcam"), .systemDefault])
+        #expect(loaded.write)
+    }
+
+    @Test func loadMigratesWhenTheStoredListIsUnreadable() {
+        let loaded = InputChoice.load(stored: Data("not json".utf8), legacyUID: nil) { _ in nil }
+        #expect(loaded.list == [.systemDefault])
+        #expect(loaded.write)
+    }
 }

@@ -1,4 +1,3 @@
-import CoreAudio
 import Foundation
 import SwiftUI
 import Testing
@@ -6,14 +5,6 @@ import Testing
 
 @MainActor
 struct TranscriptionPanesTests {
-    @Test func transportNames() {
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeBuiltIn) == "Built-in")
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeUSB) == "USB")
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeBluetoothLE) == "Bluetooth")
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeContinuityCaptureWireless) == "iPhone")
-        #expect(AudioDeviceLookup.transportName(forType: 0) == nil)
-    }
-
     @Test func providerMenuSaysWhereTextGoes() {
         #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .available) == "Apple Intelligence (local)")
         #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .unavailable(.needsMacOS26)) == "Apple Intelligence (macOS 26 or later)")

@@ -77,10 +77,8 @@ struct MicrophonePane: View {
             }
         }
         .onAppear { refresh() }
+        // Device list and default input changes arrive here, debounced.
         .onChange(of: coordinator.inputDevicesGeneration) { refresh() }
-        .onReceive(Timer.publish(every: 3, on: .main, in: .common).autoconnect()) { _ in
-            refresh()
-        }
     }
 
     private var devicesNotInList: [AudioDeviceLookup.InputDevice] {
@@ -97,7 +95,7 @@ struct MicrophonePane: View {
 
     private func note(for choice: InputChoice) -> String {
         switch choice {
-        case .systemDefault: return "Now: \(systemDefaultName ?? "none")"
+        case .systemDefault: return "macOS uses \(systemDefaultName ?? "no input device")"
         case .device(let uid, _): return connected.contains(uid) ? "Connected" : "Not connected"
         }
     }

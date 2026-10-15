@@ -28,12 +28,30 @@ enum InputChoice: Codable, Hashable, Identifiable {
         return result
     }
 
+    /// The list Roger starts with: the stored list (repaired), or the 0.26
+    /// setting migrated when nothing usable is stored. `write` is true when
+    /// the result differs from what is stored and must be saved.
+    /// `nameForUID` is only asked when a 0.26 device is migrated.
+    static func load(stored: Data?, legacyUID: String?, nameForUID: (String) -> String?) -> (list: [InputChoice], write: Bool) {
+        if let stored, let decoded = try? JSONDecoder().decode([InputChoice].self, from: stored) {
+            let list = repaired(decoded)
+            return (list, list != decoded)
+        }
+        return (migrated(selectedUID: legacyUID, nameForUID: nameForUID), true)
+    }
+
     /// The first connected device's uid, nil for system default (or when nothing earlier is connected).
     static func resolve(_ list: [InputChoice], connectedUIDs: Set<String>) -> String? {
+        resolve(list, isConnected: connectedUIDs.contains)
+    }
+
+    /// Same, asking `isConnected` only for the device entries before
+    /// `.systemDefault`. A list that starts with `.systemDefault` asks nothing.
+    static func resolve(_ list: [InputChoice], isConnected: (String) -> Bool) -> String? {
         for choice in list {
             switch choice {
             case .systemDefault: return nil
-            case .device(let uid, _) where connectedUIDs.contains(uid): return uid
+            case .device(let uid, _) where isConnected(uid): return uid
             case .device: continue
             }
         }

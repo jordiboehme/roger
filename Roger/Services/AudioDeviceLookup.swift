@@ -45,8 +45,15 @@ enum AudioDeviceLookup {
         }
     }
 
+    /// Asks Core Audio for the device list only when a device entry comes
+    /// before System default, and then only once.
     static func resolveInput(_ list: [InputChoice]) -> String? {
-        InputChoice.resolve(list, connectedUIDs: Set(availableInputs().map(\.id)))
+        var connected: Set<String>?
+        return InputChoice.resolve(list) { uid in
+            let set = connected ?? Set(availableInputs().map(\.id))
+            connected = set
+            return set.contains(uid)
+        }
     }
 
     static func deviceID(forUID uid: String) -> AudioDeviceID? {
@@ -91,36 +98,6 @@ enum AudioDeviceLookup {
     static var systemDefaultInputName: String? {
         guard let id = systemDefaultInputID else { return nil }
         return stringProperty(id, kAudioObjectPropertyName)
-    }
-
-    /// How the device is connected, for example "USB". nil when Core Audio
-    /// does not say.
-    static func transportName(of id: AudioDeviceID) -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyTransportType,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var value: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr else { return nil }
-        return transportName(forType: value)
-    }
-
-    static func transportName(forType type: UInt32) -> String? {
-        switch type {
-        case kAudioDeviceTransportTypeBuiltIn: return "Built-in"
-        case kAudioDeviceTransportTypeUSB: return "USB"
-        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: return "Bluetooth"
-        case kAudioDeviceTransportTypeThunderbolt: return "Thunderbolt"
-        case kAudioDeviceTransportTypeHDMI: return "HDMI"
-        case kAudioDeviceTransportTypeDisplayPort: return "DisplayPort"
-        case kAudioDeviceTransportTypeAirPlay: return "AirPlay"
-        case kAudioDeviceTransportTypeContinuityCaptureWired, kAudioDeviceTransportTypeContinuityCaptureWireless: return "iPhone"
-        case kAudioDeviceTransportTypeAggregate, kAudioDeviceTransportTypeAutoAggregate: return "Aggregate device"
-        case kAudioDeviceTransportTypeVirtual: return "Virtual device"
-        default: return nil
-        }
     }
 
     private static func hasInputChannels(_ id: AudioDeviceID) -> Bool {
