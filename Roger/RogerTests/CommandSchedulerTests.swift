@@ -3,7 +3,7 @@ import Testing
 @testable import Roger
 
 /// Holds each run until the test releases it.
-actor GatedRunner: CommandRunner {
+private actor GatedRunner: CommandRunner {
     private(set) var calls: [(args: [String], dir: URL)] = []
     private var gates: [CheckedContinuation<Void, Never>] = []
     var result = CommandResult(status: .exited(0), stdout: "ok", stderr: "")
@@ -20,7 +20,7 @@ actor GatedRunner: CommandRunner {
     var parked: Int { gates.count }
 }
 
-struct NoLauncher: TerminalLaunching {
+private struct NoLauncher: TerminalLaunching {
     func launch(commandLine: String, workingDirectory: URL, terminal: TerminalApp) async throws {}
 }
 
