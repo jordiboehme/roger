@@ -423,7 +423,10 @@ final class AppState {
         let savedPresets = defaults.data(forKey: "presets")
             .flatMap { TolerantDecoding.load(DictationPreset.self, from: $0, label: "preset") }
         self.unreadablePresets = savedPresets?.unreadable ?? []
-        self.presets = Self.mergeBuiltInPresets(saved: savedPresets?.values)
+        self.presets = Self.mergeBuiltInPresets(
+            saved: savedPresets?.values,
+            unreadableIDs: TolerantDecoding.ids(in: savedPresets?.unreadable ?? [])
+        )
         self.modifierBindings = Self.loadModifierBindings()
         let savedCommands = defaults.data(forKey: "commands")
             .flatMap { TolerantDecoding.load(AgentCommand.self, from: $0, label: "command") }
@@ -496,9 +499,12 @@ final class AppState {
         return result
     }
 
-    private static func mergeBuiltInPresets(saved: [DictationPreset]?) -> [DictationPreset] {
+    /// Adds the built-in presets the saved list lacks. A built-in that is
+    /// saved but unreadable (kept as raw JSON) is not added again, so the
+    /// next save never writes two presets with the same id.
+    static func mergeBuiltInPresets(saved: [DictationPreset]?, unreadableIDs: Set<UUID> = []) -> [DictationPreset] {
         guard var presets = saved else { return DictationPreset.builtInPresets }
-        let existingIDs = Set(presets.map(\.id))
+        let existingIDs = Set(presets.map(\.id)).union(unreadableIDs)
         for builtIn in DictationPreset.builtInPresets where !existingIDs.contains(builtIn.id) {
             presets.append(builtIn)
         }

@@ -80,4 +80,27 @@ struct TolerantDecodingTests {
         #expect(again.values.map(\.name) == ["Plain", "Polished (edited)"])
         #expect(try again.unreadable.map(value) == [try value(JSONSerialization.data(withJSONObject: bad))])
     }
+
+    @Test func anUnreadableBuiltInPresetIsNotAddedTwice() throws {
+        let log = DictationPreset.log
+        var array = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode([DictationPreset.plain])) as? [Any])
+        // The Log preset as a newer version wrote it, with a value this version cannot read.
+        array.append(["id": log.id.uuidString, "name": "Log", "output": "somethingNew"])
+        let loaded = try #require(TolerantDecoding.load(DictationPreset.self, from: JSONSerialization.data(withJSONObject: array), label: "preset"))
+        #expect(TolerantDecoding.ids(in: loaded.unreadable) == [log.id])
+
+        let merged = AppState.mergeBuiltInPresets(saved: loaded.values, unreadableIDs: TolerantDecoding.ids(in: loaded.unreadable))
+        #expect(!merged.contains { $0.id == log.id })
+        #expect(merged.contains { $0.id == DictationPreset.polished.id })
+
+        let saved = try TolerantDecoding.encode(merged, keeping: loaded.unreadable)
+        let ids = try #require(try JSONSerialization.jsonObject(with: saved) as? [[String: Any]]).compactMap { $0["id"] as? String }
+        #expect(ids.filter { $0 == log.id.uuidString }.count == 1)
+        #expect(Set(ids).count == ids.count)
+    }
+
+    @Test func idsSkipsEntriesWithoutAUUID() {
+        let entries = [Data(#"{"id":"nope"}"#.utf8), Data("[1]".utf8), Data(#"{"name":"x"}"#.utf8)]
+        #expect(TolerantDecoding.ids(in: entries).isEmpty)
+    }
 }

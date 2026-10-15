@@ -39,6 +39,14 @@ enum TolerantDecoding {
         return loaded
     }
 
+    /// The `"id"` UUIDs of raw entries that have one.
+    static func ids(in unreadable: [Data]) -> Set<UUID> {
+        Set(unreadable.compactMap { entry in
+            let object = try? JSONSerialization.jsonObject(with: entry, options: [.fragmentsAllowed]) as? [String: Any]
+            return (object?["id"] as? String).flatMap(UUID.init(uuidString:))
+        })
+    }
+
     /// `values` as a JSON array, followed by the `unreadable` entries
     /// unchanged. They go at the end, because the list may have changed
     /// around their old position.
