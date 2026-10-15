@@ -3,33 +3,15 @@ import Testing
 @testable import Roger
 
 struct AgentCommandTests {
-    @Test func exampleIsHeadlessClaude() {
-        let c = AgentCommand.newClaudeExample()
-        #expect(c.mode == .headless)
-        #expect(c.commandLine == "claude -p {prompt}")
+    @Test func newCommandIsBlank() {
+        let c = AgentCommand.blank()
+        #expect(c.name == "New command")
+        #expect(c.commandLine.isEmpty)
+        #expect(c.prompt.isEmpty)
         #expect(c.workingDirectory == "~")
-        #expect(c.prompt == AgentCommand.headlessExamplePrompt)
+        #expect(c.mode == .headless)
         #expect(c.timeoutMinutes == 10)
         #expect(c.terminal == .terminal)
-    }
-
-    @Test func untouchedExampleFollowsMode() {
-        var c = AgentCommand.newClaudeExample()
-        c.setMode(.interactive)
-        #expect(c.commandLine == "claude {prompt}")
-        #expect(c.prompt == AgentCommand.interactiveExamplePrompt)
-        c.setMode(.headless)
-        #expect(c.commandLine == "claude -p {prompt}")
-        #expect(c.prompt == AgentCommand.headlessExamplePrompt)
-    }
-
-    @Test func editedCommandKeepsItsTextOnModeChange() {
-        var c = AgentCommand.newClaudeExample()
-        c.commandLine = "my-tool {prompt}"
-        c.setMode(.interactive)
-        #expect(c.mode == .interactive)
-        #expect(c.commandLine == "my-tool {prompt}")
-        #expect(c.prompt == AgentCommand.headlessExamplePrompt)
     }
 
     @Test func partialJSONDecodesWithDefaults() throws {
@@ -41,7 +23,7 @@ struct AgentCommandTests {
     }
 
     @Test func roundTrip() throws {
-        var c = AgentCommand.newClaudeExample()
+        var c = AgentCommand.blank()
         c.mode = .interactive
         c.terminal = .warp
         c.timeoutMinutes = 3
@@ -51,7 +33,7 @@ struct AgentCommandTests {
 
     @Test func expandsTilde() {
         let home = URL(fileURLWithPath: "/Users/someone")
-        var c = AgentCommand.newClaudeExample()
+        var c = AgentCommand.blank()
         #expect(c.expandedWorkingDirectory(home: home).path == "/Users/someone")
         c.workingDirectory = "~/git/roger"
         #expect(c.expandedWorkingDirectory(home: home).path == "/Users/someone/git/roger")

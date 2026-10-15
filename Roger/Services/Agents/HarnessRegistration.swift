@@ -10,6 +10,13 @@ struct RegistrationCommand: Equatable, Sendable {
     }
 }
 
+/// One MCP server entry in a harness config.
+struct ConfiguredServer: Equatable, Sendable {
+    let name: String
+    /// The executable (or, from `claude mcp list`, the URL or command line).
+    var command: String?
+}
+
 enum ConfigLookup: Equatable, Sendable {
     case command(String)
     case absent
@@ -82,26 +89,36 @@ enum HarnessRegistration {
         return sawUnreadable ? .unknown : .notConnected
     }
 
-    /// `mcpServers.roger.command` at the top level (user scope).
-    static func jsonCommand(_ data: Data) -> ConfigLookup {
+    /// `mcpServers.<server>.command` at the top level (user scope).
+    static func jsonCommand(_ data: Data, server: String = "roger") -> ConfigLookup {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .unreadable }
         guard let servers = object["mcpServers"] as? [String: Any],
-              let roger = servers["roger"] as? [String: Any],
-              let command = roger["command"] as? String
+              let entry = servers[server] as? [String: Any],
+              let command = entry["command"] as? String
         else { return .absent }
         return .command(command)
+    }
+
+    /// Every server under the top-level `mcpServers`. Nil when the file is
+    /// not a JSON object.
+    static func jsonServers(_ data: Data) -> [ConfiguredServer]? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard let servers = object["mcpServers"] as? [String: Any] else { return [] }
+        return servers.keys.sorted().map { name in
+            ConfiguredServer(name: name, command: (servers[name] as? [String: Any])?["command"] as? String)
+        }
     }
 
     /// `command = "..."` inside `[mcp_servers.roger]`. Accepts what Codex
     /// and people write: spaces, a `# comment` after the header or the
     /// value, and the header as `[mcp_servers."roger"]` or
     /// `[mcp_servers.'roger']`. The text comes from `TextFile` (LF).
-    static func tomlCommand(_ text: String) -> ConfigLookup {
+    static func tomlCommand(_ text: String, server: String = "roger") -> ConfigLookup {
         var inSection = false
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
-                inSection = tomlTableName(line) == ["mcp_servers", "roger"]
+                inSection = tomlTableName(line) == ["mcp_servers", server]
                 continue
             }
             guard inSection, !line.hasPrefix("#") else { continue }
@@ -113,6 +130,33 @@ enum HarnessRegistration {
             return .command(value)
         }
         return .absent
+    }
+
+    /// Every `[mcp_servers.<name>]` table in file order, with its `command`
+    /// when it has a readable one. Sub-tables such as `.tools.x` are skipped.
+    static func tomlServers(_ text: String) -> [ConfiguredServer] {
+        var servers: [ConfiguredServer] = []
+        var current: Int?
+        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") {
+                current = nil
+                if let parts = tomlTableName(line), parts.count == 2, parts[0] == "mcp_servers" {
+                    if let index = servers.firstIndex(where: { $0.name == parts[1] }) {
+                        current = index
+                    } else {
+                        servers.append(ConfiguredServer(name: parts[1], command: nil))
+                        current = servers.count - 1
+                    }
+                }
+                continue
+            }
+            guard let index = current, !line.hasPrefix("#") else { continue }
+            let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count == 2, unquotedTOMLKey(parts[0]) == "command", let (value, _) = tomlString(parts[1]) else { continue }
+            servers[index].command = value
+        }
+        return servers
     }
 
     /// The dotted parts of `[a."b"]`, unquoted. Nil for `[[array]]` or a

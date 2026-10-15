@@ -10,6 +10,7 @@ struct CommandsPane: View {
     @State private var pendingDelete: AgentCommand?
     /// The item "Run now" uses. Nil while the library is empty or not read yet.
     @State private var newestItem: CommandItemInfo?
+    @State private var showingSuggestions = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -55,14 +56,25 @@ struct CommandsPane: View {
                 }
             }
             Divider()
-            Button {
-                addCommand()
-            } label: {
-                Label("New Command", systemImage: "plus")
+            HStack {
+                Button {
+                    addCommand()
+                } label: {
+                    Label("New Command", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("New Command")
+                Spacer(minLength: 8)
+                Button("Suggest Commands") { showingSuggestions = true }
+                    .buttonStyle(.link)
+                    .lineLimit(1)
+                    .fixedSize()
             }
-            .buttonStyle(.borderless)
             .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $showingSuggestions) {
+            CommandSuggestionsSheet(load: { await coordinator.commandSuggestions() }, onAdd: add)
         }
     }
 
@@ -107,7 +119,12 @@ struct CommandsPane: View {
     // MARK: - Actions
 
     private func addCommand() {
-        let command = AgentCommand.newClaudeExample()
+        let command = AgentCommand.blank()
+        coordinator.appState.commands.append(command)
+        selectedCommandID = command.id
+    }
+
+    private func add(_ command: AgentCommand) {
         coordinator.appState.commands.append(command)
         selectedCommandID = command.id
     }
@@ -134,6 +151,70 @@ struct CommandsPane: View {
             guard let item = newestItem, let command = coordinator.appState.command(id: id) else { return }
             coordinator.commandScheduler.trigger(command, item: item)
         }
+    }
+}
+
+/// The list behind "Suggest Commands": one row per coding agent and mode.
+private struct CommandSuggestionsSheet: View {
+    let load: () async -> [CommandSuggestion]
+    let onAdd: (AgentCommand) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var suggestions: [CommandSuggestion]?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+        }
+        .frame(width: 480, height: 420)
+        .task {
+            suggestions = await load()
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let suggestions {
+            if suggestions.isEmpty {
+                ContentUnavailableView {
+                    Label("No Coding Agents Found", systemImage: "terminal")
+                } description: {
+                    Text("Roger looks for Claude Code, Codex, Gemini CLI, Copilot CLI and Kiro on your search path.")
+                }
+            } else {
+                SettingsForm {
+                    Section {
+                        ForEach(suggestions) { suggestion in
+                            SettingsRow(title: suggestion.title, note: note(for: suggestion)) {
+                                Button("Add") {
+                                    onAdd(suggestion.command)
+                                    dismiss()
+                                }
+                                .disabled(suggestion.disabledReason != nil)
+                            }
+                        }
+                    } header: {
+                        Text("Suggested commands")
+                    } footer: {
+                        Text("Each command reads what is new in Roger with the ingest-roger skill. You can change it after you add it.")
+                    }
+                }
+            }
+        } else {
+            ProgressView("Looking for coding agents…")
+        }
+    }
+
+    private func note(for suggestion: CommandSuggestion) -> String {
+        if let reason = suggestion.disabledReason { return reason }
+        return suggestion.usesCrystalline ? "Uses Crystalline" : "Plain summary"
     }
 }
 
@@ -197,7 +278,7 @@ private struct CommandDetailForm: View {
                 // Label above, so a long line gets the full width.
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Command line")
-                    TextField("Command line", text: $command.commandLine, prompt: Text(AgentCommand.headlessExampleLine))
+                    TextField("Command line", text: $command.commandLine, prompt: Text("claude -p {prompt}"))
                         .labelsHidden()
                         .font(.body.monospaced())
                 }
@@ -217,7 +298,7 @@ private struct CommandDetailForm: View {
             }
 
             Section("How it runs") {
-                Picker("Runs", selection: Binding(get: { command.mode }, set: { command.setMode($0) })) {
+                Picker("Runs", selection: $command.mode) {
                     ForEach(CommandMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }

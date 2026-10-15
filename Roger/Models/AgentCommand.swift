@@ -56,10 +56,6 @@ struct AgentCommand: Codable, Identifiable, Equatable, Sendable {
     var timeoutMinutes: Int
 
     static let defaultTimeoutMinutes = 10
-    static let headlessExampleLine = "claude -p {prompt}"
-    static let interactiveExampleLine = "claude {prompt}"
-    static let headlessExamplePrompt = "Use /ingest-roger to read what is new in Roger. Fold it into Crystalline with the ingestion method of crystalline-capture. Choose the domains by their routing. Keep tasks as [task] observations in the engrams they belong to. At the end, list the tasks you found."
-    static let interactiveExamplePrompt = "Use /ingest-roger to read what is new in Roger. Fold it into Crystalline with the ingestion method of crystalline-capture. Choose the domains by their routing. Keep tasks as [task] observations in the engrams they belong to. At the end, list the tasks you found and ask me which ones to work on."
 
     init(
         id: UUID = UUID(),
@@ -93,24 +89,9 @@ struct AgentCommand: Codable, Identifiable, Equatable, Sendable {
         timeoutMinutes = try c.decodeIfPresent(Int.self, forKey: .timeoutMinutes) ?? Self.defaultTimeoutMinutes
     }
 
-    static func newClaudeExample() -> AgentCommand {
-        AgentCommand(name: "Ingest into Crystalline", commandLine: headlessExampleLine,
-                     prompt: headlessExamplePrompt, workingDirectory: "~")
-    }
-
-    mutating func setMode(_ newMode: CommandMode) {
-        let untouched = (commandLine == Self.headlessExampleLine && prompt == Self.headlessExamplePrompt)
-            || (commandLine == Self.interactiveExampleLine && prompt == Self.interactiveExamplePrompt)
-        mode = newMode
-        guard untouched else { return }
-        switch newMode {
-        case .headless:
-            commandLine = Self.headlessExampleLine
-            prompt = Self.headlessExamplePrompt
-        case .interactive:
-            commandLine = Self.interactiveExampleLine
-            prompt = Self.interactiveExamplePrompt
-        }
+    /// What "New Command" adds: nothing filled in yet.
+    static func blank() -> AgentCommand {
+        AgentCommand(name: "New command", commandLine: "", prompt: "", workingDirectory: "~")
     }
 
     func expandedWorkingDirectory(home: URL) -> URL {

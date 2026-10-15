@@ -76,6 +76,9 @@ final class AppCoordinator {
     let libraryChanges = LibraryChangeRecorder()
     /// Runs the commands of Settings > Commands after Roger saved an item.
     let commandScheduler: CommandScheduler
+    /// The login-shell search path for commands and "Suggest Commands".
+    private let commandSearchPath: CommandSearchPathCache
+    private let commandRunner: ProcessCommandRunner
     /// An installed ingest skill is older than the one in this app.
     private(set) var agentSkillOutdated = false
 
@@ -146,6 +149,16 @@ final class AppCoordinator {
         commandScheduler.trigger(command, item: Self.commandItemInfo(markdownURL: markdownURL, kind: kind, root: root))
     }
 
+    /// "Suggest Commands": the coding agents on this Mac and their servers,
+    /// found off the main actor (`claude mcp list` takes a few seconds).
+    func commandSuggestions() async -> [CommandSuggestion] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let path = await commandSearchPath.value(runner: commandRunner, home: home)
+        let detector = HarnessServerDetector(home: home, runner: commandRunner, searchPath: path)
+        let found = await Task.detached(priority: .userInitiated) { await detector.detect() }.value
+        return CommandSuggestions.suggestions(for: found)
+    }
+
     /// The newest item with Markdown in the library, for "Run now". Nil when
     /// the library is empty. Scans the folders off the main actor.
     func newestLibraryItemInfo() async -> CommandItemInfo? {
@@ -182,6 +195,8 @@ final class AppCoordinator {
         self.systemMicMute = SystemMicMute(appState: appState)
         let runner = ProcessCommandRunner()
         let searchPath = CommandSearchPathCache()
+        self.commandRunner = runner
+        self.commandSearchPath = searchPath
         self.commandScheduler = CommandScheduler(
             runner: runner,
             launcher: TerminalLauncher(),
