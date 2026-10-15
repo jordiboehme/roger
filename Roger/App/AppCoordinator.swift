@@ -203,11 +203,12 @@ final class AppCoordinator {
         self.commandScheduler = CommandScheduler(
             runner: runner,
             launcher: TerminalLauncher(),
+            confirmer: CommandConfirmationPanels(),
+            lookup: { [appState] id in appState.command(id: id) },
             environment: {
                 let home = FileManager.default.homeDirectoryForCurrentUser
                 let path = await searchPath.value(runner: runner, home: home)
-                let shell = getpwuid(getuid()).flatMap { $0.pointee.pw_shell.map { String(cString: $0) } } ?? "/bin/zsh"
-                return ["PATH": path.joined(separator: ":"), "HOME": home.path, "USER": NSUserName(), "SHELL": shell]
+                return ["PATH": path.joined(separator: ":"), "HOME": home.path, "USER": NSUserName(), "SHELL": CLILocator.loginShell]
             }
         )
         libraryChanges.environment = { [appState] in
@@ -233,7 +234,8 @@ final class AppCoordinator {
         if stillThere != dismissed { appState.dismissedMeetingSessions = stillThere }
         refreshPendingMeetingSessions()
         observeRecorderState()
-        // HAL mute persists after our process exits, so always restore on quit.
+        // HAL mute persists after our process exits, so always restore on
+        // quit. Running commands are stopped there too.
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -242,6 +244,8 @@ final class AppCoordinator {
             MainActor.assumeIsolated {
                 self?.systemMicMute.restoreIfNeeded()
                 self?.systemMicMute.reapplyReleasedMute()
+                // Headless runs do not outlive Roger.
+                self?.commandScheduler.stopAll()
             }
         }
     }

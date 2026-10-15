@@ -42,3 +42,12 @@ struct MeetingRecordingErrorTests {
         #expect(error?.errorDescription == "System audio could not be fully saved, so the transcript may be incomplete. Roger kept the recording. Try again from the menu bar.")
     }
 }
+
+struct ListFormattingTests {
+    @Test func joinsWithoutOxfordComma() {
+        #expect([String]().joinedAsList == "")
+        #expect(["a"].joinedAsList == "a")
+        #expect(["a", "b"].joinedAsList == "a and b")
+        #expect(["a", "b", "c"].joinedAsList == "a, b and c")
+    }
+}

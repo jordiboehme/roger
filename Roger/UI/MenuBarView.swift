@@ -418,7 +418,7 @@ struct MenuBarView: View {
         let failed = scheduler.unseenFailures
         guard let first = failed.first else { return nil }
         if failed.count > 1 { return "\(failed.count) commands failed" }
-        let name = coordinator.appState.command(id: first)?.name ?? scheduler.lastRuns[first]?.commandName ?? ""
+        let name = coordinator.appState.command(id: first)?.displayName ?? scheduler.lastRuns[first]?.commandName ?? "Untitled"
         return "Command \(name) failed"
     }
 

@@ -20,6 +20,7 @@ struct AgentCommandTests {
         #expect(c.mode == .headless)
         #expect(c.terminal == .terminal)
         #expect(c.timeoutMinutes == 10)
+        #expect(c.askBeforeRunning == false)
     }
 
     @Test func roundTrip() throws {
@@ -27,8 +28,24 @@ struct AgentCommandTests {
         c.mode = .interactive
         c.terminal = .warp
         c.timeoutMinutes = 3
+        c.askBeforeRunning = true
         let back = try JSONDecoder().decode(AgentCommand.self, from: JSONEncoder().encode(c))
         #expect(back == c)
+    }
+
+    @Test func emptyNameShowsAsUntitled() {
+        var c = AgentCommand.blank()
+        c.name = "  "
+        #expect(c.displayName == "Untitled")
+        c.name = "Ingest"
+        #expect(c.displayName == "Ingest")
+    }
+
+    @Test func modeNames() {
+        #expect(CommandMode.headless.displayName == "Background")
+        #expect(CommandMode.interactive.displayName == "Terminal window")
+        #expect(CommandMode.headless.phrase == "in the background")
+        #expect(CommandMode.interactive.phrase == "in a terminal window")
     }
 
     @Test func expandsTilde() {

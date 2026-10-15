@@ -41,6 +41,54 @@ struct CommandRunnerTests {
         #expect(gone, "process group \(group) is still running")
     }
 
+    @Test func stopAllEndsARunThatIgnoresTerm() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let pidFile = folder.appendingPathComponent("pid")
+        let runner = ProcessCommandRunner()
+        let run = Task {
+            await runner.run(
+                URL(fileURLWithPath: "/bin/sh"), ["-c", "echo $$ > \"$0\"; trap \"\" TERM; sleep 30", pidFile.path],
+                environment: [:], currentDirectory: tmp, timeout: .seconds(60)
+            )
+        }
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: pidFile.path) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // Give the shell a moment to set up the trap.
+        try await Task.sleep(for: .milliseconds(200))
+        let start = Date()
+        runner.stopAll()
+        let result = await run.value
+        #expect(result.status == .stopped)
+        // SIGTERM is ignored, so the stop waits the grace time, then kills.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test func aCancelledRunGetsTheGraceTimeBeforeSIGKILL() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let marker = folder.appendingPathComponent("cleaned-up")
+        // On TERM the shell writes the marker before it exits.
+        let script = "trap 'sleep 0.2; touch \"$0\"; exit 0' TERM; sleep 30 & wait"
+        let runner = ProcessCommandRunner()
+        let run = Task {
+            await runner.run(URL(fileURLWithPath: "/bin/sh"), ["-c", script, marker.path],
+                             environment: [:], currentDirectory: tmp, timeout: .seconds(60))
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        run.cancel()
+        let result = await run.value
+        #expect(result.status == .stopped)
+        #expect(FileManager.default.fileExists(atPath: marker.path), "SIGKILL came before the grace time was over")
+    }
+
+    @Test func stopAllWithoutRunsReturnsAtOnce() {
+        let start = Date()
+        ProcessCommandRunner().stopAll()
+        #expect(Date().timeIntervalSince(start) < 0.5)
+    }
+
     @Test func stdinIsClosed() async {
         // cat waits for input forever unless stdin is at end of file.
         let result = await runner.run(URL(fileURLWithPath: "/bin/cat"), [], environment: [:], currentDirectory: tmp, timeout: .seconds(5))

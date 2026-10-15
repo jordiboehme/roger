@@ -5,6 +5,8 @@ struct CommandResult: Equatable, Sendable {
         case exited(Int32)
         case timedOut
         case failedToStart(String)
+        /// `stopAll()` ended it (Roger quits) or its task was cancelled.
+        case stopped
     }
 
     let status: Status
@@ -16,6 +18,49 @@ struct CommandResult: Equatable, Sendable {
 
 protocol CommandRunner: Sendable {
     func run(_ executable: URL, _ arguments: [String], environment: [String: String], currentDirectory: URL, timeout: Duration) async -> CommandResult
+    /// Ends every run that is still going. Returns once they got SIGKILL
+    /// or ended. Roger calls it when it quits.
+    func stopAll()
+}
+
+extension CommandRunner {
+    func stopAll() {}
+}
+
+/// The process groups of the runs that are going, so a quit can end them
+/// without waiting for their tasks.
+final class ProcessGroupRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var groups: Set<pid_t> = []
+    private var stopped: Set<pid_t> = []
+
+    func add(_ group: pid_t) { lock.withLock { _ = groups.insert(group) } }
+
+    /// Forgets `group`. True when `stopAll` ended it.
+    func remove(_ group: pid_t) -> Bool {
+        lock.withLock {
+            groups.remove(group)
+            return stopped.remove(group) != nil
+        }
+    }
+
+    /// SIGTERM to every group, up to `grace` for them to end, then SIGKILL.
+    /// Blocks the caller for at most `grace`.
+    func stopAll(grace: Duration) {
+        let targets = lock.withLock {
+            stopped.formUnion(groups)
+            return groups
+        }
+        guard !targets.isEmpty else { return }
+        for group in targets { kill(-group, SIGTERM) }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: grace)
+        // kill(-group, 0) fails once no process of the group is left.
+        while clock.now < deadline, targets.contains(where: { kill(-$0, 0) == 0 }) {
+            usleep(20_000)
+        }
+        for group in targets { kill(-group, SIGKILL) }
+    }
 }
 
 /// Collects a pipe's output from its readability handler.
@@ -41,12 +86,19 @@ private final class OutputBuffer: @unchecked Sendable {
 
 /// Runs a harness CLI so that it can never block Roger: stdin is
 /// `/dev/null` (a prompt reads end of file), only the given environment is
-/// passed, and after `timeout` the process group gets SIGTERM, then SIGKILL.
+/// passed, and after `timeout` (or when its task is cancelled) the process
+/// group gets SIGTERM, then SIGKILL. `stopAll()` does the same for every run.
 struct ProcessCommandRunner: CommandRunner {
     /// How long a process may take to end after SIGTERM.
     static let terminationGrace: Duration = .seconds(1)
     /// How long to wait for the exit after SIGKILL.
     static let killWait: Duration = .seconds(2)
+
+    let registry = ProcessGroupRegistry()
+
+    func stopAll() {
+        registry.stopAll(grace: Self.terminationGrace)
+    }
 
     func run(_ executable: URL, _ arguments: [String], environment: [String: String], currentDirectory: URL, timeout: Duration) async -> CommandResult {
         let process = Process()
@@ -75,36 +127,54 @@ struct ProcessCommandRunner: CommandRunner {
         // Process starts the child as the leader of its own process group,
         // so a signal to the group also reaches what the CLI started.
         let group = process.processIdentifier
-        let finishedInTime = await Self.waitForExit(process, timeout: timeout)
+        registry.add(group)
+        let finishedInTime = await Self.waitForExit(process, timeout: timeout, stopsOnCancel: true)
         if !finishedInTime {
             kill(-group, SIGTERM)
-            let ended = await Self.waitForExit(process, timeout: Self.terminationGrace)
+            // A cancelled run still gets its grace time before SIGKILL.
+            let ended = await Self.waitForExit(process, timeout: Self.terminationGrace, stopsOnCancel: false)
             // Children that ignore SIGTERM may outlive the leader, so the
             // group gets SIGKILL either way.
             kill(-group, SIGKILL)
             if !ended {
-                _ = await Self.waitForExit(process, timeout: Self.killWait)
+                _ = await Self.waitForExit(process, timeout: Self.killWait, stopsOnCancel: false)
             }
         }
+        let stoppedByStopAll = registry.remove(group)
         // Give the handlers a moment for the last bytes, then stop reading.
         // A grandchild may hold the pipe open, so never read to end of file.
         try? await Task.sleep(for: .milliseconds(100))
         outPipe.fileHandleForReading.readabilityHandler = nil
         errPipe.fileHandleForReading.readabilityHandler = nil
-        let status: CommandResult.Status = finishedInTime ? .exited(process.terminationStatus) : .timedOut
+        let status: CommandResult.Status
+        if stoppedByStopAll || Task.isCancelled {
+            status = .stopped
+        } else {
+            status = finishedInTime ? .exited(process.terminationStatus) : .timedOut
+        }
         return CommandResult(status: status, stdout: out.text, stderr: err.text)
     }
 
     /// True when the process ended within `timeout`. Polls, so no wait can
-    /// outlive its deadline. A cancelled task stops waiting at once.
-    private static func waitForExit(_ process: Process, timeout: Duration) async -> Bool {
+    /// outlive its deadline. With `stopsOnCancel`, a cancelled task stops
+    /// waiting at once.
+    private static func waitForExit(_ process: Process, timeout: Duration, stopsOnCancel: Bool) async -> Bool {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
         while process.isRunning {
-            if Task.isCancelled || clock.now >= deadline { return false }
-            try? await Task.sleep(for: .milliseconds(20))
+            if (stopsOnCancel && Task.isCancelled) || clock.now >= deadline { return false }
+            await pause(milliseconds: 20)
         }
         return true
+    }
+
+    /// Waits also in a cancelled task, where `Task.sleep` returns at once.
+    private static func pause(milliseconds: Int) async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(milliseconds)) {
+                continuation.resume()
+            }
+        }
     }
 }
 
@@ -134,11 +204,16 @@ enum CLILocator {
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
+    /// The user's login shell from the user database, `/bin/zsh` when it
+    /// has none.
+    static var loginShell: String {
+        getpwuid(getuid()).flatMap { $0.pointee.pw_shell.map { String(cString: $0) } }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+    }
+
     /// `PATH` as the user's login shell sets it. Nil when the shell fails.
     static func loginShellPATH(runner: any CommandRunner, home: URL) async -> String? {
-        let shell = getpwuid(getuid()).flatMap { $0.pointee.pw_shell.map { String(cString: $0) } } ?? "/bin/zsh"
         let result = await runner.run(
-            URL(fileURLWithPath: shell),
+            URL(fileURLWithPath: loginShell),
             ["-l", "-c", "printf '\(pathMarker)%s\(pathMarker)' \"$PATH\""],
             environment: ["HOME": home.path, "USER": NSUserName()],
             currentDirectory: home,

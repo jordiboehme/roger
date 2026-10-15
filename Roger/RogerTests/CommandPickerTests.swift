@@ -17,3 +17,34 @@ struct CommandPickerTests {
         #expect(opts.last?.id == gone)
     }
 }
+
+extension CommandPickerTests {
+    @Test func anUnnamedCommandShowsAsUntitled() {
+        let a = AgentCommand(name: "", commandLine: "a", prompt: "", workingDirectory: "~")
+        #expect(CommandPicker.options(selection: nil, commands: [a]).map(\.label) == ["Nothing", "Untitled"])
+    }
+}
+
+@MainActor
+struct CommandsPaneTests {
+    @Test func displayPathUsesTheTildeForTheHomeFolder() {
+        let home = "/Users/jordi"
+        #expect(CommandsPane.displayPath("/Users/jordi", home: home) == "~")
+        #expect(CommandsPane.displayPath("/Users/jordi/git/roger", home: home) == "~/git/roger")
+        #expect(CommandsPane.displayPath("/Users/jordi2/git", home: home) == "/Users/jordi2/git")
+        #expect(CommandsPane.displayPath("/tmp/work", home: home) == "/tmp/work")
+    }
+
+    @Test func searchedAgentsComeFromTheCatalog() {
+        #expect(CommandsPane.searchedAgentsNote == "Roger looks for Claude Code, Codex, Gemini CLI, Copilot CLI and Kiro on your search path.")
+    }
+
+    @Test func notesFollowTheStyleRules() {
+        for text in [CommandsPane.placeholderNote, CommandsPane.askNote, CommandsPane.trustNote, CommandsPane.searchedAgentsNote] {
+            #expect(!text.contains("\u{2014}"))
+            #expect(!text.contains("\u{2013}"))
+            #expect(!text.contains(", and "))
+        }
+        #expect(CommandsPane.placeholderNote.hasSuffix("In the command line, values are quoted for the shell."))
+    }
+}

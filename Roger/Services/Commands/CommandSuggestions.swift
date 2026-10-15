@@ -77,7 +77,7 @@ enum CommandSuggestions {
                     id: "\(spec.id.rawValue)-\(mode.rawValue)",
                     harness: spec.id,
                     mode: mode,
-                    title: "\(spec.name), \(isHeadless ? "in the background" : "in a terminal window")",
+                    title: "\(spec.name), \(mode.phrase)",
                     disabledReason: servers.rogerToolPrefix == nil ? rogerMissing : nil,
                     command: AgentCommand(
                         name: isHeadless ? "\(spec.name) ingest" : "\(spec.name) ingest (terminal)",

@@ -61,6 +61,22 @@ struct SettingsRow<Control: View>: View {
     }
 }
 
+/// A multi-line text field with its title above it, for prompts.
+struct SettingsTextEditor: View {
+    let title: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            TextEditor(text: $text)
+                .font(.callout)
+                .frame(minHeight: 60)
+                .accessibilityLabel(title)
+        }
+    }
+}
+
 /// A switch row with an optional note.
 struct SettingsToggle: View {
     let title: String

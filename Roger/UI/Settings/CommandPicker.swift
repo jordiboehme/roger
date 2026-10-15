@@ -17,7 +17,7 @@ struct CommandPicker: View {
 
     nonisolated static func options(selection: UUID?, commands: [AgentCommand]) -> [(id: UUID?, label: String)] {
         var result: [(id: UUID?, label: String)] = [(nil, "Nothing")]
-        result += commands.map { (Optional($0.id), $0.name) }
+        result += commands.map { (Optional($0.id), $0.displayName) }
         if let selection, !commands.contains(where: { $0.id == selection }) {
             result.append((selection, "Missing command"))
         }

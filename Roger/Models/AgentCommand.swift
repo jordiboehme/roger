@@ -8,10 +8,18 @@ enum CommandMode: String, Codable, CaseIterable, Identifiable {
     case interactive
 
     var id: String { rawValue }
+    /// Short, for the "Runs" picker.
     var displayName: String {
         switch self {
-        case .headless: return "In the background"
-        case .interactive: return "In a terminal window"
+        case .headless: return "Background"
+        case .interactive: return "Terminal window"
+        }
+    }
+    /// For running text, such as "Claude Code, in the background".
+    var phrase: String {
+        switch self {
+        case .headless: return "in the background"
+        case .interactive: return "in a terminal window"
         }
     }
 }
@@ -54,8 +62,20 @@ struct AgentCommand: Codable, Identifiable, Equatable, Sendable {
     var terminal: TerminalApp
     /// Headless only.
     var timeoutMinutes: Int
+    /// A trigger shows "Allow" and "Not now" before the run. "Run now" in
+    /// Settings never asks.
+    var askBeforeRunning: Bool
 
     static let defaultTimeoutMinutes = 10
+
+    /// The name, or "Untitled" when it is empty.
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Untitled" : name
+    }
+
+    /// The timeout as the run uses it: at least one minute.
+    var effectiveTimeoutMinutes: Int { max(1, timeoutMinutes) }
 
     init(
         id: UUID = UUID(),
@@ -65,7 +85,8 @@ struct AgentCommand: Codable, Identifiable, Equatable, Sendable {
         workingDirectory: String,
         mode: CommandMode = .headless,
         terminal: TerminalApp = .terminal,
-        timeoutMinutes: Int = AgentCommand.defaultTimeoutMinutes
+        timeoutMinutes: Int = AgentCommand.defaultTimeoutMinutes,
+        askBeforeRunning: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -75,6 +96,7 @@ struct AgentCommand: Codable, Identifiable, Equatable, Sendable {
         self.mode = mode
         self.terminal = terminal
         self.timeoutMinutes = timeoutMinutes
+        self.askBeforeRunning = askBeforeRunning
     }
 
     init(from decoder: Decoder) throws {
@@ -87,6 +109,7 @@ struct AgentCommand: Codable, Identifiable, Equatable, Sendable {
         mode = try c.decodeIfPresent(CommandMode.self, forKey: .mode) ?? .headless
         terminal = try c.decodeIfPresent(TerminalApp.self, forKey: .terminal) ?? .terminal
         timeoutMinutes = try c.decodeIfPresent(Int.self, forKey: .timeoutMinutes) ?? Self.defaultTimeoutMinutes
+        askBeforeRunning = try c.decodeIfPresent(Bool.self, forKey: .askBeforeRunning) ?? false
     }
 
     /// What "New Command" adds: nothing filled in yet.

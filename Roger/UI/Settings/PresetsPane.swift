@@ -363,8 +363,8 @@ private struct PresetDetailForm: View {
 
             Section {
                 DisclosureGroup("Advanced", isExpanded: $advancedExpanded) {
-                    promptEditor("Formatting prompt", text: $preset.aiPrompt)
-                    promptEditor("Rewrite prompt", text: $preset.rewritePrompt)
+                    SettingsTextEditor(title: "Formatting prompt", text: $preset.aiPrompt)
+                    SettingsTextEditor(title: "Rewrite prompt", text: $preset.rewritePrompt)
                     SettingsToggle(title: "Custom dictionary", note: preset.dictionarySummary, isOn: $preset.enableCustomDictionary)
                     if preset.enableCustomDictionary {
                         ForEach($preset.dictionaryEntries) { $entry in
@@ -414,15 +414,6 @@ private struct PresetDetailForm: View {
         let trimmed = preset.trimmedName
         if trimmed != preset.name {
             preset.name = trimmed
-        }
-    }
-
-    private func promptEditor(_ title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-            TextEditor(text: text)
-                .font(.callout)
-                .frame(minHeight: 60)
         }
     }
 }

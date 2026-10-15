@@ -58,7 +58,8 @@ final class LibraryChangeRecorder {
         enqueue(env) { _ in }
     }
 
-    /// Waits until every queued operation ran. For tests.
+    /// Waits until every queued operation ran. Commands wait on it before
+    /// they start, so `get_changes` already sees the item they run for.
     func waitUntilIdle() async {
         await tail?.value
     }

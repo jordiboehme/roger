@@ -318,6 +318,8 @@ struct HarnessRegistrar: Sendable {
             return "\(cli) did not answer within \(Int(timeout.components.seconds)) seconds. It may wait for a login or a question. Run this in Terminal:"
         case .failedToStart(let message):
             return "\(cli) could not start (\(message)). Run this in Terminal:"
+        case .stopped:
+            return "\(cli) was stopped. Run this in Terminal:"
         case .exited(let code):
             let detail = result.stderr.split(separator: "\n").first.map { ": " + $0 } ?? ""
             return "\(cli) failed with exit code \(code)\(detail). Run this in Terminal:"

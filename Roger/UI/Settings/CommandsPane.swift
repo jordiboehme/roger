@@ -4,6 +4,21 @@ import SwiftUI
 /// command on the trailing side. Built like the Presets pane.
 struct CommandsPane: View {
     static let trustNote = "Commands run as you, with your login shell. Only add commands you trust."
+    static let placeholderNote = "Placeholders: {prompt} in the command line. {file}, {key}, {title} and {kind} in both. In the command line, values are quoted for the shell."
+    static let askNote = "Shows Allow and Not now before each run."
+
+    /// "Roger looks for Claude Code, Codex, ... and Kiro on your search path."
+    static var searchedAgentsNote: String {
+        let names = HarnessCatalog.all.filter { $0.cli != nil }.map(\.name)
+        return "Roger looks for \(names.joinedAsList) on your search path."
+    }
+
+    /// `~` for the home folder, so the setting reads the same on every Mac.
+    static func displayPath(_ path: String, home: String) -> String {
+        if path == home { return "~" }
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        return path
+    }
 
     @Environment(AppCoordinator.self) private var coordinator
     @State private var selectedCommandID: UUID?
@@ -21,16 +36,20 @@ struct CommandsPane: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
-            coordinator.commandScheduler.markFailuresSeen()
+            // Also marks the failures as seen.
+            coordinator.commandScheduler.isPaneVisible = true
             if selectedCommandID == nil {
                 selectedCommandID = coordinator.appState.commands.first?.id
             }
+        }
+        .onDisappear {
+            coordinator.commandScheduler.isPaneVisible = false
         }
         .task {
             newestItem = await coordinator.newestLibraryItemInfo()
         }
         .confirmationDialog(
-            "Delete \"\(pendingDelete?.name ?? "")\"?",
+            "Delete \"\(pendingDelete?.displayName ?? "")\"?",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
             presenting: pendingDelete
         ) { command in
@@ -119,9 +138,7 @@ struct CommandsPane: View {
     // MARK: - Actions
 
     private func addCommand() {
-        let command = AgentCommand.blank()
-        coordinator.appState.commands.append(command)
-        selectedCommandID = command.id
+        add(.blank())
     }
 
     private func add(_ command: AgentCommand) {
@@ -139,6 +156,7 @@ struct CommandsPane: View {
 
     private func delete(_ command: AgentCommand) {
         coordinator.appState.commands.removeAll { $0.id == command.id }
+        coordinator.commandScheduler.forget(command.id)
         if selectedCommandID == command.id {
             selectedCommandID = coordinator.appState.commands.first?.id
         }
@@ -149,7 +167,8 @@ struct CommandsPane: View {
         Task {
             newestItem = await coordinator.newestLibraryItemInfo()
             guard let item = newestItem, let command = coordinator.appState.command(id: id) else { return }
-            coordinator.commandScheduler.trigger(command, item: item)
+            // The user just asked for it: no question.
+            coordinator.commandScheduler.trigger(command, item: item, ask: false)
         }
     }
 }
@@ -173,7 +192,7 @@ private struct CommandSuggestionsSheet: View {
             }
             .padding(12)
         }
-        .frame(width: 480, height: 420)
+        .frame(minWidth: 480, minHeight: 420)
         .task {
             suggestions = await load()
         }
@@ -186,7 +205,7 @@ private struct CommandSuggestionsSheet: View {
                 ContentUnavailableView {
                     Label("No Coding Agents Found", systemImage: "terminal")
                 } description: {
-                    Text("Roger looks for Claude Code, Codex, Gemini CLI, Copilot CLI and Kiro on your search path.")
+                    Text(CommandsPane.searchedAgentsNote)
                 }
             } else {
                 SettingsForm {
@@ -232,7 +251,7 @@ private struct CommandListRow: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(command.name.isEmpty ? "Untitled" : command.name)
+            Text(command.displayName)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .help(command.name)
@@ -278,16 +297,11 @@ private struct CommandDetailForm: View {
                 // Label above, so a long line gets the full width.
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Command line")
-                    TextField("Command line", text: $command.commandLine, prompt: Text("claude -p {prompt}"))
+                    TextField("Command line", text: $command.commandLine, prompt: Text("my-agent {prompt}"))
                         .labelsHidden()
                         .font(.body.monospaced())
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Prompt")
-                    TextEditor(text: $command.prompt)
-                        .font(.callout)
-                        .frame(minHeight: 60)
-                }
+                SettingsTextEditor(title: "Prompt", text: $command.prompt)
                 LabeledContent("Working directory") {
                     HStack {
                         TextField("Working directory", text: $command.workingDirectory, prompt: Text("~"))
@@ -316,6 +330,7 @@ private struct CommandDetailForm: View {
                         in: 1...120
                     )
                 }
+                SettingsToggle(title: "Ask before running", note: CommandsPane.askNote, isOn: $command.askBeforeRunning)
             }
 
             Section {
@@ -327,13 +342,13 @@ private struct CommandDetailForm: View {
             } header: {
                 Text("Preview")
             } footer: {
-                Text("Placeholders: {prompt} in the command line. {file}, {key}, {title} and {kind} in both. Values are quoted for the shell.")
+                Text(CommandsPane.placeholderNote)
             }
 
             Section {
                 SettingsRow(
                     title: "Run now",
-                    note: libraryIsEmpty ? "Your library is empty." : "Runs the command for the newest item in your library."
+                    note: libraryIsEmpty ? "Your library is empty." : "Runs the command for the newest item in your library\(command.askBeforeRunning ? " without asking" : "")."
                 ) {
                     Button("Run Now", action: onRunNow)
                         .disabled(!canRunNow)
@@ -365,7 +380,7 @@ private struct CommandDetailForm: View {
         }
         .fileImporter(isPresented: $showingFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, let url = urls.first {
-                command.workingDirectory = Self.displayPath(url.path, home: FileManager.default.homeDirectoryForCurrentUser.path)
+                command.workingDirectory = CommandsPane.displayPath(url.path, home: FileManager.default.homeDirectoryForCurrentUser.path)
             }
         }
     }
@@ -387,12 +402,5 @@ private struct CommandDetailForm: View {
     private func failureMessage(_ run: CommandRunRecord) -> String? {
         if case .failed(let message) = run.outcome { return message }
         return nil
-    }
-
-    /// `~` for the home folder, so the setting reads the same on every Mac.
-    static func displayPath(_ path: String, home: String) -> String {
-        if path == home { return "~" }
-        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
-        return path
     }
 }
