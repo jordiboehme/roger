@@ -27,10 +27,11 @@ Roger lives in your menu bar and turns your voice into text - in any app. Hold a
 - **Quick copy** - click the last-dictation preview in the menu bar to drop it on the clipboard, handy when the insertion target wasn't quite right
 - **Modifier-bound presets** - bind your favorite presets to `⇪ + ⇧/⌥/⌃/⌘` for instant access
 - **Switch presets mid-sentence** - hold Caps Lock and tap ← / → to swap how Roger will process what you're still dictating. The overlay updates live
-- **Eight built-in presets** - Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Log saves what you say as a log entry instead of typing it. Or build your own with a custom prompt and dictionary
+- **Eight built-in presets** - Plain, Polished, Professional and Code for serious work. Caveman, Yoda and Emoji for the rest. Log saves what you say as a log entry instead of typing it, optionally with the sound of your Mac. Or build your own with a custom prompt and dictionary
 - **Bring your own AI** - Apple Intelligence, Ollama, Claude or OpenAI for post-processing. Local-first, cloud if you want it
 - **Auto-submit prompts** - configure a preset to append a newline or press Return so a dictated prompt fires straight into the chatbox
-- **Pick your mic** - dedicated Microphone pane lets you pin a specific input or follow the system default
+- **Pick your mics** - a priority list in the Microphone pane. Roger uses the first mic that is connected, with the system default as the last fallback
+- **Commands** - run your coding agent or any shell command after a log, a meeting or a file transcript is saved. In the background or in a terminal, optionally with a question first
 - **Caps Lock push-to-talk** - hold to listen, release to transcribe. Toggle mode and configurable minimum duration if you prefer
 - **Session safety** - a configurable recording cap (default five minutes) auto-stops long sessions, with a live countdown that intensifies in the final 10 seconds
 - **Stays out of the way** - menu bar only, no Dock icon except while the library or Settings is open. A capsule overlay tracks the whole pipeline: Listening while you speak, Thinking while Roger processes
@@ -66,11 +67,11 @@ Then move `build/Roger.app` to `/Applications` and launch it.
 - **macOS 15 Sequoia** or later
 - **Microphone permission** (prompted on first launch)
 - **Accessibility permission** (for text insertion and global hotkey)
-- **System Audio Recording permission** (prompted on first meeting recording, only needed if you record meetings)
+- **System Audio Recording permission** (prompted on first use, only needed if you record meetings or turn on system audio for a log)
 
 ## How It Works
 
-Roger captures audio from your chosen input device - system default or a specific mic pinned in Settings - transcribes it on-device using [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) (built on [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
+Roger captures audio from the first connected mic on your priority list (the system default is always the last fallback), transcribes it on-device using [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) (built on [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) via [FluidAudio](https://github.com/FluidInference/FluidAudio) (CoreML on the Neural Engine), optionally cleans up the text with an AI provider and inserts the result at your cursor. Transcription kicks off the instant you release the key and is fast enough that even a long dictation is ready in a moment. Insertion uses the Accessibility API directly, with a clipboard+paste fallback for Electron apps.
 
 ### Transcribing files
 
@@ -91,6 +92,12 @@ Log entries, meetings and file transcripts all live in one folder, `~/Documents/
 ### Log entries
 
 The Log preset does not type anything. What you say is saved as a Markdown file in the library's `Logs` folder instead, sorted by year and month. Turn on Keep audio for the preset to save the recording as an `.m4a` file next to the entry. Use it for quick notes, a work journal or ideas you want to keep for later.
+
+Turn on Record system audio for the preset and Roger records your mic and the sound of your Mac. The entry labels who said what (`Me`, `Other 1`) and the kept audio is one file with both. If macOS does not allow system audio, the log is saved with your mic only.
+
+### Commands
+
+A command runs after a log, a meeting or a file transcript is saved. Add one under Settings > Commands, then pick it in a log preset, under Library & Meetings or under Files. A background command runs quietly, one run at a time. A terminal command opens in Terminal, iTerm2, Ghostty or Warp. The placeholders `{prompt}`, `{file}`, `{key}`, `{title}` and `{kind}` fill in the prompt and the entry, and Roger quotes them for the shell. With Ask before running, a small panel asks first and does not take the focus from your app. Suggest Commands offers ready-made commands for the coding agents Roger finds on your Mac. A failed run shows one line in the menu bar popover. Quit Roger and a running command stops too.
 
 ### Agents (MCP)
 
@@ -116,7 +123,7 @@ Without Homebrew, use `/Applications/Roger.app/Contents/MacOS/roger-mcp`. For Cu
 
 The first time an agent reads the library, macOS may ask whether Terminal (or the app that runs the agent) may access your Documents folder. Allow it. You can change it later in System Settings > Privacy & Security > Files and Folders.
 
-The skill `skills/ingest-roger/SKILL.md` files everything into [Crystalline](https://github.com/jordiboehme/crystalline): `/ingest-roger <domain>`. Log entries become observations, a meeting becomes one engram with decisions and action items and a file transcript becomes a source summary. To run it on a schedule, use `scripts/ingest-roger.sh <domain>`. It runs Claude Code with only the Roger and Crystalline tools allowed and stops with exit code 1 when something fails, so the next run tries the same range again. Run the script once by hand in Terminal first, so macOS can ask for access to your Documents folder. A LaunchAgent cannot show that prompt. The native Claude Code installer puts `claude` in `~/.local/bin`, so the example adds it to `PATH`. If `claude` is somewhere else, set `CLAUDE_BIN` to its full path. Example LaunchAgent, saved as `~/Library/LaunchAgents/com.example.ingest-roger.plist` and loaded with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.ingest-roger.plist`:
+The skill `skills/ingest-roger/SKILL.md` teaches an agent how to get the data from Roger: what is new, what changed and how to confirm it. Call it with `/ingest-roger [consumer]`. The consumer names who reads the changes and defaults to `crystalline`. What the agent does with the entries is up to you and your prompt, for example filing them into [Crystalline](https://github.com/jordiboehme/crystalline). To run it on a schedule, use `scripts/ingest-roger.sh <prompt> [max-runs]`. It runs Claude Code with the prompt and only the Roger tools allowed. Add more servers with `EXTRA_MCP_SERVERS`, for example `EXTRA_MCP_SERVERS=crystalline`. It stops with exit code 1 when something fails, so the next run tries the same range again. Run the script once by hand in Terminal first, so macOS can ask for access to your Documents folder. A LaunchAgent cannot show that prompt. The native Claude Code installer puts `claude` in `~/.local/bin`, so the example adds it to `PATH`. If `claude` is somewhere else, set `CLAUDE_BIN` to its full path. Example LaunchAgent, saved as `~/Library/LaunchAgents/com.example.ingest-roger.plist` and loaded with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.ingest-roger.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -129,10 +136,12 @@ The skill `skills/ingest-roger/SKILL.md` files everything into [Crystalline](htt
   <array>
     <string>/bin/bash</string>
     <string>/Users/you/git/roger/scripts/ingest-roger.sh</string>
-    <string>work</string>
+    <string>Use the ingest-roger skill to read what is new in Roger and fold it into the work domain in Crystalline.</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>EXTRA_MCP_SERVERS</key>
+    <string>crystalline</string>
     <key>PATH</key>
     <string>/Users/you/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
