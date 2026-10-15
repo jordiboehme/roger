@@ -196,6 +196,28 @@ final class AppState {
         didSet { defaults.set(openAIModel, forKey: "openAIModel") }
     }
 
+    // MARK: - Commands
+
+    /// Settings > Commands, in list order.
+    var commands: [AgentCommand] {
+        didSet {
+            if let data = try? JSONEncoder().encode(commands) { defaults.set(data, forKey: "commands") }
+        }
+    }
+    /// Runs after a meeting transcript is written. Nil runs nothing.
+    var meetingCommandID: UUID? {
+        didSet { defaults.set(meetingCommandID?.uuidString, forKey: "meetingCommandID") }
+    }
+    /// Runs after a file transcript is written. Nil runs nothing.
+    var fileTranscriptCommandID: UUID? {
+        didSet { defaults.set(fileTranscriptCommandID?.uuidString, forKey: "fileTranscriptCommandID") }
+    }
+
+    func command(id: UUID?) -> AgentCommand? {
+        guard let id else { return nil }
+        return commands.first { $0.id == id }
+    }
+
     // MARK: - Preset Settings
 
     var activePresetID: UUID {
@@ -380,6 +402,10 @@ final class AppState {
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
         self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
         self.modifierBindings = Self.loadModifierBindings()
+        self.commands = (defaults.data(forKey: "commands"))
+            .flatMap { try? JSONDecoder().decode([AgentCommand].self, from: $0) } ?? []
+        self.meetingCommandID = defaults.string(forKey: "meetingCommandID").flatMap(UUID.init(uuidString:))
+        self.fileTranscriptCommandID = defaults.string(forKey: "fileTranscriptCommandID").flatMap(UUID.init(uuidString:))
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
 
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
