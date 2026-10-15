@@ -203,9 +203,14 @@ final class AppState {
     /// Settings > Commands, in list order.
     var commands: [AgentCommand] {
         didSet {
-            if let data = try? JSONEncoder().encode(commands) { defaults.set(data, forKey: "commands") }
+            if let data = try? TolerantDecoding.encode(commands, keeping: unreadableCommands) {
+                defaults.set(data, forKey: "commands")
+            }
         }
     }
+    /// Saved commands Roger cannot read (for example from a newer version),
+    /// as raw JSON. Not shown; written back unchanged on every save.
+    @ObservationIgnored private var unreadableCommands: [Data] = []
     /// Runs after a meeting transcript is written. Nil runs nothing.
     var meetingCommandID: UUID? {
         didSet { defaults.set(meetingCommandID?.uuidString, forKey: "meetingCommandID") }
@@ -225,6 +230,9 @@ final class AppState {
     var activePresetID: UUID {
         didSet { defaults.set(activePresetID.uuidString, forKey: "activePresetID") }
     }
+    /// Saved presets Roger cannot read, as raw JSON. Not shown; written
+    /// back unchanged on every save.
+    @ObservationIgnored private var unreadablePresets: [Data] = []
     var presets: [DictationPreset] {
         didSet {
             savePresets()
@@ -412,10 +420,15 @@ final class AppState {
         self.openAIModel = defaults.string(forKey: "openAIModel") ?? "gpt-4o"
 
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
-        self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
+        let savedPresets = defaults.data(forKey: "presets")
+            .flatMap { TolerantDecoding.load(DictationPreset.self, from: $0, label: "preset") }
+        self.unreadablePresets = savedPresets?.unreadable ?? []
+        self.presets = Self.mergeBuiltInPresets(saved: savedPresets?.values)
         self.modifierBindings = Self.loadModifierBindings()
-        self.commands = defaults.data(forKey: "commands")
-            .flatMap { TolerantDecoding.array(of: AgentCommand.self, from: $0, label: "command") } ?? []
+        let savedCommands = defaults.data(forKey: "commands")
+            .flatMap { TolerantDecoding.load(AgentCommand.self, from: $0, label: "command") }
+        self.unreadableCommands = savedCommands?.unreadable ?? []
+        self.commands = savedCommands?.values ?? []
         self.meetingCommandID = defaults.string(forKey: "meetingCommandID").flatMap(UUID.init(uuidString:))
         self.fileTranscriptCommandID = defaults.string(forKey: "fileTranscriptCommandID").flatMap(UUID.init(uuidString:))
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
@@ -455,7 +468,7 @@ final class AppState {
     // MARK: - Persistence
 
     private func savePresets() {
-        guard let data = try? JSONEncoder().encode(presets) else { return }
+        guard let data = try? TolerantDecoding.encode(presets, keeping: unreadablePresets) else { return }
         defaults.set(data, forKey: "presets")
     }
 
@@ -492,11 +505,6 @@ final class AppState {
         return presets
     }
 
-    /// Entry by entry: a preset Roger cannot read is skipped and logged.
-    private static func loadPresets() -> [DictationPreset]? {
-        guard let data = UserDefaults.standard.data(forKey: "presets") else { return nil }
-        return TolerantDecoding.array(of: DictationPreset.self, from: data, label: "preset")
-    }
 }
 
 enum FileTranscriptOutputLocation: String, CaseIterable, Identifiable, Codable {
