@@ -113,6 +113,26 @@ struct HarnessRegistrationTests {
         #expect(HarnessRegistration.tomlCommand("[mcp_servers.other]\ncommand = \"x\"\n") == .absent)
     }
 
+    @Test func codexConfigComesFromCodexHomeWhenSet() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let spec = HarnessCatalog.spec(.codex)
+        let custom = home.appendingPathComponent("work-codex/config.toml")
+        try FileManager.default.createDirectory(at: custom.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"\(exe)\"\n".utf8).write(to: custom)
+        // Without CODEX_HOME, ~/.codex is read and has nothing.
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .notConnected)
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: custom.deletingLastPathComponent().path) == .connected)
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: "~/work-codex") == .connected)
+
+        #expect(spec.configURLs(home: home, codexHome: nil) == [home.appendingPathComponent(".codex/config.toml")])
+        #expect(spec.configURLs(home: home, codexHome: "relative/dir") == [home.appendingPathComponent(".codex/config.toml")])
+        #expect(spec.configURLs(home: home, codexHome: "/opt/codex").map(\.path) == ["/opt/codex/config.toml"])
+        // Other harnesses ignore it.
+        let claude = HarnessCatalog.spec(.claudeCode)
+        #expect(claude.configURLs(home: home, codexHome: "/opt/codex") == [home.appendingPathComponent(".claude.json")])
+    }
+
     @Test func readsACRLFCodexConfig() throws {
         let (home, _) = try home(with: [])
         defer { TempFolder.remove(home) }

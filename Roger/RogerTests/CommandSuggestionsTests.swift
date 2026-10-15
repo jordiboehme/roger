@@ -219,6 +219,23 @@ struct CommandSuggestionsTests {
         #expect(runner.calls == [["claude", "mcp", "list"]])
     }
 
+    @Test func detectionReadsTheCodexConfigFromCodexHome() async throws {
+        let home = try TempFolder.make()
+        defer { TempFolder.remove(home) }
+        let codex = home.appendingPathComponent("codex")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: codex)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: codex.path)
+        let custom = home.appendingPathComponent("elsewhere", isDirectory: true)
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"/x/roger-mcp\"\n".utf8).write(to: custom.appendingPathComponent("config.toml"))
+        let runner = FakeRunner([])
+
+        let without = await HarnessServerDetector(home: home, runner: runner, searchPath: [home.path]).detect()
+        #expect(without.first?.1.rogerToolPrefix == nil)
+        let with = await HarnessServerDetector(home: home, runner: runner, searchPath: [home.path], codexHome: custom.path).detect()
+        #expect(with.first?.1.rogerToolPrefix == "mcp__roger")
+    }
+
     @Test func claudeTimeoutFallsBackToTheConfig() async throws {
         let home = try TempFolder.make()
         defer { TempFolder.remove(home) }

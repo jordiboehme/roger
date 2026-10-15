@@ -238,22 +238,51 @@ enum CLILocator {
         getpwuid(getuid()).flatMap { $0.pointee.pw_shell.map { String(cString: $0) } }.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
     }
 
+    /// Printed around `CODEX_HOME`.
+    static let codexHomeMarker = "__ROGER_CODEX_HOME__"
+
+    /// What Roger reads from the login shell's environment.
+    struct LoginShellEnvironment: Equatable, Sendable {
+        var path: String
+        /// Nil when the shell does not set it.
+        var codexHome: String?
+    }
+
     /// `PATH` as the user's login shell sets it. Nil when the shell fails.
     static func loginShellPATH(runner: any CommandRunner, home: URL) async -> String? {
+        await loginShellEnvironment(runner: runner, home: home)?.path
+    }
+
+    /// `PATH` and `CODEX_HOME` as the user's login shell sets them, in one
+    /// call. Nil when the shell fails.
+    static func loginShellEnvironment(runner: any CommandRunner, home: URL) async -> LoginShellEnvironment? {
+        let script = "printf '\(pathMarker)%s\(pathMarker)' \"$PATH\"; "
+            + "printf '\(codexHomeMarker)%s\(codexHomeMarker)' \"${CODEX_HOME:-}\""
         let result = await runner.run(
             URL(fileURLWithPath: loginShell),
-            ["-l", "-c", "printf '\(pathMarker)%s\(pathMarker)' \"$PATH\""],
+            ["-l", "-c", script],
             environment: ["HOME": home.path, "USER": NSUserName()],
             currentDirectory: home,
             timeout: .seconds(5)
         )
         guard result.succeeded else { return nil }
-        return pathBetweenMarkers(result.stdout)
+        return environment(fromOutput: result.stdout)
+    }
+
+    /// Reads the marked values. Nil when the `PATH` markers are missing.
+    static func environment(fromOutput output: String) -> LoginShellEnvironment? {
+        guard let path = pathBetweenMarkers(output) else { return nil }
+        let codexHome = between(codexHomeMarker, in: output).flatMap { $0.isEmpty ? nil : $0 }
+        return LoginShellEnvironment(path: path, codexHome: codexHome)
     }
 
     /// The text between the first two markers. Nil when they are missing.
     static func pathBetweenMarkers(_ output: String) -> String? {
-        let parts = output.components(separatedBy: pathMarker)
+        between(pathMarker, in: output)
+    }
+
+    private static func between(_ marker: String, in output: String) -> String? {
+        let parts = output.components(separatedBy: marker)
         guard parts.count >= 3 else { return nil }
         return parts[1]
     }

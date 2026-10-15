@@ -71,10 +71,10 @@ enum HarnessRegistration {
     /// Reads (never writes) the harness's config files in order. Without an
     /// executable to compare (Roger runs from a temporary place), any roger
     /// entry is `.otherCommand`.
-    static func connection(_ spec: HarnessSpec, home: URL, executable: String?) -> ServerConnection {
+    static func connection(_ spec: HarnessSpec, home: URL, executable: String?, codexHome: String? = nil) -> ServerConnection {
         var sawUnreadable = false
-        for file in spec.configFiles {
-            guard let data = try? Data(contentsOf: home.appendingPathComponent(file)) else { continue }
+        for file in spec.configURLs(home: home, codexHome: codexHome) {
+            guard let data = try? Data(contentsOf: file) else { continue }
             let lookup = spec.id == .codex ? tomlCommand(TextFile.decode(data)) : jsonCommand(data)
             switch lookup {
             case .command(let command):
@@ -343,17 +343,20 @@ struct HarnessRegistrar: Sendable {
     let home: URL
     let runner: any CommandRunner
     let searchPath: [String]
+    /// `CODEX_HOME` from the login shell, nil when it is not set.
+    let codexHome: String?
     let timeout: Duration
 
-    init(home: URL, runner: any CommandRunner, searchPath: [String], timeout: Duration = .seconds(20)) {
+    init(home: URL, runner: any CommandRunner, searchPath: [String], codexHome: String? = nil, timeout: Duration = .seconds(20)) {
         self.home = home
         self.runner = runner
         self.searchPath = searchPath
+        self.codexHome = codexHome
         self.timeout = timeout
     }
 
     func register(_ spec: HarnessSpec, executable: String) async -> RegistrationOutcome {
-        let current = HarnessRegistration.connection(spec, home: home, executable: executable)
+        let current = HarnessRegistration.connection(spec, home: home, executable: executable, codexHome: codexHome)
         if current == .connected {
             return RegistrationOutcome(kind: .alreadyRegistered, message: nil, command: nil)
         }
@@ -378,7 +381,7 @@ struct HarnessRegistrar: Sendable {
     }
 
     func unregister(_ spec: HarnessSpec, executable: String) async -> RegistrationOutcome {
-        if HarnessRegistration.connection(spec, home: home, executable: executable) == .notConnected {
+        if HarnessRegistration.connection(spec, home: home, executable: executable, codexHome: codexHome) == .notConnected {
             return RegistrationOutcome(kind: .removed, message: nil, command: nil)
         }
         guard let remove = HarnessRegistration.remove(spec.id) else {

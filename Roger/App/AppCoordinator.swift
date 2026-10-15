@@ -157,7 +157,8 @@ final class AppCoordinator {
     func commandSuggestions() async -> [CommandSuggestion] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let path = await commandSearchPath.value(runner: commandRunner, home: home)
-        let detector = HarnessServerDetector(home: home, runner: commandRunner, searchPath: path)
+        let detector = HarnessServerDetector(home: home, runner: commandRunner, searchPath: path,
+                                             codexHome: commandSearchPath.codexHome)
         let found = await Task.detached(priority: .userInitiated) { await detector.detect() }.value
         return CommandSuggestions.suggestions(for: found)
     }
@@ -1344,17 +1345,23 @@ private extension AppState.DictationState {
 }
 
 /// The login shell's `PATH` plus the extra folders, looked up once per
-/// launch for the commands (the shell takes a moment to answer).
+/// launch for the commands (the shell takes a moment to answer), and the
+/// shell's `CODEX_HOME` for Suggest Commands.
 @MainActor
 private final class CommandSearchPathCache {
     private var cached: [String]?
+    /// Set by `value` once the shell answered.
+    private(set) var codexHome: String?
 
     func value(runner: any CommandRunner, home: URL) async -> [String] {
         if let cached { return cached }
-        let shellPATH = await CLILocator.loginShellPATH(runner: runner, home: home)
-        let path = CLILocator.searchPath(loginShellPATH: shellPATH, home: home)
+        let environment = await CLILocator.loginShellEnvironment(runner: runner, home: home)
+        let path = CLILocator.searchPath(loginShellPATH: environment?.path, home: home)
         // A shell that did not answer is asked again on the next run.
-        if shellPATH != nil { cached = path }
+        if let environment {
+            cached = path
+            codexHome = environment.codexHome
+        }
         return path
     }
 }

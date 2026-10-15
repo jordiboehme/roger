@@ -143,6 +143,18 @@ struct CommandRunnerTests {
         #expect(CLILocator.pathBetweenMarkers("\(marker)\(marker)") == "")
     }
 
+    @Test func loginShellEnvironmentReadsCodexHome() async {
+        let path = CLILocator.pathMarker
+        let codex = CLILocator.codexHomeMarker
+        let runner = FakeRunner([CommandResult(status: .exited(0), stdout: "hi\n\(path)/a/bin\(path)\(codex)/Users/x/.codex-work\(codex)\n", stderr: "")])
+        let environment = await CLILocator.loginShellEnvironment(runner: runner, home: tmp)
+        #expect(environment == CLILocator.LoginShellEnvironment(path: "/a/bin", codexHome: "/Users/x/.codex-work"))
+        #expect(runner.calls.first?.last?.contains("CODEX_HOME") == true)
+        // Not set: the shell prints the markers with nothing between them.
+        #expect(CLILocator.environment(fromOutput: "\(path)/a\(path)\(codex)\(codex)")?.codexHome == nil)
+        #expect(CLILocator.environment(fromOutput: "\(codex)/x\(codex)") == nil)
+    }
+
     @Test func aRunAfterStopAllDoesNotStart() async {
         let runner = ProcessCommandRunner()
         runner.stopAll()

@@ -79,6 +79,8 @@ struct HarnessServerDetector: Sendable {
     let home: URL
     let runner: any CommandRunner
     let searchPath: [String]
+    /// `CODEX_HOME` from the login shell, nil when it is not set.
+    var codexHome: String? = nil
     var timeout: Duration = .seconds(20)
 
     private static let logger = Logger(subsystem: "com.jordiboehme.roger", category: "CommandSuggestions")
@@ -97,8 +99,8 @@ struct HarnessServerDetector: Sendable {
     }
 
     private func configuredServers(_ spec: HarnessSpec) -> [ConfiguredServer] {
-        spec.configFiles.flatMap { file -> [ConfiguredServer] in
-            guard let data = try? Data(contentsOf: home.appendingPathComponent(file)) else { return [] }
+        spec.configURLs(home: home, codexHome: codexHome).flatMap { file -> [ConfiguredServer] in
+            guard let data = try? Data(contentsOf: file) else { return [] }
             if spec.id == .codex { return HarnessRegistration.tomlServers(TextFile.decode(data)) }
             return HarnessRegistration.jsonServers(data) ?? []
         }

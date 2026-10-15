@@ -27,6 +27,23 @@ struct HarnessSpec: Equatable, Sendable {
     let cli: String?
     /// Config files Roger reads (never writes) to show the server state.
     let configFiles: [String]
+
+    /// The config files as URLs. Codex reads its config from `CODEX_HOME`
+    /// when the login shell sets it (an absolute path or one starting with
+    /// `~/`), else from `~/.codex`.
+    func configURLs(home: URL, codexHome: String?) -> [URL] {
+        if id == .codex, let folder = Self.folder(codexHome, home: home) {
+            return [folder.appendingPathComponent("config.toml")]
+        }
+        return configFiles.map { home.appendingPathComponent($0) }
+    }
+
+    private static func folder(_ path: String?, home: URL) -> URL? {
+        guard let path = path?.trimmingCharacters(in: .whitespaces), !path.isEmpty else { return nil }
+        if path.hasPrefix("/") { return URL(fileURLWithPath: path, isDirectory: true) }
+        if path.hasPrefix("~/") { return home.appendingPathComponent(String(path.dropFirst(2)), isDirectory: true) }
+        return nil
+    }
 }
 
 enum HarnessCatalog {
