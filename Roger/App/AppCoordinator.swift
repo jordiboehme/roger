@@ -63,6 +63,8 @@ final class AppCoordinator {
     let diarizationService = DiarizationService()
     /// Writes change-log events so agents see new and changed items.
     let libraryChanges = LibraryChangeRecorder()
+    /// Runs the commands of Settings > Commands after Roger saved an item.
+    let commandScheduler: CommandScheduler
     /// An installed ingest skill is older than the one in this app.
     private(set) var agentSkillOutdated = false
 
@@ -114,6 +116,39 @@ final class AppCoordinator {
         settingsOpener?(pane)
     }
 
+    // MARK: - Commands
+
+    /// Builds the placeholder values for a written Markdown file.
+    nonisolated static func commandItemInfo(markdownURL: URL, kind: LibraryItemKind, root: URL) -> CommandItemInfo {
+        let subject = ChangeKey.subject(markdownURL: markdownURL, kind: kind, root: root)
+        let title = LibraryItemReader.item(markdownAt: markdownURL, fallbackKind: kind)?.title
+            ?? markdownURL.deletingPathExtension().lastPathComponent
+        return CommandItemInfo(file: markdownURL.path, key: subject.key, title: title, kind: kind.rawValue)
+    }
+
+    /// Waits for the change log, then runs `commandID`'s command for the
+    /// item. Nil or missing id does nothing.
+    func runCommand(_ commandID: UUID?, markdownURL: URL, kind: LibraryItemKind, root: URL) async {
+        guard let command = appState.command(id: commandID) else { return }
+        // The item must be in the change log before an agent asks get_changes.
+        await libraryChanges.waitUntilIdle()
+        commandScheduler.trigger(command, item: Self.commandItemInfo(markdownURL: markdownURL, kind: kind, root: root))
+    }
+
+    /// The newest item with Markdown in the library, for "Run now". Nil when
+    /// the library is empty. Scans the folders off the main actor.
+    func newestLibraryItemInfo() async -> CommandItemInfo? {
+        let scope = LibraryScanScope(layout: appState.libraryLayout, extraFolders: appState.extraScanFolders)
+        let root = appState.libraryLayout.root
+        return await Task.detached(priority: .userInitiated) {
+            let items = LibraryScanner.scanAll(scope: scope, externalFiles: ExternalTranscriptRegistry.standard.existingFiles())
+            guard let newest = items.filter(\.hasMarkdown).max(by: { $0.date < $1.date }),
+                  let subject = ChangeKey.subject(for: newest, root: root)
+            else { return nil }
+            return CommandItemInfo(file: newest.url.path, key: subject.key, title: newest.title, kind: newest.kind.rawValue)
+        }.value
+    }
+
     #if DEBUG
     /// How many coordinators this process built. The test host must build none.
     private(set) static var instancesCreated = 0
@@ -134,6 +169,18 @@ final class AppCoordinator {
             diarization: diarizationService
         )
         self.systemMicMute = SystemMicMute(appState: appState)
+        let runner = ProcessCommandRunner()
+        let searchPath = CommandSearchPathCache()
+        self.commandScheduler = CommandScheduler(
+            runner: runner,
+            launcher: TerminalLauncher(),
+            environment: {
+                let home = FileManager.default.homeDirectoryForCurrentUser
+                let path = await searchPath.value(runner: runner, home: home)
+                let shell = getpwuid(getuid()).flatMap { $0.pointee.pw_shell.map { String(cString: $0) } } ?? "/bin/zsh"
+                return ["PATH": path.joined(separator: ":"), "HOME": home.path, "USER": NSUserName(), "SHELL": shell]
+            }
+        )
         libraryChanges.environment = { [appState] in
             LibraryChangeEnvironment(
                 layout: appState.libraryLayout,
@@ -1104,5 +1151,21 @@ private extension AppState.DictationState {
     var isErrorState: Bool {
         if case .error = self { return true }
         return false
+    }
+}
+
+/// The login shell's `PATH` plus the extra folders, looked up once per
+/// launch for the commands (the shell takes a moment to answer).
+@MainActor
+private final class CommandSearchPathCache {
+    private var cached: [String]?
+
+    func value(runner: any CommandRunner, home: URL) async -> [String] {
+        if let cached { return cached }
+        let shellPATH = await CLILocator.loginShellPATH(runner: runner, home: home)
+        let path = CLILocator.searchPath(loginShellPATH: shellPATH, home: home)
+        // A shell that did not answer is asked again on the next run.
+        if shellPATH != nil { cached = path }
+        return path
     }
 }

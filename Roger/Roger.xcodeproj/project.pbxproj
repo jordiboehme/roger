@@ -231,6 +231,7 @@
 		F1D4458A3DA739D837995957 /* LibraryActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58EF1835E801D525049BE156 /* LibraryActions.swift */; };
 		F21C8AD3E80704035A9A0F24 /* LibraryItemReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F9A8C17CD80A6154B89A09 /* LibraryItemReader.swift */; };
 		F36323F5B0CAEB1CF8BCDF11 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 944D8CE8CCBD95F3346AB9C2 /* AppState.swift */; };
+		F379BBC5F6D831628F8E0F99 /* CommandsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A1CD56B55CD15418F579E5 /* CommandsPane.swift */; };
 		F3B070640F0AD944BA552FA9 /* SettingsWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC81A42613FC62162BF9BF03 /* SettingsWindowControllerTests.swift */; };
 		F6473EED683D3854ACCFB39D /* LibraryItemReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FD943326E54BAD053EA96EC /* LibraryItemReaderTests.swift */; };
 		F753B2062AD96434A1588912 /* CapsLockRemap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 781157CAABCA4DE4A5912EE7 /* CapsLockRemap.swift */; };
@@ -361,6 +362,7 @@
 		4311308E48E7F37EE21AD540 /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
 		43ED8418FB9EEF9C299D055E /* ChangeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeKeyTests.swift; sourceTree = "<group>"; };
 		43F2C854E0F522385C59532F /* RogerKitExports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RogerKitExports.swift; sourceTree = "<group>"; };
+		45A1CD56B55CD15418F579E5 /* CommandsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsPane.swift; sourceTree = "<group>"; };
 		47E5432689165331F975E0A0 /* TranscriptOutputWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptOutputWriter.swift; sourceTree = "<group>"; };
 		48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInsertionService.swift; sourceTree = "<group>"; };
 		49BB6A43DF83E069246B9D16 /* SettingsRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRootView.swift; sourceTree = "<group>"; };
@@ -827,6 +829,7 @@
 				BA5716D23541C7E8416FCC51 /* AboutPane.swift */,
 				57519E1D9C77C20A3C21B1F0 /* AgentsPane.swift */,
 				6CC8AAB56E3B0DED8EA8441C /* AIProviderPane.swift */,
+				45A1CD56B55CD15418F579E5 /* CommandsPane.swift */,
 				E7081218872DAE9F427A8D6B /* FilesPane.swift */,
 				12CBCAFA39BD1644ACB6F5C7 /* GeneralPane.swift */,
 				0997DA52F9A4F91DEB55F863 /* LibraryPane.swift */,
@@ -1190,6 +1193,7 @@
 				11B83163FBC9E375A3D215B0 /* CommandRunRecord.swift in Sources */,
 				C01D4E4A4B3B483F8BD315CD /* CommandRunner.swift in Sources */,
 				24F50E7AC4D84C102316EF85 /* CommandScheduler.swift in Sources */,
+				F379BBC5F6D831628F8E0F99 /* CommandsPane.swift in Sources */,
 				AAC034F2B0C7972E1A2542A5 /* CoreAudioUtils.swift in Sources */,
 				C40217842D1A90418503A9F9 /* DesktopExtensionBuilder.swift in Sources */,
 				03CA8086269DC0AA5D5E24E7 /* DiarizationService.swift in Sources */,

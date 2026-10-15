@@ -30,7 +30,7 @@ products=$(xcodebuild -project Roger.xcodeproj -scheme Roger -configuration Debu
 
 count=$(find "$out" -name 'settings-*.png' | wc -l | tr -d ' ')
 echo "$count images in $out"
-if [ "$count" -ne 30 ]; then
-  echo "error: expected 30 images" >&2
+if [ "$count" -ne 33 ]; then
+  echo "error: expected 33 images" >&2
   exit 1
 fi

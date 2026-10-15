@@ -88,6 +88,7 @@ struct SettingsPaneContent: View {
         case .files: FilesPane()
         case .library: LibraryPane()
         case .agents: AgentsPane()
+        case .commands: CommandsPane()
         case .permissions: PermissionsPane()
         case .about: AboutPane()
         }

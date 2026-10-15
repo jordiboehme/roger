@@ -20,6 +20,12 @@ struct MenuBarView: View {
                 }
             }
 
+            if let message = commandFailureMessage {
+                alertBanner(message, actionTitle: "Show", isRetryable: true, onRetry: {
+                    coordinator.openSettings(.commands)
+                }, onDismiss: nil)
+            }
+
             if !coordinator.hotkeyActive && coordinator.appState.dictationState == .idle {
                 alertBanner("Hotkey not active. Grant Accessibility in Settings.", isRetryable: false, onRetry: {}, onDismiss: nil)
             }
@@ -405,7 +411,18 @@ struct MenuBarView: View {
 
     // MARK: - Alert banner
 
-    private func alertBanner(_ message: String, isRetryable: Bool, onRetry: @escaping () -> Void, onDismiss: (() -> Void)?) -> some View {
+    /// "Command <name> failed", or how many failed. Nil when nothing failed
+    /// since the Commands pane was last opened.
+    private var commandFailureMessage: String? {
+        let scheduler = coordinator.commandScheduler
+        let failed = scheduler.unseenFailures
+        guard let first = failed.first else { return nil }
+        if failed.count > 1 { return "\(failed.count) commands failed" }
+        let name = coordinator.appState.command(id: first)?.name ?? scheduler.lastRuns[first]?.commandName ?? ""
+        return "Command \(name) failed"
+    }
+
+    private func alertBanner(_ message: String, actionTitle: String = "Retry", isRetryable: Bool, onRetry: @escaping () -> Void, onDismiss: (() -> Void)?) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
@@ -416,7 +433,7 @@ struct MenuBarView: View {
                 .lineLimit(2)
             Spacer()
             if isRetryable {
-                Button("Retry") { onRetry() }
+                Button(actionTitle) { onRetry() }
                     .buttonStyle(.borderless)
                     .font(.caption2)
             }

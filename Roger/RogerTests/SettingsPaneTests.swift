@@ -41,7 +41,7 @@ struct SettingsPaneTests {
         #expect(groups.map(\.1) == [
             ["General", "Presets", "Microphone"],
             ["Speech Model", "Text Model", "Files"],
-            ["Library & Meetings", "Agents"],
+            ["Library & Meetings", "Agents", "Commands"],
             ["Permissions", "About"],
         ])
     }
@@ -90,5 +90,27 @@ struct SettingsNavigationTests {
         let navigation = SettingsNavigation(memory: store.memory)
         navigation.selection = .general
         #expect(store.value == nil)
+    }
+}
+
+struct CommandsWiringTests {
+    @Test func commandsPaneSitsInLibraryGroupAfterAgents() {
+        #expect(SettingsPane.SidebarGroup.library.panes == [.library, .agents, .commands])
+        #expect(SettingsPane.commands.title == "Commands")
+        #expect(SettingsPane(storedValue: "commands") == .commands)
+    }
+
+    @Test func itemInfoForALogFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("roger-cmd-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Logs/2026/10")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("2026-10-15 09-00-00.md")
+        try "---\ntitle: \"Log 2026-10-15 09:00 - Hello\"\ntags: [log]\n---\n# Log\n\nHello\n".write(to: file, atomically: true, encoding: .utf8)
+        let info = AppCoordinator.commandItemInfo(markdownURL: file, kind: .log, root: root)
+        #expect(info.file == file.path)
+        #expect(info.kind == "log")
+        #expect(info.title == "Log 2026-10-15 09:00 - Hello")
+        #expect(info.key == ChangeKey.subject(markdownURL: file, kind: .log, root: root).key)
     }
 }
