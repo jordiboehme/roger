@@ -408,7 +408,7 @@ final class AppCoordinator {
             // earlier meeting) records pure silence. Lift the mute for this
             // dictation; it is re-applied when the capture ends.
             systemMicMute.releaseStaleMute()
-            audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
+            audioCaptureService.preferredInputUID = appState.resolvedInputDeviceUID
             try audioCaptureService.startCapture()
 
             systemAudioUnavailable = false
@@ -586,8 +586,9 @@ final class AppCoordinator {
             let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
 
             guard !result.text.isEmpty else {
-                let uid = appState.selectedInputDeviceUID ?? "automatic"
-                let deviceResolved = appState.selectedInputDeviceUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
+                let resolvedUID = appState.resolvedInputDeviceUID
+                let uid = resolvedUID ?? "automatic"
+                let deviceResolved = resolvedUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
                 logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 audioLevelMeter.reset()
@@ -838,7 +839,7 @@ final class AppCoordinator {
         guard appState.dictationState == .idle else { return }
         isWarmingUp = true
         defer { isWarmingUp = false }
-        audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
+        audioCaptureService.preferredInputUID = appState.resolvedInputDeviceUID
         await audioCaptureService.warmUp()
     }
 

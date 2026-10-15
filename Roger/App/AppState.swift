@@ -52,15 +52,17 @@ final class AppState {
     }
     private var isSyncingLaunchAtLogin = false
 
-    /// UID of the preferred input device, or nil for system default (automatic).
-    var selectedInputDeviceUID: String? {
+    /// Microphones in the order Roger tries them. Always holds `.systemDefault` once.
+    var inputPriority: [InputChoice] {
         didSet {
-            if let uid = selectedInputDeviceUID {
-                defaults.set(uid, forKey: "selectedInputDeviceUID")
-            } else {
-                defaults.removeObject(forKey: "selectedInputDeviceUID")
-            }
+            if let data = try? JSONEncoder().encode(inputPriority) { defaults.set(data, forKey: "inputPriority") }
         }
+    }
+
+    /// The UID to record from right now, nil for the system default.
+    /// Asks Core Audio: call it when a recording starts, never in a view body.
+    var resolvedInputDeviceUID: String? {
+        AudioDeviceLookup.resolveInput(inputPriority)
     }
 
     // MARK: - File Transcription Settings
@@ -367,7 +369,17 @@ final class AppState {
         if !defaults.bool(forKey: RecordingDurationMigration.migratedKey) {
             defaults.set(true, forKey: RecordingDurationMigration.migratedKey)
         }
-        self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
+        if let data = defaults.data(forKey: "inputPriority"),
+           let stored = try? JSONDecoder().decode([InputChoice].self, from: data) {
+            self.inputPriority = InputChoice.repaired(stored)
+        } else {
+            let legacy = defaults.string(forKey: "selectedInputDeviceUID")
+            let names = Dictionary(AudioDeviceLookup.availableInputs().map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+            let migrated = InputChoice.migrated(selectedUID: legacy, nameForUID: { names[$0] })
+            self.inputPriority = migrated
+            if let data = try? JSONEncoder().encode(migrated) { defaults.set(data, forKey: "inputPriority") }
+            defaults.removeObject(forKey: "selectedInputDeviceUID")
+        }
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
             rawValue: defaults.string(forKey: "fileTranscriptOutputLocation") ?? ""

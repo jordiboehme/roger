@@ -153,7 +153,7 @@ final class MeetingRecordingService {
         }
 
         let micTap = MicrophoneTap()
-        micTap.preferredInputUID = appState.selectedInputDeviceUID
+        micTap.preferredInputUID = appState.resolvedInputDeviceUID
         let systemTap = SystemAudioTap()
 
         let micStream: AsyncStream<SendableAudioBuffer>

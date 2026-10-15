@@ -45,6 +45,10 @@ enum AudioDeviceLookup {
         }
     }
 
+    static func resolveInput(_ list: [InputChoice]) -> String? {
+        InputChoice.resolve(list, connectedUIDs: Set(availableInputs().map(\.id)))
+    }
+
     static func deviceID(forUID uid: String) -> AudioDeviceID? {
         availableInputs().first { $0.id == uid }?.deviceID
     }

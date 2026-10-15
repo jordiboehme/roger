@@ -154,10 +154,10 @@ final class SystemMicMute {
 
     // MARK: - Target device
 
-    /// The mic the user records / speaks into: their explicitly selected input
-    /// if set, otherwise the system default input.
+    /// The mic the user records / speaks into: first connected input of their priority
+    /// list, otherwise the system default input.
     private func targetInputDevice() -> AudioDeviceID? {
-        if let uid = appState.selectedInputDeviceUID,
+        if let uid = appState.resolvedInputDeviceUID,
            let id = AudioDeviceLookup.deviceID(forUID: uid) {
             return id
         }
