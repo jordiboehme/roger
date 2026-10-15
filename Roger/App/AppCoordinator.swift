@@ -507,10 +507,16 @@ final class AppCoordinator {
         }
 
         logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
+        // Leave .listening right away: stopping the system audio tap below
+        // takes a moment, and a second stopDictation (or a new dictation)
+        // must not slip in while it drains.
+        appState.dictationState = .transcribing
+        let presetID = activeRecordingPresetID
         Task {
             let systemSamples = await systemRecorder?.stop()
             if let systemSamples, !systemSamples.isEmpty, let samples, !samples.isEmpty {
-                await self.runLogWithSystemAudio(mic: samples, system: systemSamples, languageOverride: languageOverride,
+                await self.runLogWithSystemAudio(mic: samples, system: systemSamples, presetID: presetID,
+                                                 languageOverride: languageOverride,
                                                  startedAt: startedAt, endedAt: endedAt)
                 return
             }
@@ -529,11 +535,11 @@ final class AppCoordinator {
     /// A log preset with system audio: both tracks through the meeting
     /// pipeline ("Me" from the mic alone, "Other N" from the system track),
     /// then saved as a log with paragraphs.
-    private func runLogWithSystemAudio(mic: [Float], system: [Float], languageOverride: String?,
+    private func runLogWithSystemAudio(mic: [Float], system: [Float], presetID: UUID?, languageOverride: String?,
                                        startedAt: Date, endedAt: Date) async {
         appState.dictationState = .transcribing
         defer { activeRecordingPresetID = nil }
-        let preset = appState.presets.first { $0.id == activeRecordingPresetID } ?? appState.activePreset
+        let preset = appState.presets.first { $0.id == presetID } ?? appState.activePreset
         var llm: (any LLMService)?
         if preset.requiresAI {
             let service = appState.currentLLMService()
