@@ -78,7 +78,7 @@ final class CommandConfirmationPanels: CommandConfirming {
         let hosting = FirstClickHostingView(rootView: CommandQuestionView(model: model, onAnswer: onAnswer))
         let size = hosting.fittingSize
         hosting.frame = NSRect(origin: .zero, size: size)
-        let panel = NSPanel(
+        let panel = QuestionPanel(
             contentRect: hosting.frame,
             styleMask: [.titled, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
@@ -114,6 +114,12 @@ final class CommandQuestionModel {
         self.commandName = commandName
         self.itemTitle = itemTitle
     }
+}
+
+/// Never the key window, so the app the user types in keeps the keyboard.
+private final class QuestionPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 }
 
 /// A click on a button works at once, also while another app is active.
