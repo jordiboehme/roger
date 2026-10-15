@@ -91,9 +91,8 @@ enum HarnessCatalog {
         Array(Set(all.map(\.writesSkillFolder))).sorted()
     }
 
-    /// Harnesses whose home folder exists (a folder, not a file).
-    /// Harnesses whose folder exists in `home`. Codex also counts when the
-    /// `CODEX_HOME` folder exists.
+    /// Harnesses whose home folder exists in `home` (a folder, not a file).
+    /// Codex also counts when the `CODEX_HOME` folder exists.
     static func detected(home: URL, codexHome: String? = nil) -> [HarnessSpec] {
         all.filter { spec in
             if isFolder(home.appendingPathComponent(spec.homeFolder)) { return true }

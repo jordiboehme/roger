@@ -6,15 +6,19 @@ import Testing
 final class FakeRunner: CommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [[String]] = []
+    private var recordedEnvironments: [[String: String]] = []
     private var results: [CommandResult]
 
     init(_ results: [CommandResult]) { self.results = results }
 
     var calls: [[String]] { lock.withLock { recorded } }
+    /// The environment of each call, in the order of `calls`.
+    var environments: [[String: String]] { lock.withLock { recordedEnvironments } }
 
     func run(_ executable: URL, _ arguments: [String], environment: [String: String], currentDirectory: URL, timeout: Duration) async -> CommandResult {
         lock.withLock {
             recorded.append([executable.lastPathComponent] + arguments)
+            recordedEnvironments.append(environment)
             return results.count > 1 ? results.removeFirst() : results[0]
         }
     }
@@ -149,13 +153,28 @@ struct HarnessRegistrationTests {
         #expect(HarnessCatalog.detected(home: home, codexHome: "~/work-codex").isEmpty)
     }
 
-    @Test func registrationRunsGetCodexHome() {
-        let home = URL(fileURLWithPath: "/Users/someone")
-        let with = HarnessRegistrar(home: home, runner: FakeRunner([]), searchPath: ["/bin"], codexHome: "work-codex")
-        #expect(with.environment["CODEX_HOME"] == "work-codex")
-        #expect(with.environment["PATH"] == "/bin")
-        #expect(HarnessRegistrar(home: home, runner: FakeRunner([]), searchPath: ["/bin"]).environment["CODEX_HOME"] == nil)
-        #expect(HarnessRegistrar(home: home, runner: FakeRunner([]), searchPath: ["/bin"], codexHome: "").environment["CODEX_HOME"] == nil)
+    @Test func registrationRunsGetCodexHome() async throws {
+        let (home, bin) = try home(with: ["codex"])
+        defer { TempFolder.remove(home) }
+        let ok = CommandResult(status: .exited(0), stdout: "", stderr: "")
+        let runner = FakeRunner([ok])
+        let registrar = HarnessRegistrar(home: home, runner: runner, searchPath: [bin.path], codexHome: "work-codex")
+        let spec = HarnessCatalog.spec(.codex)
+
+        #expect(await registrar.register(spec, executable: exe).kind == .registered)
+        // Remove runs only when the config under CODEX_HOME has the entry.
+        let config = home.appendingPathComponent("work-codex/config.toml")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"\(exe)\"\n".utf8).write(to: config)
+        #expect(await registrar.unregister(spec, executable: exe).kind == .removed)
+
+        #expect(runner.calls.map { Array($0.prefix(3)) } == [["codex", "mcp", "add"], ["codex", "mcp", "remove"]])
+        #expect(runner.environments.map { $0["CODEX_HOME"] } == ["work-codex", "work-codex"])
+        #expect(runner.environments.allSatisfy { $0["PATH"] == bin.path && $0["HOME"] == home.path })
+
+        // Not set or empty: no CODEX_HOME, so Codex uses ~/.codex.
+        #expect(HarnessRegistrar(home: home, runner: runner, searchPath: [bin.path]).environment["CODEX_HOME"] == nil)
+        #expect(HarnessRegistrar(home: home, runner: runner, searchPath: [bin.path], codexHome: "").environment["CODEX_HOME"] == nil)
     }
 
     @MainActor
