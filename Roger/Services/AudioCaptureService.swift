@@ -6,13 +6,17 @@ private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "Audio
 
 final class AudioCaptureService: @unchecked Sendable {
     private var audioEngine: AVAudioEngine?
-    /// The engine a running warm-up started, nil otherwise. A recording or probe
-    /// that starts meanwhile takes over; the warm-up then leaves its engine alone.
-    private var warmUpEngine: AVAudioEngine?
+    /// The engine a running warm-up or probe started, nil otherwise. A recording
+    /// that starts meanwhile takes over; the warm-up or probe then leaves its engine alone.
+    private var backgroundEngine: AVAudioEngine?
     private var capturedSamples: [Float] = []
     private var tapBufferCount = 0
     private var captureStartedAt: Date?
     private let lock = NSLock()
+    /// Guards `audioEngine`, `backgroundEngine` and `captureStartedAt`. Warm-up and
+    /// probe run off the main actor while recordings run on it. Recursive because
+    /// the warm-up and probe call stopCapture() while holding it.
+    private let stateLock = NSRecursiveLock()
 
     /// Target sample rate for WhisperKit (16kHz mono)
     static let targetSampleRate: Double = 16000
@@ -58,18 +62,15 @@ final class AudioCaptureService: @unchecked Sendable {
     /// Runs a short silent capture to wake the audio HAL so the next real
     /// capture gets samples immediately. Never throws; logs and returns.
     func warmUp() async {
-        guard audioEngine == nil else { return }
+        guard !isCapturing else { return }
         do {
-            try startCapture(forWarmUp: true)
-            guard let mine = warmUpEngine else { return }
+            let mine = try startBackgroundCapture()
             try? await Task.sleep(nanoseconds: UInt64(Self.warmUpDuration * 1_000_000_000))
             // A recording took over while we slept: it owns the engine now.
-            guard warmUpEngine === mine, audioEngine === mine else {
+            guard let result = finishBackgroundCapture(mine) else {
                 logger.info("Mic warm-up superseded by a recording")
                 return
             }
-            warmUpEngine = nil
-            let result = stopCapture()
             let count = result.samples?.count ?? 0
             if result.health == .halStarved {
                 logger.error("Mic warm-up starved — the audio server delivered no buffers to this process (wedge suspect)")
@@ -83,21 +84,50 @@ final class AudioCaptureService: @unchecked Sendable {
         }
     }
 
+    private var isCapturing: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return audioEngine != nil
+    }
+
+    /// Starts a warm-up or probe capture and returns its engine. Throws `busy`
+    /// while a capture runs.
+    private func startBackgroundCapture() throws -> AVAudioEngine? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        try startCapture(forWarmUp: true)
+        return backgroundEngine
+    }
+
+    /// Stops the warm-up or probe capture `mine`, or returns nil when a recording
+    /// took it over meanwhile (then the engine is left alone).
+    private func finishBackgroundCapture(_ mine: AVAudioEngine?) -> CaptureResult? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard let mine, backgroundEngine === mine, audioEngine === mine else { return nil }
+        backgroundEngine = nil
+        return stopCapture()
+    }
+
     func startCapture() throws {
         try startCapture(forWarmUp: false)
     }
 
     private func startCapture(forWarmUp: Bool) throws {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        // A warm-up or probe never takes over a running capture.
+        if forWarmUp, audioEngine != nil { throw AudioCaptureError.busy }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw AudioCaptureError.permissionDenied
         }
 
         // A recording always wins: drop a warm-up that is still running.
-        if !forWarmUp, let stale = warmUpEngine {
+        if !forWarmUp, let stale = backgroundEngine {
             stale.inputNode.removeTap(onBus: 0)
             stale.stop()
             if audioEngine === stale { audioEngine = nil }
-            warmUpEngine = nil
+            backgroundEngine = nil
             logger.info("Stopped a running mic warm-up for a recording")
         }
 
@@ -175,7 +205,7 @@ final class AudioCaptureService: @unchecked Sendable {
         engine.prepare()
         try engine.start()
         audioEngine = engine
-        if forWarmUp { warmUpEngine = engine }
+        if forWarmUp { backgroundEngine = engine }
         captureStartedAt = Date()
         let boundDeviceID = currentDeviceID(for: inputNode)
         let boundDeviceDescription: String
@@ -189,6 +219,8 @@ final class AudioCaptureService: @unchecked Sendable {
 
     @discardableResult
     func stopCapture() -> CaptureResult {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let wasRunning = audioEngine != nil
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
@@ -234,9 +266,14 @@ final class AudioCaptureService: @unchecked Sendable {
     func probe(duration: TimeInterval = 0.5) async throws -> CaptureResult {
         var last = CaptureResult(samples: nil, health: .indeterminate)
         for attempt in 1...2 {
-            try startCapture()
+            // A recording always wins over a probe.
+            let mine = try startBackgroundCapture()
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-            last = stopCapture()
+            guard let result = finishBackgroundCapture(mine) else {
+                logger.info("Mic probe superseded by a recording")
+                return last
+            }
+            last = result
             if let samples = last.samples, !samples.isEmpty {
                 return last
             }
@@ -307,6 +344,7 @@ final class AudioCaptureService: @unchecked Sendable {
 enum AudioCaptureError: LocalizedError {
     case noInputDevice
     case permissionDenied
+    case busy
 
     var errorDescription: String? {
         switch self {
@@ -314,6 +352,8 @@ enum AudioCaptureError: LocalizedError {
             return "No audio input device found"
         case .permissionDenied:
             return "Microphone access denied. Grant permission in System Settings > Privacy & Security."
+        case .busy:
+            return "The microphone is in use by a recording."
         }
     }
 }
