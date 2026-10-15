@@ -257,7 +257,9 @@ enum CLILocator {
     /// call. Nil when the shell fails.
     static func loginShellEnvironment(runner: any CommandRunner, home: URL) async -> LoginShellEnvironment? {
         let script = "printf '\(pathMarker)%s\(pathMarker)' \"$PATH\"; "
-            + "printf '\(codexHomeMarker)%s\(codexHomeMarker)' \"${CODEX_HOME:-}\""
+            // Plain "$CODEX_HOME": fish has no `${...}`, and an unset
+            // variable prints nothing in sh, bash, zsh and fish.
+            + "printf '\(codexHomeMarker)%s\(codexHomeMarker)' \"$CODEX_HOME\""
         let result = await runner.run(
             URL(fileURLWithPath: loginShell),
             ["-l", "-c", script],

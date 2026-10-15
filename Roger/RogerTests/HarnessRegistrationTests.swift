@@ -123,14 +123,56 @@ struct HarnessRegistrationTests {
         // Without CODEX_HOME, ~/.codex is read and has nothing.
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .notConnected)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: custom.deletingLastPathComponent().path) == .connected)
-        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: "~/work-codex") == .connected)
+        // Relative: against the folder Codex runs in, the home folder here.
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: "work-codex") == .connected)
+        // Codex 0.162.1 does not expand "~" and refuses it: no config at all.
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: "~/work-codex") == .notConnected)
 
         #expect(spec.configURLs(home: home, codexHome: nil) == [home.appendingPathComponent(".codex/config.toml")])
-        #expect(spec.configURLs(home: home, codexHome: "relative/dir") == [home.appendingPathComponent(".codex/config.toml")])
+        #expect(spec.configURLs(home: home, codexHome: "") == [home.appendingPathComponent(".codex/config.toml")])
+        #expect(spec.configURLs(home: home, codexHome: "~/x").isEmpty)
+        #expect(spec.configURLs(home: home, codexHome: "rel/dir").map(\.path) == [home.appendingPathComponent("rel/dir/config.toml").path])
         #expect(spec.configURLs(home: home, codexHome: "/opt/codex").map(\.path) == ["/opt/codex/config.toml"])
         // Other harnesses ignore it.
         let claude = HarnessCatalog.spec(.claudeCode)
         #expect(claude.configURLs(home: home, codexHome: "/opt/codex") == [home.appendingPathComponent(".claude.json")])
+    }
+
+    @Test func codexIsDetectedByItsCodexHomeFolder() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("work-codex"), withIntermediateDirectories: true)
+        #expect(HarnessCatalog.detected(home: home).isEmpty)
+        #expect(HarnessCatalog.detected(home: home, codexHome: "work-codex").map(\.id) == [.codex])
+        #expect(HarnessCatalog.detected(home: home, codexHome: home.appendingPathComponent("work-codex").path).map(\.id) == [.codex])
+        #expect(HarnessCatalog.detected(home: home, codexHome: "missing").isEmpty)
+        #expect(HarnessCatalog.detected(home: home, codexHome: "~/work-codex").isEmpty)
+    }
+
+    @Test func registrationRunsGetCodexHome() {
+        let home = URL(fileURLWithPath: "/Users/someone")
+        let with = HarnessRegistrar(home: home, runner: FakeRunner([]), searchPath: ["/bin"], codexHome: "work-codex")
+        #expect(with.environment["CODEX_HOME"] == "work-codex")
+        #expect(with.environment["PATH"] == "/bin")
+        #expect(HarnessRegistrar(home: home, runner: FakeRunner([]), searchPath: ["/bin"]).environment["CODEX_HOME"] == nil)
+        #expect(HarnessRegistrar(home: home, runner: FakeRunner([]), searchPath: ["/bin"], codexHome: "").environment["CODEX_HOME"] == nil)
+    }
+
+    @MainActor
+    @Test func theCodexRowIsReadAgainOnceTheShellGaveCodexHome() async throws {
+        let (home, bin) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let folder = home.appendingPathComponent("work-codex", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"/somewhere/roger-mcp\"\n".utf8).write(to: folder.appendingPathComponent("config.toml"))
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
+        let shell = CommandResult(status: .exited(0), stdout: "__ROGER_PATH__\(bin.path)__ROGER_PATH____ROGER_CODEX_HOME__work-codex__ROGER_CODEX_HOME__", stderr: "")
+        let controller = AgentsController(home: home, installer: installer, runner: FakeRunner([shell]), appBundle: app, links: [])
+        await controller.refresh()
+        let row = try #require(controller.rows.first { $0.id == .codex })
+        #expect(row.connection != .notConnected)
     }
 
     @Test func readsACRLFCodexConfig() throws {

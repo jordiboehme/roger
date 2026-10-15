@@ -134,7 +134,7 @@ final class AgentsController {
         let knownPath = searchPath
         let codexHome = self.codexHome
         let snapshots = await Task.detached(priority: .userInitiated) {
-            SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home), home: home).map { plan in
+            SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home, codexHome: codexHome), home: home).map { plan in
                 Snapshot(
                     plan: plan,
                     skillState: installer.state(of: plan.skillFolder),
@@ -162,6 +162,12 @@ final class AgentsController {
         guard knownPath == nil else { return }
         let path = await resolvedSearchPath()
         guard generation == refreshGeneration else { return }
+        if self.codexHome != nil {
+            // The Codex row and its connection depend on CODEX_HOME, which
+            // only the shell's answer gave: read everything again.
+            await refresh()
+            return
+        }
         for index in rows.indices {
             rows[index].hasCLI = Self.hasCLI(rows[index].spec, in: path)
         }

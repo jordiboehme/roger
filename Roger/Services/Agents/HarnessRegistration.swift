@@ -402,10 +402,18 @@ struct HarnessRegistrar: Sendable {
         await runner.run(
             cli,
             command.arguments,
-            environment: ["PATH": searchPath.joined(separator: ":"), "HOME": home.path, "USER": NSUserName()],
+            environment: environment,
             currentDirectory: home,
             timeout: timeout
         )
+    }
+
+    /// What the registration CLIs get. `CODEX_HOME` as the login shell sets
+    /// it, so `codex mcp add` writes the config the pane reads.
+    var environment: [String: String] {
+        var environment = ["PATH": searchPath.joined(separator: ":"), "HOME": home.path, "USER": NSUserName()]
+        if let codexHome, !codexHome.isEmpty { environment["CODEX_HOME"] = codexHome }
+        return environment
     }
 
     private func reason(_ result: CommandResult, cli: String) -> String {

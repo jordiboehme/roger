@@ -29,20 +29,33 @@ struct HarnessSpec: Equatable, Sendable {
     let configFiles: [String]
 
     /// The config files as URLs. Codex reads its config from `CODEX_HOME`
-    /// when the login shell sets it (an absolute path or one starting with
-    /// `~/`), else from `~/.codex`.
+    /// when the login shell sets it, else from `~/.codex`.
     func configURLs(home: URL, codexHome: String?) -> [URL] {
-        if id == .codex, let folder = Self.folder(codexHome, home: home) {
-            return [folder.appendingPathComponent("config.toml")]
+        guard id == .codex else { return configFiles.map { home.appendingPathComponent($0) } }
+        switch Self.codexHome(codexHome, home: home) {
+        case .standard: return configFiles.map { home.appendingPathComponent($0) }
+        case .folder(let folder): return [folder.appendingPathComponent("config.toml")]
+        case .unusable: return []
         }
-        return configFiles.map { home.appendingPathComponent($0) }
     }
 
-    private static func folder(_ path: String?, home: URL) -> URL? {
-        guard let path = path?.trimmingCharacters(in: .whitespaces), !path.isEmpty else { return nil }
-        if path.hasPrefix("/") { return URL(fileURLWithPath: path, isDirectory: true) }
-        if path.hasPrefix("~/") { return home.appendingPathComponent(String(path.dropFirst(2)), isDirectory: true) }
-        return nil
+    /// Where Codex keeps its files, as Codex 0.162.1 reads `CODEX_HOME`.
+    enum CodexHome: Equatable, Sendable {
+        /// Not set (or empty): `~/.codex`.
+        case standard
+        case folder(URL)
+        /// Codex refuses it (it does not expand `~`), so it has no config.
+        case unusable
+    }
+
+    /// An absolute value is used as it is. A relative one is resolved
+    /// against the working directory Codex runs in, which is the home
+    /// folder for Roger's registrations and suggested commands.
+    static func codexHome(_ value: String?, home: URL) -> CodexHome {
+        guard let value, !value.isEmpty else { return .standard }
+        if value.hasPrefix("~") { return .unusable }
+        if value.hasPrefix("/") { return .folder(URL(fileURLWithPath: value, isDirectory: true)) }
+        return .folder(home.appendingPathComponent(value, isDirectory: true))
     }
 }
 
@@ -79,12 +92,21 @@ enum HarnessCatalog {
     }
 
     /// Harnesses whose home folder exists (a folder, not a file).
-    static func detected(home: URL) -> [HarnessSpec] {
+    /// Harnesses whose folder exists in `home`. Codex also counts when the
+    /// `CODEX_HOME` folder exists.
+    static func detected(home: URL, codexHome: String? = nil) -> [HarnessSpec] {
         all.filter { spec in
-            var isDirectory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: home.appendingPathComponent(spec.homeFolder).path, isDirectory: &isDirectory)
-                && isDirectory.boolValue
+            if isFolder(home.appendingPathComponent(spec.homeFolder)) { return true }
+            if spec.id == .codex, case .folder(let folder) = HarnessSpec.codexHome(codexHome, home: home) {
+                return isFolder(folder)
+            }
+            return false
         }
+    }
+
+    private static func isFolder(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }
 
