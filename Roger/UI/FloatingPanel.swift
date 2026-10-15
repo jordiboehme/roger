@@ -117,7 +117,10 @@ private struct FloatingIndicatorContent: View {
     }
 
     private var statusLabel: String {
-        if coordinator.showsLogSaved { return "Logged" }
+        if coordinator.showsLogSaved {
+            if let note = coordinator.logSavedNote { return "Logged - \(note)" }
+            return "Logged"
+        }
         if isLogMode { return isListening ? "Logging" : "Saving" }
         return isListening ? "Listening" : "Thinking"
     }

@@ -23,6 +23,9 @@ struct MeetingTranscriptionPipeline: Sendable {
         let diarizeSystem: Bool
         let languageOverride: String?
         let preset: DictationPreset
+        /// Runs the preset's AI steps per paragraph. Only logs with system
+        /// audio pass one; meetings pass none and stay fully on-device.
+        var llmService: (any LLMService)? = nil
     }
 
     enum TrackSource: Sendable {
@@ -111,9 +114,9 @@ struct MeetingTranscriptionPipeline: Sendable {
         try Task.checkCancellation()
 
         // Merge + post-process. Cleanup runs per-paragraph so dedup and
-        // filler removal stay scoped to a single speaker. AI steps are off by
-        // construction (the meeting preset is guaranteed `requiresAI ==
-        // false`), so `llmService: nil` is safe and stays fully on-device.
+        // filler removal stay scoped to a single speaker. AI steps run only
+        // when a caller passes an `llmService` (logs with system audio);
+        // meetings pass none and use a preset without AI steps.
         let mergedParagraphs = MeetingTranscriptMerger.merge(
             mic: micInput,
             systemSpeakerSegments: systemSpeakerSegments,
@@ -134,12 +137,17 @@ struct MeetingTranscriptionPipeline: Sendable {
                     paragraph.text,
                     preset: config.preset,
                     language: languageHint,
-                    llmService: nil
+                    llmService: config.llmService
                 )
             } catch {
-                logger.warning("Paragraph post-processing failed (\(config.preset.name, privacy: .public)): \(error.localizedDescription, privacy: .public) — keeping raw text")
-                paragraphs.append(paragraph)
-                continue
+                // AI declined or failed: keep the deterministic steps for this paragraph.
+                logger.warning("Paragraph post-processing failed (\(config.preset.name, privacy: .public)): \(error.localizedDescription, privacy: .public) - using the non-AI steps")
+                cleaned = (try? await postProcessor.process(
+                    paragraph.text,
+                    preset: config.preset.withoutAI,
+                    language: languageHint,
+                    llmService: nil
+                )) ?? paragraph.text
             }
             let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }

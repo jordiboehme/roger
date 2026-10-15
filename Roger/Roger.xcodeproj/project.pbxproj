@@ -125,6 +125,7 @@
 		7DAD5EF8340187AD21396068 /* LibraryDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51C70905E97609D8333D798A /* LibraryDocument.swift */; };
 		7EB1950549804375DDB364B2 /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570914F087E4BD17E3450BD7 /* TerminalLauncher.swift */; };
 		7EB7DF23B3AE8BDEDE7092C7 /* LibraryMigrationRunTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19598D34ACCC52FB2F133E4 /* LibraryMigrationRunTests.swift */; };
+		812225C8C55510C5F154B3DC /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B95494BCE3E5D1EBA2A11A3 /* SystemAudioRecorder.swift */; };
 		82B0FAB7E064AC13E8CCF11A /* FloatingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29286BD5717F06096DDBD91 /* FloatingPanel.swift */; };
 		83363C1A2A5F0007F876158C /* SystemMicMute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */; };
 		847C3E6FAB47B2D692DA2124 /* ChangeEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A714446F3E75A567DF819F1 /* ChangeEvent.swift */; };
@@ -175,6 +176,7 @@
 		B1FAE183E5827C2D6EBEF698 /* LibraryEmptyStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA922CE3E6187148EA3B4EC4 /* LibraryEmptyStateTests.swift */; };
 		B20050C84E82D5E29DEB9637 /* LibraryLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18B373C83DA59E3DF960BDD /* LibraryLocatorTests.swift */; };
 		B2B2C0D495152F6D6CA12C5F /* SessionFolderName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73449844E1E3155BB53E405D /* SessionFolderName.swift */; };
+		B459CE16B9A8F251F79E5782 /* SystemAudioRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 702622AD0D3E9840CD9E9B2E /* SystemAudioRecorderTests.swift */; };
 		B47D297F72B17B9CB427AA90 /* PresetEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C2C42547C1DF7E953EBC58 /* PresetEditingTests.swift */; };
 		B48134CF414FFDB9405529A4 /* LibraryMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFE3681A1C3BA74BCDC618A8 /* LibraryMarkdown.swift */; };
 		B590F45E5740854F5A6A51BE /* CommandSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFD6752D8596F7D6C1AF722B /* CommandSchedulerTests.swift */; };
@@ -360,6 +362,7 @@
 		39BC499F007F0A4C0898AEF1 /* LibraryChangeRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryChangeRecorder.swift; sourceTree = "<group>"; };
 		3AA529E63B0287F8A43365E6 /* MeetingTranscriptMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptMerger.swift; sourceTree = "<group>"; };
 		3ABA9DBD705B14205EB27571 /* LibraryMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMarkdownTests.swift; sourceTree = "<group>"; };
+		3B95494BCE3E5D1EBA2A11A3 /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		3BE86EFF73F4A584A20887D5 /* AudioSegmentConcatenator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSegmentConcatenator.swift; sourceTree = "<group>"; };
 		3E33EF24B463C412CD57E5C1 /* ChangeKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeKey.swift; sourceTree = "<group>"; };
 		3F3B6CBB239855AC5D4BC083 /* SettingsPaneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPaneTests.swift; sourceTree = "<group>"; };
@@ -410,6 +413,7 @@
 		6E135A3C5D28F1F5584ED81C /* MicrophoneTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneTap.swift; sourceTree = "<group>"; };
 		6EE3A18597F1045D858CBD31 /* Harness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harness.swift; sourceTree = "<group>"; };
 		6EEB6FE6094DB78537941E78 /* SpeakerAligner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAligner.swift; sourceTree = "<group>"; };
+		702622AD0D3E9840CD9E9B2E /* SystemAudioRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorderTests.swift; sourceTree = "<group>"; };
 		71AE4A23EB5A15BD513E0D35 /* KitFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitFixtures.swift; sourceTree = "<group>"; };
 		727168E3F85CFFCDF5E61818 /* SettingsSnapshotRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSnapshotRunner.swift; sourceTree = "<group>"; };
 		72FEEFE6EF22D3F3F8C9DC44 /* KeyComboBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyComboBadge.swift; sourceTree = "<group>"; };
@@ -933,6 +937,7 @@
 				3F3B6CBB239855AC5D4BC083 /* SettingsPaneTests.swift */,
 				BC81A42613FC62162BF9BF03 /* SettingsWindowControllerTests.swift */,
 				AF88D1335D211AF7D1C15632 /* SkillInstallerTests.swift */,
+				702622AD0D3E9840CD9E9B2E /* SystemAudioRecorderTests.swift */,
 				02ABF315F72AEB36FFEF4E18 /* TempFolder.swift */,
 				2EC0F4C6B32CB1BE41AE4B2D /* TerminalLauncherTests.swift */,
 				591EAEB010B224F337E90980 /* TestHostTests.swift */,
@@ -963,6 +968,7 @@
 				60C6A47789997F25F9450E3A /* MediaTranscriptFormatter.swift */,
 				E6972514B1B5E8BA603EE725 /* PermissionManager.swift */,
 				363FE7FFAB640D4E02028622 /* PostProcessor.swift */,
+				3B95494BCE3E5D1EBA2A11A3 /* SystemAudioRecorder.swift */,
 				0823AD5A2D3AB542E17BBC0D /* SystemMicMute.swift */,
 				48A6FDC0B5A9C16765F06B87 /* TextInsertionService.swift */,
 				54A5975AAB9D85E9AB6B0B2B /* TranscriptFrontmatter.swift */,
@@ -1298,6 +1304,7 @@
 				6D68B33D611C211D37B9F0F4 /* SkillInstaller.swift in Sources */,
 				A1F067AF806268EAB3E2D57B /* SpeakerAligner.swift in Sources */,
 				BFD316C28B9F22EFF725A440 /* SpeakerSegment.swift in Sources */,
+				812225C8C55510C5F154B3DC /* SystemAudioRecorder.swift in Sources */,
 				211CB069998867F995E8873B /* SystemAudioTap.swift in Sources */,
 				83363C1A2A5F0007F876158C /* SystemMicMute.swift in Sources */,
 				7EB1950549804375DDB364B2 /* TerminalLauncher.swift in Sources */,
@@ -1428,6 +1435,7 @@
 				1D9C54943F922DABAB77AC36 /* SettingsPaneTests.swift in Sources */,
 				F3B070640F0AD944BA552FA9 /* SettingsWindowControllerTests.swift in Sources */,
 				995B66F815E758BA1C7F462A /* SkillInstallerTests.swift in Sources */,
+				B459CE16B9A8F251F79E5782 /* SystemAudioRecorderTests.swift in Sources */,
 				065B93FE7A30FEEE02F2A248 /* TempFolder.swift in Sources */,
 				EF22A69BCF097883FD648AD0 /* TerminalLauncherTests.swift in Sources */,
 				1E9DA11E22CD16C32F80FF59 /* TestHostTests.swift in Sources */,

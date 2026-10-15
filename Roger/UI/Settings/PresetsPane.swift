@@ -335,6 +335,11 @@ private struct PresetDetailForm: View {
             Section {
                 if preset.output == .logEntry {
                     SettingsToggle(title: "Keep audio", note: "Also saves the recording as an .m4a file next to the entry.", isOn: $preset.keepAudio)
+                    SettingsToggle(
+                        title: "Record system audio",
+                        note: "Also records what your Mac plays, for calls and videos. Needs the Audio Capture permission.",
+                        isOn: $preset.recordSystemAudio
+                    )
                     CommandPicker(title: "After saving", note: "Runs a command from Settings > Commands.", selection: $preset.commandID, commands: commands)
                 } else {
                     Picker("Append at the end", selection: $preset.trailingCharacter) {

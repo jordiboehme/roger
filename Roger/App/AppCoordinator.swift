@@ -37,7 +37,14 @@ final class AppCoordinator {
     /// True for a short moment after a log entry was saved; the floating
     /// indicator shows "Logged" while it is set.
     private(set) var showsLogSaved = false
+    /// A short note shown with "Logged", for example when system audio
+    /// could not be recorded. Cleared together with `showsLogSaved`.
+    private(set) var logSavedNote: String?
     private var logSavedGeneration = 0
+    /// Collects system audio while a log preset with `recordSystemAudio` records.
+    private var systemAudioRecorder: SystemAudioRecorder?
+    /// The tap failed to start for this log; show the note with "Logged".
+    private var systemAudioUnavailable = false
     /// Language pin resolved at recording start, applied when the buffer is
     /// transcribed on release.
     private var activeRecordingLanguageOverride: String?
@@ -404,6 +411,18 @@ final class AppCoordinator {
             audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
             try audioCaptureService.startCapture()
 
+            systemAudioUnavailable = false
+            if resolvedPreset.output == .logEntry && resolvedPreset.recordSystemAudio {
+                let recorder = SystemAudioRecorder.live()
+                do {
+                    try recorder.start()
+                    systemAudioRecorder = recorder
+                } catch {
+                    logger.warning("System audio for log unavailable: \(error.localizedDescription, privacy: .public)")
+                    systemAudioUnavailable = true
+                }
+            }
+
             scheduleMaxDurationStop()
             logger.info("Dictation started (preset: \(presetName))")
         } catch {
@@ -412,6 +431,7 @@ final class AppCoordinator {
             activeRecordingPresetID = nil
             activeRecordingLanguageOverride = nil
             _ = audioCaptureService.stopCapture()
+            discardSystemAudioRecorder()
             systemMicMute.reapplyReleasedMute()
             logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
@@ -436,6 +456,14 @@ final class AppCoordinator {
         maxDurationTask = nil
     }
 
+    /// Stops and drops the system audio recorder without using its samples,
+    /// so the process tap (and its "Roger Tap" aggregate device) never leaks.
+    private func discardSystemAudioRecorder() {
+        guard let recorder = systemAudioRecorder else { return }
+        systemAudioRecorder = nil
+        Task { _ = await recorder.stop() }
+    }
+
     func stopDictation() {
         guard appState.dictationState == .listening else { return }
 
@@ -451,6 +479,9 @@ final class AppCoordinator {
         let samples = capture.samples
         let languageOverride = activeRecordingLanguageOverride
         activeRecordingLanguageOverride = nil
+        // Taken here so every early return below can drop it.
+        let systemRecorder = systemAudioRecorder
+        systemAudioRecorder = nil
 
         guard duration >= appState.minimumRecordingDuration else {
             logger.info("Recording too short (\(String(format: "%.1f", duration), privacy: .public)s), discarding")
@@ -458,6 +489,7 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
+            if let systemRecorder { Task { _ = await systemRecorder.stop() } }
             return
         }
 
@@ -469,12 +501,19 @@ final class AppCoordinator {
             floatingPanel.hide()
             audioLevelMeter.reset()
             activeRecordingPresetID = nil
+            if let systemRecorder { Task { _ = await systemRecorder.stop() } }
             appState.dictationState = .error(AudioCaptureService.halStarvedAdvice)
             return
         }
 
         logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
         Task {
+            let systemSamples = await systemRecorder?.stop()
+            if let systemSamples, !systemSamples.isEmpty, let samples, !samples.isEmpty {
+                await self.runLogWithSystemAudio(mic: samples, system: systemSamples, languageOverride: languageOverride,
+                                                 startedAt: startedAt, endedAt: endedAt)
+                return
+            }
             await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt, samples: samples) {
                 guard let samples, !samples.isEmpty else {
                     return TranscriptionEngine.TranscriptionResult(text: "", detectedLanguage: nil)
@@ -484,6 +523,48 @@ final class AppCoordinator {
                     languageOverride: languageOverride
                 )
             }
+        }
+    }
+
+    /// A log preset with system audio: both tracks through the meeting
+    /// pipeline ("Me" from the mic alone, "Other N" from the system track),
+    /// then saved as a log with paragraphs.
+    private func runLogWithSystemAudio(mic: [Float], system: [Float], languageOverride: String?,
+                                       startedAt: Date, endedAt: Date) async {
+        appState.dictationState = .transcribing
+        defer { activeRecordingPresetID = nil }
+        let preset = appState.presets.first { $0.id == activeRecordingPresetID } ?? appState.activePreset
+        var llm: (any LLMService)?
+        if preset.requiresAI {
+            let service = appState.currentLLMService()
+            if await service.isAvailable {
+                llm = service
+            } else {
+                logger.warning("LLM provider not available, applying non-AI steps only")
+            }
+        }
+        let pipeline = MeetingTranscriptionPipeline(engine: transcriptionEngine, diarization: diarizationService)
+        do {
+            let output = try await pipeline.run(
+                mic: .samples(mic),
+                system: .samples(system),
+                config: .init(
+                    diarizeMic: appState.meetingDiarizeMic,
+                    diarizeSystem: appState.meetingDiarizeSystem,
+                    languageOverride: languageOverride,
+                    preset: llm == nil ? preset.withoutAI : preset,
+                    llmService: llm
+                )
+            )
+            let text = output.paragraphs.map(\.text).joined(separator: "\n\n")
+            await saveLogEntry(text, preset: preset, startedAt: startedAt, endedAt: endedAt,
+                               detectedLanguage: output.language, samples: mic,
+                               paragraphs: output.paragraphs, systemSamples: system)
+        } catch {
+            logger.error("Log with system audio failed: \(error.localizedDescription, privacy: .public)")
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error(error.localizedDescription)
         }
     }
 
@@ -607,6 +688,7 @@ final class AppCoordinator {
     /// "Logged" state and its hide timer.
     private func cancelLogSavedIndicator() {
         showsLogSaved = false
+        logSavedNote = nil
         logSavedGeneration += 1
     }
 
@@ -618,14 +700,17 @@ final class AppCoordinator {
         startedAt: Date,
         endedAt: Date,
         detectedLanguage: String?,
-        samples: [Float]?
+        samples: [Float]?,
+        paragraphs: [MeetingTranscriptMerger.Paragraph]? = nil,
+        systemSamples: [Float]? = nil
     ) async {
         let layout = appState.libraryLayout
         // The menu bar shows the new text while a long recording is encoded.
         if !LogEntrySaver.isEmpty(text) { appState.lastTranscription = text }
         let outcome = await LogEntrySaver(layout: layout).save(
             text, preset: preset, startedAt: startedAt, endedAt: endedAt,
-            detectedLanguage: detectedLanguage, samples: samples
+            detectedLanguage: detectedLanguage, samples: samples,
+            paragraphs: paragraphs, systemSamples: systemSamples
         ) { [libraryChanges] url in
             libraryChanges.recordWritten(markdownURL: url, kind: .log, root: layout.root)
         }
@@ -667,6 +752,8 @@ final class AppCoordinator {
         appState.dictationState = .idle
         logSavedGeneration += 1
         let generation = logSavedGeneration
+        logSavedNote = systemAudioUnavailable ? "system audio unavailable" : nil
+        systemAudioUnavailable = false
         showsLogSaved = true
         // Detached from the pipeline so `runPipeline` returns right away and a
         // new dictation is not held up (its defer clears the active preset).
@@ -674,6 +761,7 @@ final class AppCoordinator {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard generation == self.logSavedGeneration else { return }
             self.showsLogSaved = false
+            self.logSavedNote = nil
             // A new dictation may have started meanwhile; it owns the panel then.
             if self.appState.dictationState == .idle {
                 self.floatingPanel.hide()
