@@ -46,3 +46,29 @@ struct InputDeviceMonitorTests {
         #expect(count == 1)
     }
 }
+
+struct MicMuteTargetTests {
+    @MainActor
+    @Test func aRunningMeetingKeepsItsDevice() {
+        let uid = SystemMicMute.targetUID(meetingUID: "webcam", resolve: {
+            Issue.record("the priority list must not be asked during a meeting")
+            return "headset"
+        })
+        #expect(uid == "webcam")
+    }
+
+    @MainActor
+    @Test func withoutAMeetingThePriorityListDecides() {
+        #expect(SystemMicMute.targetUID(meetingUID: nil, resolve: { "headset" }) == "headset")
+        #expect(SystemMicMute.targetUID(meetingUID: nil, resolve: { nil }) == nil)
+    }
+
+    @Test func actualInputUIDUsesTheDefaultOnlyForSystemDefault() {
+        #expect(AudioDeviceLookup.actualInputUID(resolved: "usb", defaultUID: {
+            Issue.record("default asked although a device resolved")
+            return "builtin"
+        }) == "usb")
+        #expect(AudioDeviceLookup.actualInputUID(resolved: nil, defaultUID: { "builtin" }) == "builtin")
+        #expect(AudioDeviceLookup.actualInputUID(resolved: nil, defaultUID: { nil }) == nil)
+    }
+}

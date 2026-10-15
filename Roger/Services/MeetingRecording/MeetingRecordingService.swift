@@ -54,6 +54,10 @@ final class MeetingRecordingService {
     /// root at the time of the retry).
     @ObservationIgnored private var sessionRoot: URL?
     private var micTap: MicrophoneTap?
+    /// UID of the device the meeting's mic tap records from, resolved once at
+    /// start (the macOS default input's UID when the list resolves to System
+    /// default). The meeting mute acts on this device.
+    @ObservationIgnored private var recordingInputUID: String?
     private var systemTap: SystemAudioTap?
     private var micWriter: SegmentedAudioFileWriter?
     private var systemWriter: SegmentedAudioFileWriter?
@@ -85,6 +89,12 @@ final class MeetingRecordingService {
         case .idle, .error: return false
         default: return true
         }
+    }
+
+    /// UID of the input device the running meeting records from, nil when no
+    /// meeting runs (or Core Audio named no device at start).
+    var activeInputUID: String? {
+        isActive ? recordingInputUID : nil
     }
 
     /// The folder of the session that is being recorded or finalised. The
@@ -153,7 +163,9 @@ final class MeetingRecordingService {
         }
 
         let micTap = MicrophoneTap()
-        micTap.preferredInputUID = appState.resolvedInputDeviceUID
+        let resolvedUID = appState.resolvedInputDeviceUID
+        micTap.preferredInputUID = resolvedUID
+        recordingInputUID = AudioDeviceLookup.actualInputUID(resolved: resolvedUID)
         let systemTap = SystemAudioTap()
 
         let micStream: AsyncStream<SendableAudioBuffer>
@@ -746,6 +758,7 @@ final class MeetingRecordingService {
         micTap?.stop()
         systemTap?.stop()
         micTap = nil
+        recordingInputUID = nil
         systemTap = nil
         _ = await micWriter?.close()
         _ = await systemWriter?.close()

@@ -192,7 +192,7 @@ final class AppCoordinator {
             transcriptionEngine: transcriptionEngine,
             diarization: diarizationService
         )
-        self.systemMicMute = SystemMicMute(appState: appState)
+        self.systemMicMute = SystemMicMute(appState: appState) { [meetingRecorder] in meetingRecorder.activeInputUID }
         let runner = ProcessCommandRunner()
         let searchPath = CommandSearchPathCache()
         self.commandRunner = runner
@@ -426,8 +426,9 @@ final class AppCoordinator {
             // A mic muted at the device level (often left over from an
             // earlier meeting) records pure silence. Lift the mute for this
             // dictation; it is re-applied when the capture ends.
-            systemMicMute.releaseStaleMute()
-            audioCaptureService.preferredInputUID = appState.resolvedInputDeviceUID
+            let inputUID = appState.resolvedInputDeviceUID
+            systemMicMute.releaseStaleMute(inputUID: inputUID)
+            audioCaptureService.preferredInputUID = inputUID
             try audioCaptureService.startCapture()
 
             systemAudioUnavailable = false

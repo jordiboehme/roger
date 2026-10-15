@@ -25,6 +25,8 @@ final class SystemMicMute {
     private(set) var isMuted = false
 
     private let appState: AppState
+    /// UID of the device a running meeting records from, nil when none runs.
+    private let meetingInputUID: @MainActor () -> String?
 
     /// How the current mute was achieved, captured so we can undo it exactly.
     /// Undoing a HAL mute always unmutes: a device that was already muted
@@ -49,8 +51,9 @@ final class SystemMicMute {
     /// capture ends so a deliberate mute (e.g. in a call) stays in place.
     private var releasedForDictation: AudioDeviceID?
 
-    init(appState: AppState) {
+    init(appState: AppState, meetingInputUID: @escaping @MainActor () -> String? = { nil }) {
         self.appState = appState
+        self.meetingInputUID = meetingInputUID
         restorePendingFromPreviousRun()
     }
 
@@ -101,8 +104,9 @@ final class SystemMicMute {
     /// Roger holds no mute. A muted device delivers silence, so dictation
     /// would record nothing, and nothing on screen tells the user why.
     /// Pair with `reapplyReleasedMute()` when the capture ends.
-    func releaseStaleMute() {
-        guard !isMuted, let device = targetInputDevice(), readMute(device) == 1 else { return }
+    /// `inputUID` is the device the dictation records from (nil: system default).
+    func releaseStaleMute(inputUID: String?) {
+        guard !isMuted, let device = Self.device(forUID: inputUID), readMute(device) == 1 else { return }
         guard setMute(device, false) else { return }
         releasedForDictation = device
         Self.logger.notice("Input device \(device, privacy: .public) was muted outside Roger's hold — unmuted for dictation")
@@ -154,14 +158,23 @@ final class SystemMicMute {
 
     // MARK: - Target device
 
-    /// The mic the user records / speaks into: first connected input of their priority
-    /// list, otherwise the system default input.
+    /// The mic the user speaks into. While a meeting records, the device the
+    /// meeting records from, even when another one of the priority list has
+    /// connected since: the mute must silence what the meeting hears.
+    /// Otherwise the first connected input of the priority list, else the
+    /// system default input.
     private func targetInputDevice() -> AudioDeviceID? {
-        if let uid = appState.resolvedInputDeviceUID,
-           let id = AudioDeviceLookup.deviceID(forUID: uid) {
-            return id
-        }
-        return AudioDeviceLookup.systemDefaultInputID
+        Self.device(forUID: Self.targetUID(meetingUID: meetingInputUID(), resolve: { appState.resolvedInputDeviceUID }))
+    }
+
+    /// The meeting's device wins; `resolve` is only asked when no meeting runs.
+    nonisolated static func targetUID(meetingUID: String?, resolve: () -> String?) -> String? {
+        meetingUID ?? resolve()
+    }
+
+    /// The device for `uid`, the system default input when `uid` is nil or gone.
+    private static func device(forUID uid: String?) -> AudioDeviceID? {
+        uid.flatMap(AudioDeviceLookup.deviceID(forUID:)) ?? AudioDeviceLookup.systemDefaultInputID
     }
 
     // MARK: - Device mute property

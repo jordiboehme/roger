@@ -76,6 +76,18 @@ enum AudioDeviceLookup {
         return status == noErr ? id : nil
     }
 
+    /// UID of the macOS default input, nil when Core Audio has none.
+    static var systemDefaultInputUID: String? {
+        systemDefaultInputID.flatMap(uid(for:))
+    }
+
+    /// The device a capture really uses: the resolved UID, or for the system
+    /// default the UID of the current macOS default input. `defaultUID` is
+    /// only asked when `resolved` is nil.
+    static func actualInputUID(resolved: String?, defaultUID: () -> String? = { systemDefaultInputUID }) -> String? {
+        resolved ?? defaultUID()
+    }
+
     static var systemDefaultInputName: String? {
         guard let id = systemDefaultInputID else { return nil }
         return stringProperty(id, kAudioObjectPropertyName)
