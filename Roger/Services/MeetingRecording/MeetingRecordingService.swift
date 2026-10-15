@@ -43,7 +43,9 @@ final class MeetingRecordingService {
     /// Called after `transcript.md` is on disk, on the first finalisation
     /// and on every retry, with the library root the session was written
     /// under. The coordinator records the change for agents.
-    @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL) -> Void)?
+    /// Called once `transcript.md` is on disk. `isFirst` is false for a
+    /// retry of a session that had a transcript before.
+    @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL, _ isFirst: Bool) -> Void)?
 
     private let appState: AppState
     private let transcriptionEngine: TranscriptionEngine
@@ -631,6 +633,7 @@ final class MeetingRecordingService {
         )
 
         let root = sessionRoot ?? appState.libraryLayout.root
+        let isFirst = MeetingTranscriptWriter.isFirstTranscript(of: session)
         let outcome = MeetingFinalisationSteps.run(
             MeetingFinalisationSteps.Input(
                 session: session,
@@ -643,7 +646,7 @@ final class MeetingRecordingService {
                 system: systemTrack,
                 sleepInterrupted: sleepInterrupted
             ),
-            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url, root) }
+            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url, root, isFirst) }
         )
         switch outcome {
         case .failed(let reason):

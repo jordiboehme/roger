@@ -29,6 +29,14 @@ enum MeetingTranscriptWriter {
         var systemAudioFailed = false
     }
 
+    /// True when no transcript of this session was written before: no
+    /// `transcript.md` and no `transcript.previous*.md` that a retry moved
+    /// aside. Only the first transcript runs the meeting command.
+    static func isFirstTranscript(of session: MeetingSession) -> Bool {
+        guard !FileManager.default.fileExists(atPath: session.transcriptURL.path) else { return false }
+        return !MeetingExtraFiles.find(in: session.folder).contains { $0.kind == .transcriptPrevious }
+    }
+
     /// `markers` are screenshot checkpoints to weave into the body as inline
     /// image references at their chronological position between paragraphs.
     /// An existing transcript.md (a retry of a flagged session, possibly

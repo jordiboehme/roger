@@ -218,9 +218,11 @@ final class AppCoordinator {
                 externalRegistry: .standard
             )
         }
-        meetingRecorder.onTranscriptWritten = { [weak self] url, root in
+        meetingRecorder.onTranscriptWritten = { [weak self] url, root, isFirst in
             guard let self else { return }
+            // A retry is an update for agents, but runs no command again.
             self.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
+            guard isFirst else { return }
             Task { await self.runCommand(self.appState.meetingCommandID, markdownURL: url, kind: .meeting, root: root) }
         }
         setupHotkeyCallbacks()

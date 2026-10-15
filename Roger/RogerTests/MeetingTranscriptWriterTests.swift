@@ -47,4 +47,23 @@ struct MeetingTranscriptWriterTests {
         #expect(try String(contentsOf: root.appendingPathComponent("transcript.previous 1.md"), encoding: .utf8) == "edited by hand")
         #expect(try String(contentsOf: transcript, encoding: .utf8).hasPrefix("---\n"))
     }
+
+    @Test func onlyTheFirstTranscriptOfASessionCounts() throws {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let session = metadata(root, micFailed: false, systemFailed: false).session
+        #expect(MeetingTranscriptWriter.isFirstTranscript(of: session))
+        // Chunks and other files do not make it a retry.
+        try Data().write(to: root.appendingPathComponent("mic.m4a"))
+        try Data("segment".utf8).write(to: root.appendingPathComponent("01 Intro.previous.md"))
+        #expect(MeetingTranscriptWriter.isFirstTranscript(of: session))
+
+        _ = try MeetingTranscriptWriter.write(paragraphs: [], metadata: metadata(root, micFailed: false, systemFailed: false))
+        // A retry: transcript.md is there.
+        #expect(!MeetingTranscriptWriter.isFirstTranscript(of: session))
+
+        // A retry after the user deleted transcript.md: the previous one is there.
+        try FileManager.default.moveItem(at: session.transcriptURL, to: root.appendingPathComponent("transcript.previous 2.md"))
+        #expect(!MeetingTranscriptWriter.isFirstTranscript(of: session))
+    }
 }
