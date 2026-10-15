@@ -1,52 +1,52 @@
 ---
 name: ingest-roger
-description: Ingest new Roger log entries, meeting transcripts and file transcripts into Crystalline. Use when the user asks to ingest, import or sync Roger, or runs /ingest-roger <domain>.
+description: Read and ingest Roger log entries, meeting transcripts and file transcripts. Use when the user asks to ingest, import, sync or read Roger, or runs /ingest-roger.
 ---
 
 # Ingest Roger
 
-Roger is a speech-to-text app on this Mac. Its MCP server `roger` serves log entries, meeting transcripts and file transcripts. This skill brings new and changed items into Crystalline and then confirms them, so nothing is read twice and nothing is missed.
+Roger is a speech-to-text app on this Mac. Its MCP server `roger` serves log entries, meeting transcripts and file transcripts from Roger's library. This skill teaches you how to read them correctly: what is new, what changed and how to confirm what you processed, so nothing is read twice and nothing is missed.
 
-Your client may show the tools with a prefix (for example `mcp__roger__get_changes` or `mcp__crystalline__write_engram`). Use whatever name it gives them.
+This skill is about getting the data. What you do with it is up to you and the user's knowledge system. Process each item with your knowledge system's own ingestion method. With Crystalline, use the "Ingesting a source" section of the `crystalline-capture` skill.
 
-## Target domain
+Your client may show the tools with a prefix (for example `mcp__roger__get_changes`). Use whatever name it gives them.
 
-- The Crystalline domain is the first argument: `/ingest-roger <domain>`.
-- Without an argument, ask the user which domain to use. Never guess a domain.
-- When nobody can answer (an unattended run), stop with `RESULT: failed: no domain given`.
+## Arguments
+
+`/ingest-roger [consumer]`. The consumer names who reads the changes. Roger remembers for each consumer what it confirmed. The default is `crystalline`. Use one consumer per knowledge system, so two systems never take each other's changes.
 
 ## Before you start
 
-1. Call `roger` `status`. If the library is not ready, stop with `RESULT: failed: <the message from status>`.
-2. Read the domain's conventions in Crystalline (its MANIFEST and `vocabulary`). Reuse its tags, folders and categories. Search before you write anything.
+Call `status`. If its `state` is not `ready`, stop with `RESULT: failed: <the message from status>`.
 
 ## The loop
 
-The consumer name is always `crystalline`.
+1. Call `get_changes(consumer: <consumer>, summary: true)`. Note `from`, `upTo`, `more`, `library` and the entries (key, event, kind, title, date). A summary has no Markdown.
+2. Fetch each kind once. For every kind in the summary, call `get_changes(from: <from>, upTo: <upTo>, kinds: [<kind>])` with `from` and `upTo` from step 1. If that answer has `more: true`, call again with `from` set to its `upTo + 1` and the same `upTo` until `more` is false. Do not fetch the range again for each item.
+3. Process every entry of the range (see "What an entry is").
+4. Only when the whole range was processed, call `ack(consumer: <consumer>, upTo: <upTo from step 1>, library: <library from step 1>)`. Never ack the `upTo` of a call with `kinds`. If anything failed, do not ack: end with `RESULT: failed: <reason>`, so the next run repeats the range. If `ack` refuses because the library changed, Roger now uses another library: start again at step 1 (this counts as a round).
+5. If `more` in step 1 was true, start again at step 1. Do at most 5 rounds in one run.
 
-1. Call `get_changes(consumer: "crystalline", summary: true)`. Note `from`, `upTo`, `more`, `library` and the entries (key, event, kind, title, date).
-2. Plan groups:
-   - log entries of the same day and the same topic go together,
-   - every meeting is its own group,
-   - every file transcript is its own group.
-3. Fetch each kind once. For every kind in the summary, call `get_changes(from: <from>, upTo: <upTo>, kinds: [<kind>])` with `from` and `upTo` from step 1. If that answer has `more: true`, call again with `from` set to its `upTo + 1` and the same `upTo` until `more` is false. Keep these entries and take every group of that kind from them. Do not fetch the range again for each group. For meetings, you may open the screenshots through their paths when they show something that matters. Screenshots are optional: if a screenshot path cannot be read, go on without it.
-4. Ingest each group (see "What to write"). If any write or edit returns an error, do not ack. End with `RESULT: failed: <reason>`.
-5. Only when every group of the range succeeded, call `ack(consumer: "crystalline", upTo: <upTo from step 1>, library: <library from step 1>)`. Never ack the `upTo` of a call with `kinds`. If `ack` answers that the library changed, Roger now uses another library: start again at step 1 (this counts as a round).
-6. If `more` in step 1 was true, start again at step 1. Do at most 5 rounds in one run.
+## What an entry is
 
-## What to write
+- Each entry is one item in its latest state. It starts with the line `==== roger entry <seq> ====`, lists its fields (`seq`, `event`, `kind`, `key`, `title`, `date`, `duration`, `paths`) and has the item's Markdown after a blank line.
+- Kinds: `log` (a short spoken note, sometimes with "Me" and "Other N" speakers when it also recorded the computer's sound), `meeting` (a transcript with speakers and optional screenshots) and `transcript` (a transcript of a media file).
+- Events: `created`, `updated` and `deleted`. On `updated`, read the item again as a whole: the earlier version is gone. On `deleted`, what was made from the item may need to go. An entry with `missing: true` names an item whose file is gone; skip it and mention it in your summary.
+- `roger://<key>` is the stable address of an item. Use it wherever your knowledge system records where something came from.
+- `seq` grows with every change of an item, so it works as the version of what you read.
+- Screenshots of meetings come as file paths in `paths`. Open them when they show something that matters. If a path cannot be read, go on without it.
 
-- **Log entries** become observations (`[decision]`, `[task]`, `[fact]`, `[idea]`). Entries of one day on one topic share one engram. Keep the speaker's words where they matter. Name people, dates and amounts.
-- **A meeting** becomes one engram: who spoke (the speaker labels as they are), what was decided, action items with owner and due date when said, open questions and a short summary. Mention what the screenshots show where it helps.
-- **A file transcript** becomes one source summary engram: what the recording is, the main points and anything worth keeping.
+## Frontmatter
 
-## Never twice
+The frontmatter is Roger's metadata about the Markdown file. Keys such as `type`, `status`, `tags` and `sources` describe the file in Roger's library, not how you should store the knowledge. Do not copy them over as they are. Decide yourself what they tell you, for example when something was said (`started_at`), how long it took or which speakers there were.
 
-- Every engram you write lists `roger://<key>` in `sources` for each Roger item it covers.
-- Before you write, search with `metadata_filters: {"sources": {"$contains_any": ["roger://<key>", ...]}}`. If an engram already covers the item, edit it instead of writing a new one.
-- `updated`: read the whole item again and update the engram.
-- `deleted`: when the engram covers only deleted items, set its status to `archived`. Otherwise remove that item's observations and its `roger://<key>` source.
-- `missing: true`: skip the entry and mention it in your summary.
+## Other tools
+
+- `get_item(key: <key>)` reads one item by key.
+- `list_items(kind, since, limit)` lists items, newest first. All three are optional.
+- `search(query, kind, limit)` finds items by text.
+
+Use them when the user asks about something outside the change feed, for example a meeting from last month. They do not change what the consumer confirmed.
 
 ## Result
 
@@ -54,4 +54,4 @@ End with exactly one of these lines as the last line:
 
 - `RESULT: ok` when nothing is left (`more` was false),
 - `RESULT: ok more` when you stopped after 5 rounds and `more` was still true,
-- `RESULT: failed: <reason>` when something went wrong. Do not ack the range in that case, so the next run repeats it.
+- `RESULT: failed: <reason>` when something went wrong. Do not ack the range in that case.

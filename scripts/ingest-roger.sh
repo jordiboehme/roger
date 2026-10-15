@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Runs the ingest-roger skill with Claude Code until Roger has nothing new.
 #
-# Usage: scripts/ingest-roger.sh <crystalline-domain> [max-runs]
+# Usage: scripts/ingest-roger.sh <prompt> [max-runs]
+#
+# Example:
+#   scripts/ingest-roger.sh "Use /ingest-roger to read what is new in Roger and fold it into Crystalline with crystalline-capture."
 #
 # Environment:
 #   CLAUDE_BIN              Claude Code binary (default: claude)
@@ -15,14 +18,14 @@
 # non-empty line (RESULT: ...). Installs nothing.
 set -euo pipefail
 
-domain="${1:-}"
+prompt="${1:-}"
 runs="${2:-10}"
-if [ -z "$domain" ]; then
-  echo "Usage: $0 <crystalline-domain> [max-runs]" >&2
+if [ -z "$prompt" ]; then
+  echo "Usage: $0 <prompt> [max-runs]" >&2
   exit 2
 fi
 if ! [[ "$runs" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Usage: $0 <crystalline-domain> [max-runs]" >&2
+  echo "Usage: $0 <prompt> [max-runs]" >&2
   echo "ingest-roger: max-runs must be a whole number of 1 or more, not \"$runs\"." >&2
   exit 2
 fi
@@ -31,7 +34,7 @@ claude_bin="${CLAUDE_BIN:-claude}"
 allowed="mcp__${ROGER_MCP_SERVER:-roger},mcp__${CRYSTALLINE_MCP_SERVER:-crystalline}"
 
 for ((run = 1; run <= runs; run++)); do
-  if ! output=$("$claude_bin" --allowedTools "$allowed" -p "/ingest-roger $domain" 2>&1); then
+  if ! output=$("$claude_bin" --allowedTools "$allowed" -p "$prompt" 2>&1); then
     printf '%s\n' "$output"
     echo "ingest-roger: claude failed in run $run" >&2
     exit 1
