@@ -41,6 +41,28 @@ SCRIPT
 chmod +x "$work/twice"
 # A claude that always says "RESULT: ok more".
 fake more 'RESULT: ok more\n'
+# A claude that writes its arguments, one per line, to $work/args.
+cat > "$work/args" <<SCRIPT
+#!/bin/sh
+printf '%s\n' "\$@" > "$work/args.txt"
+echo "RESULT: ok"
+SCRIPT
+chmod +x "$work/args"
+
+# allowed <expected> <description> [EXTRA_MCP_SERVERS]: checks the --allowedTools value.
+allowed() {
+  local expected=$1 description=$2
+  rm -f "$work/args.txt"
+  CLAUDE_BIN="$work/args" EXTRA_MCP_SERVERS="${3:-}" bash "$script" notes 1 > /dev/null 2>&1
+  local got
+  got=$(awk 'prev == "--allowedTools" { print; exit } { prev = $0 }' "$work/args.txt" 2>/dev/null)
+  if [ "$got" != "$expected" ]; then
+    echo "FAIL: $description (got \"$got\", expected \"$expected\")"
+    failures=$((failures + 1))
+  else
+    echo "ok: $description"
+  fi
+}
 
 CLAUDE_BIN="$work/done" check 0 "RESULT: ok on the last line ends the loop" notes 3
 CLAUDE_BIN="$work/spaces" check 0 "trailing spaces after RESULT: ok are fine" notes 3
@@ -54,5 +76,9 @@ CLAUDE_BIN="$work/done" check 2 "max-runs abc is refused" notes abc
 CLAUDE_BIN="$work/done" check 2 "max-runs -1 is refused" notes -1
 CLAUDE_BIN="$work/done" check 2 "max-runs 3x is refused" notes 3x
 CLAUDE_BIN="$work/done" check 2 "a missing domain is refused"
+
+allowed "mcp__roger" "only the Roger tools are allowed by default"
+allowed "mcp__roger,mcp__crystalline" "EXTRA_MCP_SERVERS adds a server" "crystalline"
+allowed "mcp__roger,mcp__a,mcp__b" "EXTRA_MCP_SERVERS takes commas and spaces" "a, b"
 
 [ "$failures" -eq 0 ]

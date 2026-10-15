@@ -41,6 +41,54 @@ struct CommandRunnerTests {
         #expect(gone, "process group \(group) is still running")
     }
 
+    @Test func stopAllEndsARunThatIgnoresTerm() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let pidFile = folder.appendingPathComponent("pid")
+        let runner = ProcessCommandRunner()
+        let run = Task {
+            await runner.run(
+                URL(fileURLWithPath: "/bin/sh"), ["-c", "echo $$ > \"$0\"; trap \"\" TERM; sleep 30", pidFile.path],
+                environment: [:], currentDirectory: tmp, timeout: .seconds(60)
+            )
+        }
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: pidFile.path) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // Give the shell a moment to set up the trap.
+        try await Task.sleep(for: .milliseconds(200))
+        let start = Date()
+        runner.stopAll()
+        let result = await run.value
+        #expect(result.status == .stopped)
+        // SIGTERM is ignored, so the stop waits the grace time, then kills.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test func aCancelledRunGetsTheGraceTimeBeforeSIGKILL() async throws {
+        let folder = try TempFolder.make()
+        defer { TempFolder.remove(folder) }
+        let marker = folder.appendingPathComponent("cleaned-up")
+        // On TERM the shell writes the marker before it exits.
+        let script = "trap 'sleep 0.2; touch \"$0\"; exit 0' TERM; sleep 30 & wait"
+        let runner = ProcessCommandRunner()
+        let run = Task {
+            await runner.run(URL(fileURLWithPath: "/bin/sh"), ["-c", script, marker.path],
+                             environment: [:], currentDirectory: tmp, timeout: .seconds(60))
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        run.cancel()
+        let result = await run.value
+        #expect(result.status == .stopped)
+        #expect(FileManager.default.fileExists(atPath: marker.path), "SIGKILL came before the grace time was over")
+    }
+
+    @Test func stopAllWithoutRunsReturnsAtOnce() {
+        let start = Date()
+        ProcessCommandRunner().stopAll()
+        #expect(Date().timeIntervalSince(start) < 0.5)
+    }
+
     @Test func stdinIsClosed() async {
         // cat waits for input forever unless stdin is at end of file.
         let result = await runner.run(URL(fileURLWithPath: "/bin/cat"), [], environment: [:], currentDirectory: tmp, timeout: .seconds(5))
@@ -93,5 +141,47 @@ struct CommandRunnerTests {
         #expect(runner.calls.first?.last?.contains(marker) == true)
         #expect(CLILocator.pathBetweenMarkers("no markers") == nil)
         #expect(CLILocator.pathBetweenMarkers("\(marker)\(marker)") == "")
+    }
+
+    @Test func loginShellEnvironmentReadsCodexHome() async {
+        let path = CLILocator.pathMarker
+        let codex = CLILocator.codexHomeMarker
+        let runner = FakeRunner([CommandResult(status: .exited(0), stdout: "hi\n\(path)/a/bin\(path)\(codex)/Users/x/.codex-work\(codex)\n", stderr: "")])
+        let environment = await CLILocator.loginShellEnvironment(runner: runner, home: tmp)
+        #expect(environment == CLILocator.LoginShellEnvironment(path: "/a/bin", codexHome: "/Users/x/.codex-work"))
+        #expect(runner.calls.first?.last?.contains("CODEX_HOME") == true)
+        // Not set: the shell prints the markers with nothing between them.
+        #expect(CLILocator.environment(fromOutput: "\(path)/a\(path)\(codex)\(codex)")?.codexHome == nil)
+        #expect(CLILocator.environment(fromOutput: "\(codex)/x\(codex)") == nil)
+    }
+
+    @Test func aRunAfterStopAllDoesNotStart() async {
+        let runner = ProcessCommandRunner()
+        runner.stopAll()
+        let start = Date()
+        let result = await runner.run(URL(fileURLWithPath: "/bin/sleep"), ["30"], environment: [:], currentDirectory: tmp, timeout: .seconds(60))
+        #expect(result.status == .stopped)
+        #expect(Date().timeIntervalSince(start) < 2)
+    }
+
+    @Test func aCancelledRunIsStopped() async {
+        let runner = ProcessCommandRunner()
+        let start = Date()
+        let run = Task {
+            await runner.run(URL(fileURLWithPath: "/bin/sleep"), ["30"], environment: [:], currentDirectory: tmp, timeout: .seconds(60))
+        }
+        run.cancel()
+        #expect(await run.value.status == .stopped)
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test func aClosedRegistryTakesNoGroup() {
+        let registry = ProcessGroupRegistry()
+        #expect(registry.add(999_999))
+        #expect(!registry.isClosed)
+        registry.stopAll(grace: .milliseconds(10))
+        #expect(registry.isClosed)
+        #expect(!registry.add(999_998))
+        #expect(registry.remove(999_999))
     }
 }

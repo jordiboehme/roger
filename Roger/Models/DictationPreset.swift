@@ -67,6 +67,12 @@ struct DictationPreset: Identifiable, Codable, Equatable {
     var output: PresetOutput
     /// Log presets only: also save the recording as `.m4a` next to the entry.
     var keepAudio: Bool
+    /// Log presets only: also record what the Mac plays (calls, videos).
+    /// The entry then reads like a meeting ("Me" and "Other N").
+    var recordSystemAudio: Bool
+    /// The configured command (`AgentCommand.id`) to run after a log entry
+    /// is saved. Nil runs nothing. Only used when `output == .logEntry`.
+    var commandID: UUID?
 
     var requiresAI: Bool {
         enableAIFormatting || enableRewrite
@@ -89,7 +95,9 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         excludedFromRotation: Bool = false,
         language: String? = nil,
         output: PresetOutput = .insertAtCursor,
-        keepAudio: Bool = false
+        keepAudio: Bool = false,
+        recordSystemAudio: Bool = false,
+        commandID: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -108,6 +116,8 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         self.language = language
         self.output = output
         self.keepAudio = keepAudio
+        self.recordSystemAudio = recordSystemAudio
+        self.commandID = commandID
     }
 
     init(from decoder: Decoder) throws {
@@ -129,6 +139,8 @@ struct DictationPreset: Identifiable, Codable, Equatable {
         language = try c.decodeIfPresent(String.self, forKey: .language)
         output = try c.decodeIfPresent(PresetOutput.self, forKey: .output) ?? .insertAtCursor
         keepAudio = try c.decodeIfPresent(Bool.self, forKey: .keepAudio) ?? false
+        recordSystemAudio = try c.decodeIfPresent(Bool.self, forKey: .recordSystemAudio) ?? false
+        commandID = try c.decodeIfPresent(UUID.self, forKey: .commandID)
     }
 }
 

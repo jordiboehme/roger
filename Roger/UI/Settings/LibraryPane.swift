@@ -80,6 +80,7 @@ struct LibraryPane: View {
                     note: "Turn this on when more than one person talks into your microphone. The main voice stays Me.",
                     isOn: $state.meetingDiarizeMic
                 )
+                CommandPicker(title: "After a meeting", note: "Runs a command from Settings > Commands when the transcript is saved. A retry does not run it again.", selection: $state.meetingCommandID, commands: state.commands)
             }
 
             Section("Reliability") {

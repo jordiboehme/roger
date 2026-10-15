@@ -157,6 +157,7 @@ struct PresetsPane: View {
             PresetDetailForm(
                 preset: binding(for: id, fallback: preset),
                 provider: coordinator.appState.selectedLLMProvider,
+                commands: coordinator.appState.commands,
                 onReset: { pendingReset = preset },
                 onDelete: { pendingDelete = preset }
             )
@@ -288,6 +289,7 @@ private struct PresetKeyBadge: View {
 private struct PresetDetailForm: View {
     @Binding var preset: DictationPreset
     let provider: LLMProviderType
+    let commands: [AgentCommand]
     let onReset: () -> Void
     let onDelete: () -> Void
     @State private var advancedExpanded = false
@@ -333,6 +335,12 @@ private struct PresetDetailForm: View {
             Section {
                 if preset.output == .logEntry {
                     SettingsToggle(title: "Keep audio", note: "Also saves the recording as an .m4a file next to the entry.", isOn: $preset.keepAudio)
+                    SettingsToggle(
+                        title: "Record system audio",
+                        note: "Also records what your Mac plays, for calls and videos. Needs the Audio Capture permission.",
+                        isOn: $preset.recordSystemAudio
+                    )
+                    CommandPicker(title: "After saving", note: "Runs a command from Settings > Commands.", selection: $preset.commandID, commands: commands)
                 } else {
                     Picker("Append at the end", selection: $preset.trailingCharacter) {
                         ForEach(TrailingCharacter.allCases) { choice in
@@ -355,8 +363,8 @@ private struct PresetDetailForm: View {
 
             Section {
                 DisclosureGroup("Advanced", isExpanded: $advancedExpanded) {
-                    promptEditor("Formatting prompt", text: $preset.aiPrompt)
-                    promptEditor("Rewrite prompt", text: $preset.rewritePrompt)
+                    SettingsTextEditor(title: "Formatting prompt", text: $preset.aiPrompt)
+                    SettingsTextEditor(title: "Rewrite prompt", text: $preset.rewritePrompt)
                     SettingsToggle(title: "Custom dictionary", note: preset.dictionarySummary, isOn: $preset.enableCustomDictionary)
                     if preset.enableCustomDictionary {
                         ForEach($preset.dictionaryEntries) { $entry in
@@ -406,15 +414,6 @@ private struct PresetDetailForm: View {
         let trimmed = preset.trimmedName
         if trimmed != preset.name {
             preset.name = trimmed
-        }
-    }
-
-    private func promptEditor(_ title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-            TextEditor(text: text)
-                .font(.callout)
-                .frame(minHeight: 60)
         }
     }
 }

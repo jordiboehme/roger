@@ -45,6 +45,17 @@ enum AudioDeviceLookup {
         }
     }
 
+    /// Asks Core Audio for the device list only when a device entry comes
+    /// before System default, and then only once.
+    static func resolveInput(_ list: [InputChoice]) -> String? {
+        var connected: Set<String>?
+        return InputChoice.resolve(list) { uid in
+            let set = connected ?? Set(availableInputs().map(\.id))
+            connected = set
+            return set.contains(uid)
+        }
+    }
+
     static func deviceID(forUID uid: String) -> AudioDeviceID? {
         availableInputs().first { $0.id == uid }?.deviceID
     }
@@ -72,39 +83,21 @@ enum AudioDeviceLookup {
         return status == noErr ? id : nil
     }
 
+    /// UID of the macOS default input, nil when Core Audio has none.
+    static var systemDefaultInputUID: String? {
+        systemDefaultInputID.flatMap(uid(for:))
+    }
+
+    /// The device a capture really uses: the resolved UID, or for the system
+    /// default the UID of the current macOS default input. `defaultUID` is
+    /// only asked when `resolved` is nil.
+    static func actualInputUID(resolved: String?, defaultUID: () -> String? = { systemDefaultInputUID }) -> String? {
+        resolved ?? defaultUID()
+    }
+
     static var systemDefaultInputName: String? {
         guard let id = systemDefaultInputID else { return nil }
         return stringProperty(id, kAudioObjectPropertyName)
-    }
-
-    /// How the device is connected, for example "USB". nil when Core Audio
-    /// does not say.
-    static func transportName(of id: AudioDeviceID) -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyTransportType,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var value: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr else { return nil }
-        return transportName(forType: value)
-    }
-
-    static func transportName(forType type: UInt32) -> String? {
-        switch type {
-        case kAudioDeviceTransportTypeBuiltIn: return "Built-in"
-        case kAudioDeviceTransportTypeUSB: return "USB"
-        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: return "Bluetooth"
-        case kAudioDeviceTransportTypeThunderbolt: return "Thunderbolt"
-        case kAudioDeviceTransportTypeHDMI: return "HDMI"
-        case kAudioDeviceTransportTypeDisplayPort: return "DisplayPort"
-        case kAudioDeviceTransportTypeAirPlay: return "AirPlay"
-        case kAudioDeviceTransportTypeContinuityCaptureWired, kAudioDeviceTransportTypeContinuityCaptureWireless: return "iPhone"
-        case kAudioDeviceTransportTypeAggregate, kAudioDeviceTransportTypeAutoAggregate: return "Aggregate device"
-        case kAudioDeviceTransportTypeVirtual: return "Virtual device"
-        default: return nil
-        }
     }
 
     private static func hasInputChannels(_ id: AudioDeviceID) -> Bool {

@@ -6,15 +6,19 @@ import Testing
 final class FakeRunner: CommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [[String]] = []
+    private var recordedEnvironments: [[String: String]] = []
     private var results: [CommandResult]
 
     init(_ results: [CommandResult]) { self.results = results }
 
     var calls: [[String]] { lock.withLock { recorded } }
+    /// The environment of each call, in the order of `calls`.
+    var environments: [[String: String]] { lock.withLock { recordedEnvironments } }
 
     func run(_ executable: URL, _ arguments: [String], environment: [String: String], currentDirectory: URL, timeout: Duration) async -> CommandResult {
         lock.withLock {
             recorded.append([executable.lastPathComponent] + arguments)
+            recordedEnvironments.append(environment)
             return results.count > 1 ? results.removeFirst() : results[0]
         }
     }
@@ -113,6 +117,83 @@ struct HarnessRegistrationTests {
         #expect(HarnessRegistration.tomlCommand("[mcp_servers.other]\ncommand = \"x\"\n") == .absent)
     }
 
+    @Test func codexConfigComesFromCodexHomeWhenSet() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let spec = HarnessCatalog.spec(.codex)
+        let custom = home.appendingPathComponent("work-codex/config.toml")
+        try FileManager.default.createDirectory(at: custom.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"\(exe)\"\n".utf8).write(to: custom)
+        // Without CODEX_HOME, ~/.codex is read and has nothing.
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .notConnected)
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: custom.deletingLastPathComponent().path) == .connected)
+        // Relative: against the folder Codex runs in, the home folder here.
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: "work-codex") == .connected)
+        // Codex 0.162.1 does not expand "~" and refuses it: no config at all.
+        #expect(HarnessRegistration.connection(spec, home: home, executable: exe, codexHome: "~/work-codex") == .notConnected)
+
+        #expect(spec.configURLs(home: home, codexHome: nil) == [home.appendingPathComponent(".codex/config.toml")])
+        #expect(spec.configURLs(home: home, codexHome: "") == [home.appendingPathComponent(".codex/config.toml")])
+        #expect(spec.configURLs(home: home, codexHome: "~/x").isEmpty)
+        #expect(spec.configURLs(home: home, codexHome: "rel/dir").map(\.path) == [home.appendingPathComponent("rel/dir/config.toml").path])
+        #expect(spec.configURLs(home: home, codexHome: "/opt/codex").map(\.path) == ["/opt/codex/config.toml"])
+        // Other harnesses ignore it.
+        let claude = HarnessCatalog.spec(.claudeCode)
+        #expect(claude.configURLs(home: home, codexHome: "/opt/codex") == [home.appendingPathComponent(".claude.json")])
+    }
+
+    @Test func codexIsDetectedByItsCodexHomeFolder() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("work-codex"), withIntermediateDirectories: true)
+        #expect(HarnessCatalog.detected(home: home).isEmpty)
+        #expect(HarnessCatalog.detected(home: home, codexHome: "work-codex").map(\.id) == [.codex])
+        #expect(HarnessCatalog.detected(home: home, codexHome: home.appendingPathComponent("work-codex").path).map(\.id) == [.codex])
+        #expect(HarnessCatalog.detected(home: home, codexHome: "missing").isEmpty)
+        #expect(HarnessCatalog.detected(home: home, codexHome: "~/work-codex").isEmpty)
+    }
+
+    @Test func registrationRunsGetCodexHome() async throws {
+        let (home, bin) = try home(with: ["codex"])
+        defer { TempFolder.remove(home) }
+        let ok = CommandResult(status: .exited(0), stdout: "", stderr: "")
+        let runner = FakeRunner([ok])
+        let registrar = HarnessRegistrar(home: home, runner: runner, searchPath: [bin.path], codexHome: "work-codex")
+        let spec = HarnessCatalog.spec(.codex)
+
+        #expect(await registrar.register(spec, executable: exe).kind == .registered)
+        // Remove runs only when the config under CODEX_HOME has the entry.
+        let config = home.appendingPathComponent("work-codex/config.toml")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"\(exe)\"\n".utf8).write(to: config)
+        #expect(await registrar.unregister(spec, executable: exe).kind == .removed)
+
+        #expect(runner.calls.map { Array($0.prefix(3)) } == [["codex", "mcp", "add"], ["codex", "mcp", "remove"]])
+        #expect(runner.environments.map { $0["CODEX_HOME"] } == ["work-codex", "work-codex"])
+        #expect(runner.environments.allSatisfy { $0["PATH"] == bin.path && $0["HOME"] == home.path })
+
+        // Not set or empty: no CODEX_HOME, so Codex uses ~/.codex.
+        #expect(HarnessRegistrar(home: home, runner: runner, searchPath: [bin.path]).environment["CODEX_HOME"] == nil)
+        #expect(HarnessRegistrar(home: home, runner: runner, searchPath: [bin.path], codexHome: "").environment["CODEX_HOME"] == nil)
+    }
+
+    @MainActor
+    @Test func theCodexRowIsReadAgainOnceTheShellGaveCodexHome() async throws {
+        let (home, bin) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let folder = home.appendingPathComponent("work-codex", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("[mcp_servers.roger]\ncommand = \"/somewhere/roger-mcp\"\n".utf8).write(to: folder.appendingPathComponent("config.toml"))
+        let skill = BundledSkill(content: Data("---\nname: ingest-roger\n---\n".utf8), version: "0.25.0")
+        let installer = SkillInstaller(home: home, receiptURL: home.appendingPathComponent("receipt.json"), skill: skill, trash: { _ in })
+        let app = home.appendingPathComponent("Applications/Roger.app", isDirectory: true)
+        let shell = CommandResult(status: .exited(0), stdout: "__ROGER_PATH__\(bin.path)__ROGER_PATH____ROGER_CODEX_HOME__work-codex__ROGER_CODEX_HOME__", stderr: "")
+        let controller = AgentsController(home: home, installer: installer, runner: FakeRunner([shell]), appBundle: app, links: [])
+        await controller.refresh()
+        let row = try #require(controller.rows.first { $0.id == .codex })
+        #expect(row.connection != .notConnected)
+    }
+
     @Test func readsACRLFCodexConfig() throws {
         let (home, _) = try home(with: [])
         defer { TempFolder.remove(home) }
@@ -127,12 +208,23 @@ struct HarnessRegistrationTests {
         defer { TempFolder.remove(home) }
         let spec = HarnessCatalog.spec(.kiro)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .notConnected)
-        let second = home.appendingPathComponent(".kiro/mcp.json")
-        try FileManager.default.createDirectory(at: second.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(#"{"mcpServers":{"roger":{"command":"/old/roger-mcp"}}}"#.utf8).write(to: second)
+        let config = home.appendingPathComponent(".kiro/settings/mcp.json")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"mcpServers":{"roger":{"command":"/old/roger-mcp"}}}"#.utf8).write(to: config)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .otherCommand("/old/roger-mcp"))
-        try Data(#"{"mcpServers":{"roger":{"command":"\#(exe)"}}}"#.utf8).write(to: second)
+        try Data(#"{"mcpServers":{"roger":{"command":"\#(exe)"}}}"#.utf8).write(to: config)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .connected)
+    }
+
+    /// kiro-cli 2.31.1 never reads `~/.kiro/mcp.json` (`kiro-cli mcp list`
+    /// does not show a server there), so Roger does not either.
+    @Test func kiroIgnoresTheTopLevelMcpFile() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let file = home.appendingPathComponent(".kiro/mcp.json")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"mcpServers":{"roger":{"command":"\#(exe)"}}}"#.utf8).write(to: file)
+        #expect(HarnessRegistration.connection(HarnessCatalog.spec(.kiro), home: home, executable: exe) == .notConnected)
     }
 
     @Test func registersThroughTheCLI() async throws {

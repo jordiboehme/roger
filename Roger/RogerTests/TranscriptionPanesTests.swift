@@ -1,4 +1,3 @@
-import CoreAudio
 import Foundation
 import SwiftUI
 import Testing
@@ -6,25 +5,6 @@ import Testing
 
 @MainActor
 struct TranscriptionPanesTests {
-    @Test func transportNames() {
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeBuiltIn) == "Built-in")
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeUSB) == "USB")
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeBluetoothLE) == "Bluetooth")
-        #expect(AudioDeviceLookup.transportName(forType: kAudioDeviceTransportTypeContinuityCaptureWireless) == "iPhone")
-        #expect(AudioDeviceLookup.transportName(forType: 0) == nil)
-    }
-
-    @Test func deviceNoteSaysWhatRogerRecordsFrom() {
-        #expect(MicrophonePane.deviceNote(isAutomatic: true, deviceName: "MacBook Pro Microphone", transport: "Built-in", isConnected: true)
-            == "Now: MacBook Pro Microphone, Built-in. Follows the macOS setting.")
-        #expect(MicrophonePane.deviceNote(isAutomatic: false, deviceName: "Shure MV7", transport: "USB", isConnected: true)
-            == "Shure MV7, USB")
-        #expect(MicrophonePane.deviceNote(isAutomatic: false, deviceName: nil, transport: nil, isConnected: false)
-            == "The saved device is not connected. Roger uses the system default until it is back.")
-        #expect(MicrophonePane.deviceNote(isAutomatic: true, deviceName: nil, transport: nil, isConnected: true)
-            == "Now: No input device. Follows the macOS setting.")
-    }
-
     @Test func providerMenuSaysWhereTextGoes() {
         #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .available) == "Apple Intelligence (local)")
         #expect(AIProviderPane.menuTitle(.appleIntelligence, appleIntelligence: .unavailable(.needsMacOS26)) == "Apple Intelligence (macOS 26 or later)")

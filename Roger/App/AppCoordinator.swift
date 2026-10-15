@@ -37,12 +37,26 @@ final class AppCoordinator {
     /// True for a short moment after a log entry was saved; the floating
     /// indicator shows "Logged" while it is set.
     private(set) var showsLogSaved = false
+    /// A short note shown with "Logged", for example when system audio
+    /// could not be recorded. Cleared together with `showsLogSaved`.
+    private(set) var logSavedNote: String?
     private var logSavedGeneration = 0
+    /// Collects system audio while a log preset with `recordSystemAudio` records.
+    private var systemAudioRecorder: SystemAudioRecorder?
+    /// The tap failed to start for this log; show the note with "Logged".
+    private var systemAudioUnavailable = false
     /// Language pin resolved at recording start, applied when the buffer is
     /// transcribed on release.
     private var activeRecordingLanguageOverride: String?
+    /// The input UID the running dictation records from (nil: system
+    /// default), resolved once at start. The empty-transcript diagnostic logs it.
+    private var activeRecordingInputUID: String?
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
+    private var warmUpTracker = MicWarmUpTracker()
+    private var inputDeviceMonitor: InputDeviceMonitor?
+    /// Bumped after every debounced device change, so the Microphone pane can refresh.
+    private(set) var inputDevicesGeneration = 0
     private var maxDurationTask: Task<Void, Never>?
     /// Currently-transcribing file, or nil when nothing is in flight. The
     /// floating indicator observes this to show the "Transcribing X" overlay.
@@ -63,6 +77,11 @@ final class AppCoordinator {
     let diarizationService = DiarizationService()
     /// Writes change-log events so agents see new and changed items.
     let libraryChanges = LibraryChangeRecorder()
+    /// Runs the commands of Settings > Commands after Roger saved an item.
+    let commandScheduler: CommandScheduler
+    /// The login-shell search path for commands and "Suggest Commands".
+    private let commandSearchPath: CommandSearchPathCache
+    private let commandRunner: ProcessCommandRunner
     /// An installed ingest skill is older than the one in this app.
     private(set) var agentSkillOutdated = false
 
@@ -114,6 +133,50 @@ final class AppCoordinator {
         settingsOpener?(pane)
     }
 
+    // MARK: - Commands
+
+    /// Builds the placeholder values for a written Markdown file.
+    nonisolated static func commandItemInfo(markdownURL: URL, kind: LibraryItemKind, root: URL) -> CommandItemInfo {
+        let subject = ChangeKey.subject(markdownURL: markdownURL, kind: kind, root: root)
+        let title = LibraryItemReader.item(markdownAt: markdownURL, fallbackKind: kind)?.title
+            ?? markdownURL.deletingPathExtension().lastPathComponent
+        return CommandItemInfo(file: markdownURL.path, key: subject.key, title: title, kind: kind.rawValue)
+    }
+
+    /// Waits for the change log, then runs `commandID`'s command for the
+    /// item. Nil or missing id does nothing.
+    func runCommand(_ commandID: UUID?, markdownURL: URL, kind: LibraryItemKind, root: URL) async {
+        guard let command = appState.command(id: commandID) else { return }
+        // The item must be in the change log before an agent asks get_changes.
+        await libraryChanges.waitUntilIdle()
+        commandScheduler.trigger(command, item: Self.commandItemInfo(markdownURL: markdownURL, kind: kind, root: root))
+    }
+
+    /// "Suggest Commands": the coding agents on this Mac and their servers,
+    /// found off the main actor (`claude mcp list` takes a few seconds).
+    func commandSuggestions() async -> [CommandSuggestion] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let path = await commandSearchPath.value(runner: commandRunner, home: home)
+        let detector = HarnessServerDetector(home: home, runner: commandRunner, searchPath: path,
+                                             codexHome: commandSearchPath.codexHome)
+        let found = await Task.detached(priority: .userInitiated) { await detector.detect() }.value
+        return CommandSuggestions.suggestions(for: found)
+    }
+
+    /// The newest item with Markdown in the library, for "Run now". Nil when
+    /// the library is empty. Scans the folders off the main actor.
+    func newestLibraryItemInfo() async -> CommandItemInfo? {
+        let scope = LibraryScanScope(layout: appState.libraryLayout, extraFolders: appState.extraScanFolders)
+        let root = appState.libraryLayout.root
+        return await Task.detached(priority: .userInitiated) {
+            let items = LibraryScanner.scanAll(scope: scope, externalFiles: ExternalTranscriptRegistry.standard.existingFiles())
+            guard let newest = items.filter(\.hasMarkdown).max(by: { $0.date < $1.date }),
+                  let subject = ChangeKey.subject(for: newest, root: root)
+            else { return nil }
+            return CommandItemInfo(file: newest.url.path, key: subject.key, title: newest.title, kind: newest.kind.rawValue)
+        }.value
+    }
+
     #if DEBUG
     /// How many coordinators this process built. The test host must build none.
     private(set) static var instancesCreated = 0
@@ -133,7 +196,22 @@ final class AppCoordinator {
             transcriptionEngine: transcriptionEngine,
             diarization: diarizationService
         )
-        self.systemMicMute = SystemMicMute(appState: appState)
+        self.systemMicMute = SystemMicMute(appState: appState) { [meetingRecorder] in meetingRecorder.activeInputUID }
+        let runner = ProcessCommandRunner()
+        let searchPath = CommandSearchPathCache()
+        self.commandRunner = runner
+        self.commandSearchPath = searchPath
+        self.commandScheduler = CommandScheduler(
+            runner: runner,
+            launcher: TerminalLauncher(),
+            confirmer: CommandConfirmationPanels(),
+            lookup: { [appState] id in appState.command(id: id) },
+            environment: {
+                let home = FileManager.default.homeDirectoryForCurrentUser
+                let path = await searchPath.value(runner: runner, home: home)
+                return ["PATH": path.joined(separator: ":"), "HOME": home.path, "USER": NSUserName(), "SHELL": CLILocator.loginShell]
+            }
+        )
         libraryChanges.environment = { [appState] in
             LibraryChangeEnvironment(
                 layout: appState.libraryLayout,
@@ -141,8 +219,12 @@ final class AppCoordinator {
                 externalRegistry: .standard
             )
         }
-        meetingRecorder.onTranscriptWritten = { [weak self] url, root in
-            self?.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
+        meetingRecorder.onTranscriptWritten = { [weak self] url, root, isFirst in
+            guard let self else { return }
+            // A retry is an update for agents, but runs no command again.
+            self.libraryChanges.recordWritten(markdownURL: url, kind: .meeting, root: root)
+            guard isFirst else { return }
+            Task { await self.runCommand(self.appState.meetingCommandID, markdownURL: url, kind: .meeting, root: root) }
         }
         setupHotkeyCallbacks()
         setupPermissionCallbacks()
@@ -155,7 +237,8 @@ final class AppCoordinator {
         if stillThere != dismissed { appState.dismissedMeetingSessions = stillThere }
         refreshPendingMeetingSessions()
         observeRecorderState()
-        // HAL mute persists after our process exits, so always restore on quit.
+        // HAL mute persists after our process exits, so always restore on
+        // quit. Running commands are stopped there too.
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -164,6 +247,8 @@ final class AppCoordinator {
             MainActor.assumeIsolated {
                 self?.systemMicMute.restoreIfNeeded()
                 self?.systemMicMute.reapplyReleasedMute()
+                // Headless runs do not outlive Roger.
+                self?.commandScheduler.stopAll()
             }
         }
     }
@@ -351,9 +436,32 @@ final class AppCoordinator {
             // A mic muted at the device level (often left over from an
             // earlier meeting) records pure silence. Lift the mute for this
             // dictation; it is re-applied when the capture ends.
-            systemMicMute.releaseStaleMute()
-            audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
-            try audioCaptureService.startCapture()
+            let inputUID = appState.resolvedInputDeviceUID
+            activeRecordingInputUID = inputUID
+            systemMicMute.releaseStaleMute(inputUID: inputUID)
+            try audioCaptureService.startCapture(inputUID: inputUID)
+
+            systemAudioUnavailable = false
+            switch SystemAudioRecorder.plan(
+                isLog: resolvedPreset.output == .logEntry,
+                recordSystemAudio: resolvedPreset.recordSystemAudio,
+                meetingActive: meetingRecorder.isActive
+            ) {
+            case .off:
+                break
+            case .unavailable:
+                logger.info("Log during a meeting: recording the mic only, the meeting records system audio")
+                systemAudioUnavailable = true
+            case .record:
+                let recorder = SystemAudioRecorder.live()
+                do {
+                    try recorder.start()
+                    systemAudioRecorder = recorder
+                } catch {
+                    logger.warning("System audio for log unavailable: \(error.localizedDescription, privacy: .public)")
+                    systemAudioUnavailable = true
+                }
+            }
 
             scheduleMaxDurationStop()
             logger.info("Dictation started (preset: \(presetName))")
@@ -362,7 +470,9 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             activeRecordingPresetID = nil
             activeRecordingLanguageOverride = nil
+            activeRecordingInputUID = nil
             _ = audioCaptureService.stopCapture()
+            discardSystemAudioRecorder()
             systemMicMute.reapplyReleasedMute()
             logger.error("Failed to start capture: \(error)")
             appState.dictationState = .error("Failed to start recording")
@@ -387,6 +497,14 @@ final class AppCoordinator {
         maxDurationTask = nil
     }
 
+    /// Stops and drops the system audio recorder without using its samples,
+    /// so the process tap (and its "Roger Tap" aggregate device) never leaks.
+    private func discardSystemAudioRecorder() {
+        guard let recorder = systemAudioRecorder else { return }
+        systemAudioRecorder = nil
+        Task { _ = await recorder.stop() }
+    }
+
     func stopDictation() {
         guard appState.dictationState == .listening else { return }
 
@@ -402,6 +520,11 @@ final class AppCoordinator {
         let samples = capture.samples
         let languageOverride = activeRecordingLanguageOverride
         activeRecordingLanguageOverride = nil
+        let inputUID = activeRecordingInputUID
+        activeRecordingInputUID = nil
+        // Taken here so every early return below can drop it.
+        let systemRecorder = systemAudioRecorder
+        systemAudioRecorder = nil
 
         guard duration >= appState.minimumRecordingDuration else {
             logger.info("Recording too short (\(String(format: "%.1f", duration), privacy: .public)s), discarding")
@@ -409,6 +532,7 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             appState.dictationState = .idle
             activeRecordingPresetID = nil
+            if let systemRecorder { Task { _ = await systemRecorder.stop() } }
             return
         }
 
@@ -420,13 +544,42 @@ final class AppCoordinator {
             floatingPanel.hide()
             audioLevelMeter.reset()
             activeRecordingPresetID = nil
+            if let systemRecorder { Task { _ = await systemRecorder.stop() } }
             appState.dictationState = .error(AudioCaptureService.halStarvedAdvice)
             return
         }
 
         logger.notice("Recording complete: \(String(format: "%.1f", duration), privacy: .public)s")
+        // Leave .listening right away: stopping the system audio tap below
+        // takes a moment, and a second stopDictation (or a new dictation)
+        // must not slip in while it drains.
+        appState.dictationState = .transcribing
+        let presetID = activeRecordingPresetID
         Task {
-            await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt, samples: samples) {
+            var systemSamples: [Float]?
+            if let systemRecorder {
+                systemSamples = await systemRecorder.stop()
+                if systemSamples == nil {
+                    logger.error("System audio tap did not stop within \(SystemAudioRecorder.stopTimeout, privacy: .public), saving the log with the mic only")
+                    self.systemAudioUnavailable = true
+                } else if systemSamples?.isEmpty == true {
+                    logger.warning("System audio tap delivered no samples, saving the log with the mic only")
+                    self.systemAudioUnavailable = true
+                }
+            }
+            if let system = systemSamples, !system.isEmpty {
+                let mic = (samples?.isEmpty == false) ? samples : nil
+                if mic == nil {
+                    logger.warning("Microphone delivered no samples, the log has system audio only")
+                }
+                await self.runLogWithSystemAudio(mic: mic, micStartedAt: capture.startedAt,
+                                                 system: system, systemStartedAt: systemRecorder?.startedAt,
+                                                 presetID: presetID, languageOverride: languageOverride,
+                                                 startedAt: startedAt, endedAt: endedAt)
+                return
+            }
+            await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt,
+                                   samples: samples, inputUID: inputUID) {
                 guard let samples, !samples.isEmpty else {
                     return TranscriptionEngine.TranscriptionResult(text: "", detectedLanguage: nil)
                 }
@@ -438,11 +591,66 @@ final class AppCoordinator {
         }
     }
 
+    /// A log preset with system audio: both tracks through the meeting
+    /// pipeline ("Me" from the mic alone, "Other N" from the system track),
+    /// then saved as a log with paragraphs. `mic` is nil when the mic gave
+    /// nothing; the log then holds the system track only.
+    private func runLogWithSystemAudio(mic rawMic: [Float]?, micStartedAt: Date?,
+                                       system rawSystem: [Float], systemStartedAt: Date?,
+                                       presetID: UUID?, languageOverride: String?,
+                                       startedAt: Date, endedAt: Date) async {
+        appState.dictationState = .transcribing
+        // The tap starts a moment after the mic. Pad the later track so
+        // paragraph times and the kept mix line up.
+        // Also without mic samples: the mic start is the recording start.
+        let (mic, system) = AudioMix.alignLogTracks(mic: rawMic, micStartedAt: micStartedAt,
+                                                    system: rawSystem, systemStartedAt: systemStartedAt)
+        if let micStartedAt, let systemStartedAt {
+            let offset = systemStartedAt.timeIntervalSince(micStartedAt)
+            logger.info("Log tracks start offset: \(String(format: "%.3f", offset), privacy: .public)s (system after mic)")
+        }
+        defer { activeRecordingPresetID = nil }
+        let preset = appState.presets.first { $0.id == presetID } ?? appState.activePreset
+        var llm: (any LLMService)?
+        if preset.requiresAI {
+            let service = appState.currentLLMService()
+            if await service.isAvailable {
+                llm = service
+            } else {
+                logger.warning("LLM provider not available, applying non-AI steps only")
+            }
+        }
+        let pipeline = MeetingTranscriptionPipeline(engine: transcriptionEngine, diarization: diarizationService)
+        do {
+            let output = try await pipeline.run(
+                mic: mic.map { .samples($0) } ?? .absent,
+                system: .samples(system),
+                config: .init(
+                    diarizeMic: appState.meetingDiarizeMic,
+                    diarizeSystem: appState.meetingDiarizeSystem,
+                    languageOverride: languageOverride,
+                    preset: llm == nil ? preset.withoutAI : preset,
+                    llmService: llm
+                )
+            )
+            let text = output.paragraphs.map(\.text).joined(separator: "\n\n")
+            await saveLogEntry(text, preset: preset, startedAt: startedAt, endedAt: endedAt,
+                               detectedLanguage: output.language, samples: mic,
+                               paragraphs: output.paragraphs, systemSamples: system)
+        } catch {
+            logger.error("Log with system audio failed: \(error.localizedDescription, privacy: .public)")
+            floatingPanel.hide()
+            audioLevelMeter.reset()
+            appState.dictationState = .error(error.localizedDescription)
+        }
+    }
+
     private func runPipeline(
         audioSeconds: Double,
         startedAt: Date,
         endedAt: Date,
         samples: [Float]?,
+        inputUID: String?,
         transcribe: @escaping () async throws -> TranscriptionEngine.TranscriptionResult
     ) async {
         appState.dictationState = .transcribing
@@ -456,9 +664,9 @@ final class AppCoordinator {
             let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
 
             guard !result.text.isEmpty else {
-                let uid = appState.selectedInputDeviceUID ?? "automatic"
-                let deviceResolved = appState.selectedInputDeviceUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
-                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
+                let uid = inputUID ?? "system default"
+                let deviceResolved = inputUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
+                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (still connected: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 audioLevelMeter.reset()
                 appState.dictationState = .error("No speech detected. Try speaking louder or closer to the mic.")
@@ -558,6 +766,7 @@ final class AppCoordinator {
     /// "Logged" state and its hide timer.
     private func cancelLogSavedIndicator() {
         showsLogSaved = false
+        logSavedNote = nil
         logSavedGeneration += 1
     }
 
@@ -569,14 +778,17 @@ final class AppCoordinator {
         startedAt: Date,
         endedAt: Date,
         detectedLanguage: String?,
-        samples: [Float]?
+        samples: [Float]?,
+        paragraphs: [MeetingTranscriptMerger.Paragraph]? = nil,
+        systemSamples: [Float]? = nil
     ) async {
         let layout = appState.libraryLayout
         // The menu bar shows the new text while a long recording is encoded.
         if !LogEntrySaver.isEmpty(text) { appState.lastTranscription = text }
         let outcome = await LogEntrySaver(layout: layout).save(
             text, preset: preset, startedAt: startedAt, endedAt: endedAt,
-            detectedLanguage: detectedLanguage, samples: samples
+            detectedLanguage: detectedLanguage, samples: samples,
+            paragraphs: paragraphs, systemSamples: systemSamples
         ) { [libraryChanges] url in
             libraryChanges.recordWritten(markdownURL: url, kind: .log, root: layout.root)
         }
@@ -592,6 +804,7 @@ final class AppCoordinator {
             appState.lastTranscription = text
             appState.lastLogEntryURL = url
             logger.notice("Log entry saved: \(url.path, privacy: .public)")
+            Task { await self.runCommand(preset.commandID, markdownURL: url, kind: .log, root: layout.root) }
         case .libraryMissing(let message):
             logger.error("Log entry write failed: \(message, privacy: .public)")
             appState.lastTranscription = text
@@ -617,6 +830,8 @@ final class AppCoordinator {
         appState.dictationState = .idle
         logSavedGeneration += 1
         let generation = logSavedGeneration
+        logSavedNote = systemAudioUnavailable ? "system audio unavailable" : nil
+        systemAudioUnavailable = false
         showsLogSaved = true
         // Detached from the pipeline so `runPipeline` returns right away and a
         // new dictation is not held up (its defer clears the active preset).
@@ -624,6 +839,7 @@ final class AppCoordinator {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard generation == self.logSavedGeneration else { return }
             self.showsLogSaved = false
+            self.logSavedNote = nil
             // A new dictation may have started meanwhile; it owns the panel then.
             if self.appState.dictationState == .idle {
                 self.floatingPanel.hide()
@@ -679,9 +895,6 @@ final class AppCoordinator {
 
     // MARK: - Microphone Warm-Up
 
-    /// Fires a brief silent capture so the CoreAudio HAL is warm before the
-    /// user's first real Caps Lock press. Safe to call repeatedly — re-entrant
-    /// calls are coalesced.
     /// Relaunches the app — the fix for a process-scoped CoreAudio wedge.
     /// Refuses while a meeting recording is active so a live session never
     /// has to go through crash recovery.
@@ -694,14 +907,37 @@ final class AppCoordinator {
         AppRelauncher.relaunch()
     }
 
+    /// Fires a brief silent capture so the CoreAudio HAL is warm before the
+    /// user's first real Caps Lock press. Safe to call repeatedly - re-entrant
+    /// calls are coalesced. Never runs during a meeting: a second engine next
+    /// to the meeting's mic tap can switch a Bluetooth headset's profile.
     func warmUpMicrophone() async {
         guard permissionManager.microphoneAuthorized else { return }
         guard !isWarmingUp else { return }
-        guard appState.dictationState == .idle else { return }
+        guard appState.dictationState == .idle, !meetingRecorder.isActive else { return }
         isWarmingUp = true
         defer { isWarmingUp = false }
-        audioCaptureService.preferredInputUID = appState.selectedInputDeviceUID
-        await audioCaptureService.warmUp()
+        let resolved = appState.resolvedInputDeviceUID
+        let device = AudioDeviceLookup.actualInputUID(resolved: resolved)
+        if await audioCaptureService.warmUp(inputUID: resolved) {
+            warmUpTracker.didWarmUp(device: device)
+        }
+    }
+
+    /// Warms the microphone up again when a device connects or disconnects and
+    /// the priority list now resolves to another one. Lives for the app lifetime.
+    func startInputDeviceMonitoring() {
+        guard inputDeviceMonitor == nil else { return }
+        let monitor = InputDeviceMonitor { [weak self] in
+            guard let self else { return }
+            self.inputDevicesGeneration += 1
+            let device = AudioDeviceLookup.actualInputUID(resolved: self.appState.resolvedInputDeviceUID)
+            guard self.warmUpTracker.shouldWarmUp(device: device) else { return }
+            logger.info("Input devices changed, Roger now uses \(device ?? "no device", privacy: .public)")
+            Task { await self.warmUpMicrophone() }
+        }
+        inputDeviceMonitor = monitor
+        monitor.start()
     }
 
     // MARK: - Model Management
@@ -911,6 +1147,7 @@ final class AppCoordinator {
             }
             libraryChanges.recordWritten(markdownURL: outputURL, kind: .transcript, root: layout.root)
             logger.notice("File transcription saved: \(outputURL.path, privacy: .public)")
+            Task { await self.runCommand(self.appState.fileTranscriptCommandID, markdownURL: outputURL, kind: .transcript, root: layout.root) }
             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
             await finishFileTranscription(error: nil)
         } catch is CancellationError {
@@ -1104,5 +1341,27 @@ private extension AppState.DictationState {
     var isErrorState: Bool {
         if case .error = self { return true }
         return false
+    }
+}
+
+/// The login shell's `PATH` plus the extra folders, looked up once per
+/// launch for the commands (the shell takes a moment to answer), and the
+/// shell's `CODEX_HOME` for Suggest Commands.
+@MainActor
+private final class CommandSearchPathCache {
+    private var cached: [String]?
+    /// Set by `value` once the shell answered.
+    private(set) var codexHome: String?
+
+    func value(runner: any CommandRunner, home: URL) async -> [String] {
+        if let cached { return cached }
+        let environment = await CLILocator.loginShellEnvironment(runner: runner, home: home)
+        let path = CLILocator.searchPath(loginShellPATH: environment?.path, home: home)
+        // A shell that did not answer is asked again on the next run.
+        if let environment {
+            cached = path
+            codexHome = environment.codexHome
+        }
+        return path
     }
 }

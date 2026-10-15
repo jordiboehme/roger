@@ -65,6 +65,8 @@ final class AgentsController {
     @ObservationIgnored let installer: SkillInstaller
     @ObservationIgnored private let runner: any CommandRunner
     @ObservationIgnored private var searchPath: [String]?
+    /// `CODEX_HOME` from the login shell, read with the search path.
+    @ObservationIgnored private var codexHome: String?
     /// Drops a refresh that finished after a newer one.
     @ObservationIgnored private var refreshGeneration = 0
 
@@ -130,12 +132,13 @@ final class AgentsController {
         // Until the login shell answered, a harness with a CLI counts as
         // having it, so the rows show at once.
         let knownPath = searchPath
+        let codexHome = self.codexHome
         let snapshots = await Task.detached(priority: .userInitiated) {
-            SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home), home: home).map { plan in
+            SkillInstallPlanner.plan(for: HarnessCatalog.detected(home: home, codexHome: codexHome), home: home).map { plan in
                 Snapshot(
                     plan: plan,
                     skillState: installer.state(of: plan.skillFolder),
-                    connection: HarnessRegistration.connection(plan.harness, home: home, executable: executable),
+                    connection: HarnessRegistration.connection(plan.harness, home: home, executable: executable, codexHome: codexHome),
                     hasCLI: Self.hasCLI(plan.harness, in: knownPath)
                 )
             }
@@ -159,6 +162,12 @@ final class AgentsController {
         guard knownPath == nil else { return }
         let path = await resolvedSearchPath()
         guard generation == refreshGeneration else { return }
+        if self.codexHome != nil {
+            // The Codex row and its connection depend on CODEX_HOME, which
+            // only the shell's answer gave: read everything again.
+            await refresh()
+            return
+        }
         for index in rows.indices {
             rows[index].hasCLI = Self.hasCLI(rows[index].spec, in: path)
         }
@@ -333,17 +342,20 @@ final class AgentsController {
 
     // MARK: - Helpers
 
-    /// The login shell's `PATH` and the extra folders, looked up once.
+    /// The login shell's `PATH` and the extra folders, looked up once,
+    /// together with `CODEX_HOME`.
     private func resolvedSearchPath() async -> [String] {
         if searchPath == nil {
-            let path = await CLILocator.loginShellPATH(runner: runner, home: home)
-            searchPath = CLILocator.searchPath(loginShellPATH: path, home: home)
+            let environment = await CLILocator.loginShellEnvironment(runner: runner, home: home)
+            searchPath = CLILocator.searchPath(loginShellPATH: environment?.path, home: home)
+            codexHome = environment?.codexHome
         }
         return searchPath ?? CLILocator.extraDirectories
     }
 
     private func registrar() async -> HarnessRegistrar {
-        HarnessRegistrar(home: home, runner: runner, searchPath: await resolvedSearchPath())
+        let path = await resolvedSearchPath()
+        return HarnessRegistrar(home: home, runner: runner, searchPath: path, codexHome: codexHome)
     }
 
     private func setBusy(_ id: HarnessID, _ busy: Bool) {

@@ -52,15 +52,17 @@ final class AppState {
     }
     private var isSyncingLaunchAtLogin = false
 
-    /// UID of the preferred input device, or nil for system default (automatic).
-    var selectedInputDeviceUID: String? {
+    /// Microphones in the order Roger tries them. Always holds `.systemDefault` once.
+    var inputPriority: [InputChoice] {
         didSet {
-            if let uid = selectedInputDeviceUID {
-                defaults.set(uid, forKey: "selectedInputDeviceUID")
-            } else {
-                defaults.removeObject(forKey: "selectedInputDeviceUID")
-            }
+            if let data = try? JSONEncoder().encode(inputPriority) { defaults.set(data, forKey: "inputPriority") }
         }
+    }
+
+    /// The UID to record from right now, nil for the system default.
+    /// Asks Core Audio: call it when a recording starts, never in a view body.
+    var resolvedInputDeviceUID: String? {
+        AudioDeviceLookup.resolveInput(inputPriority)
     }
 
     // MARK: - File Transcription Settings
@@ -196,11 +198,41 @@ final class AppState {
         didSet { defaults.set(openAIModel, forKey: "openAIModel") }
     }
 
+    // MARK: - Commands
+
+    /// Settings > Commands, in list order.
+    var commands: [AgentCommand] {
+        didSet {
+            if let data = try? TolerantDecoding.encode(commands, keeping: unreadableCommands) {
+                defaults.set(data, forKey: "commands")
+            }
+        }
+    }
+    /// Saved commands Roger cannot read (for example from a newer version),
+    /// as raw JSON. Not shown; written back unchanged on every save.
+    @ObservationIgnored private var unreadableCommands: [Data] = []
+    /// Runs after a meeting transcript is written. Nil runs nothing.
+    var meetingCommandID: UUID? {
+        didSet { defaults.set(meetingCommandID?.uuidString, forKey: "meetingCommandID") }
+    }
+    /// Runs after a file transcript is written. Nil runs nothing.
+    var fileTranscriptCommandID: UUID? {
+        didSet { defaults.set(fileTranscriptCommandID?.uuidString, forKey: "fileTranscriptCommandID") }
+    }
+
+    func command(id: UUID?) -> AgentCommand? {
+        guard let id else { return nil }
+        return commands.first { $0.id == id }
+    }
+
     // MARK: - Preset Settings
 
     var activePresetID: UUID {
         didSet { defaults.set(activePresetID.uuidString, forKey: "activePresetID") }
     }
+    /// Saved presets Roger cannot read, as raw JSON. Not shown; written
+    /// back unchanged on every save.
+    @ObservationIgnored private var unreadablePresets: [Data] = []
     var presets: [DictationPreset] {
         didSet {
             savePresets()
@@ -345,7 +377,17 @@ final class AppState {
         if !defaults.bool(forKey: RecordingDurationMigration.migratedKey) {
             defaults.set(true, forKey: RecordingDurationMigration.migratedKey)
         }
-        self.selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID")
+        let inputs = InputChoice.load(
+            stored: defaults.data(forKey: "inputPriority"),
+            legacyUID: defaults.string(forKey: "selectedInputDeviceUID"),
+            nameForUID: { uid in AudioDeviceLookup.availableInputs().first { $0.id == uid }?.name }
+        )
+        self.inputPriority = inputs.list
+        if inputs.write {
+            // didSet does not run in init.
+            if let data = try? JSONEncoder().encode(inputs.list) { defaults.set(data, forKey: "inputPriority") }
+            defaults.removeObject(forKey: "selectedInputDeviceUID")
+        }
 
         self.fileTranscriptOutputLocation = FileTranscriptOutputLocation(
             rawValue: defaults.string(forKey: "fileTranscriptOutputLocation") ?? ""
@@ -378,8 +420,20 @@ final class AppState {
         self.openAIModel = defaults.string(forKey: "openAIModel") ?? "gpt-4o"
 
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
-        self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
+        let savedPresets = defaults.data(forKey: "presets")
+            .flatMap { TolerantDecoding.load(DictationPreset.self, from: $0, label: "preset") }
+        self.unreadablePresets = savedPresets?.unreadable ?? []
+        self.presets = Self.mergeBuiltInPresets(
+            saved: savedPresets?.values,
+            unreadableIDs: TolerantDecoding.ids(in: savedPresets?.unreadable ?? [])
+        )
         self.modifierBindings = Self.loadModifierBindings()
+        let savedCommands = defaults.data(forKey: "commands")
+            .flatMap { TolerantDecoding.load(AgentCommand.self, from: $0, label: "command") }
+        self.unreadableCommands = savedCommands?.unreadable ?? []
+        self.commands = savedCommands?.values ?? []
+        self.meetingCommandID = defaults.string(forKey: "meetingCommandID").flatMap(UUID.init(uuidString:))
+        self.fileTranscriptCommandID = defaults.string(forKey: "fileTranscriptCommandID").flatMap(UUID.init(uuidString:))
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
 
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
@@ -417,7 +471,7 @@ final class AppState {
     // MARK: - Persistence
 
     private func savePresets() {
-        guard let data = try? JSONEncoder().encode(presets) else { return }
+        guard let data = try? TolerantDecoding.encode(presets, keeping: unreadablePresets) else { return }
         defaults.set(data, forKey: "presets")
     }
 
@@ -445,21 +499,18 @@ final class AppState {
         return result
     }
 
-    private static func mergeBuiltInPresets(saved: [DictationPreset]?) -> [DictationPreset] {
+    /// Adds the built-in presets the saved list lacks. A built-in that is
+    /// saved but unreadable (kept as raw JSON) is not added again, so the
+    /// next save never writes two presets with the same id.
+    static func mergeBuiltInPresets(saved: [DictationPreset]?, unreadableIDs: Set<UUID> = []) -> [DictationPreset] {
         guard var presets = saved else { return DictationPreset.builtInPresets }
-        let existingIDs = Set(presets.map(\.id))
+        let existingIDs = Set(presets.map(\.id)).union(unreadableIDs)
         for builtIn in DictationPreset.builtInPresets where !existingIDs.contains(builtIn.id) {
             presets.append(builtIn)
         }
         return presets
     }
 
-    private static func loadPresets() -> [DictationPreset]? {
-        guard let data = UserDefaults.standard.data(forKey: "presets"),
-              let presets = try? JSONDecoder().decode([DictationPreset].self, from: data)
-        else { return nil }
-        return presets
-    }
 }
 
 enum FileTranscriptOutputLocation: String, CaseIterable, Identifiable, Codable {

@@ -40,10 +40,12 @@ final class MeetingRecordingService {
     private(set) var state: State = .idle
     private(set) var lastSession: MeetingSession?
 
-    /// Called after `transcript.md` is on disk, on the first finalisation
-    /// and on every retry, with the library root the session was written
-    /// under. The coordinator records the change for agents.
-    @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL) -> Void)?
+    /// Called each time `transcript.md` is on disk, on the first
+    /// finalisation and on every retry, with the library root the session
+    /// was written under. The coordinator records the change for agents.
+    /// `isFirst` is false for a retry of a session that had a transcript
+    /// before; only the first one runs the meeting command.
+    @ObservationIgnored var onTranscriptWritten: (@MainActor (_ transcript: URL, _ root: URL, _ isFirst: Bool) -> Void)?
 
     private let appState: AppState
     private let transcriptionEngine: TranscriptionEngine
@@ -54,6 +56,10 @@ final class MeetingRecordingService {
     /// root at the time of the retry).
     @ObservationIgnored private var sessionRoot: URL?
     private var micTap: MicrophoneTap?
+    /// UID of the device the meeting's mic tap records from, resolved once at
+    /// start (the macOS default input's UID when the list resolves to System
+    /// default). The meeting mute acts on this device.
+    @ObservationIgnored private var recordingInputUID: String?
     private var systemTap: SystemAudioTap?
     private var micWriter: SegmentedAudioFileWriter?
     private var systemWriter: SegmentedAudioFileWriter?
@@ -85,6 +91,12 @@ final class MeetingRecordingService {
         case .idle, .error: return false
         default: return true
         }
+    }
+
+    /// UID of the input device the running meeting records from, nil when no
+    /// meeting runs (or Core Audio named no device at start).
+    var activeInputUID: String? {
+        isActive ? recordingInputUID : nil
     }
 
     /// The folder of the session that is being recorded or finalised. The
@@ -153,7 +165,9 @@ final class MeetingRecordingService {
         }
 
         let micTap = MicrophoneTap()
-        micTap.preferredInputUID = appState.selectedInputDeviceUID
+        let resolvedUID = appState.resolvedInputDeviceUID
+        micTap.preferredInputUID = resolvedUID
+        recordingInputUID = AudioDeviceLookup.actualInputUID(resolved: resolvedUID)
         let systemTap = SystemAudioTap()
 
         let micStream: AsyncStream<SendableAudioBuffer>
@@ -619,6 +633,7 @@ final class MeetingRecordingService {
         )
 
         let root = sessionRoot ?? appState.libraryLayout.root
+        let isFirst = MeetingTranscriptWriter.isFirstTranscript(of: session)
         let outcome = MeetingFinalisationSteps.run(
             MeetingFinalisationSteps.Input(
                 session: session,
@@ -631,7 +646,7 @@ final class MeetingRecordingService {
                 system: systemTrack,
                 sleepInterrupted: sleepInterrupted
             ),
-            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url, root) }
+            recordWritten: { [weak self] url in self?.onTranscriptWritten?(url, root, isFirst) }
         )
         switch outcome {
         case .failed(let reason):
@@ -746,6 +761,7 @@ final class MeetingRecordingService {
         micTap?.stop()
         systemTap?.stop()
         micTap = nil
+        recordingInputUID = nil
         systemTap = nil
         _ = await micWriter?.close()
         _ = await systemWriter?.close()

@@ -43,6 +43,63 @@ struct LogEntrySaverTests {
         return outcome
     }
 
+    private final class Captured: @unchecked Sendable {
+        private let lock = NSLock()
+        private var calls: [[Float]] = []
+        func add(_ samples: [Float]) { lock.lock(); calls.append(samples); lock.unlock() }
+        var all: [[Float]] { lock.lock(); defer { lock.unlock() }; return calls }
+    }
+
+    private func saveWithParagraphs(
+        keepAudio: Bool, captured: Captured, mic: [Float]? = [0.1, 0.2]
+    ) async throws -> LogEntrySaver.Outcome {
+        let root = try TempFolder.make()
+        defer { TempFolder.remove(root) }
+        let saver = LogEntrySaver(
+            layout: LibraryLayout(root: root),
+            defaultRoot: root,
+            encodeAudio: { samples, url in
+                captured.add(samples)
+                try Data("m4a!".utf8).write(to: url)
+            }
+        )
+        let paragraphs = [
+            MeetingTranscriptMerger.Paragraph(speaker: "Me", startTime: 0, text: "Hello there"),
+            MeetingTranscriptMerger.Paragraph(speaker: "Other 1", startTime: 2, text: "Hi"),
+        ]
+        return await saver.save(
+            "Hello there\n\nHi", preset: preset(keepAudio: keepAudio), startedAt: start,
+            endedAt: start.addingTimeInterval(12), detectedLanguage: nil, samples: mic,
+            paragraphs: paragraphs, systemSamples: [0.3, 0.3, 0.3], recordWritten: { _ in }
+        )
+    }
+
+    @Test func paragraphsAndSystemSamplesKeepTheMixedTrack() async throws {
+        let captured = Captured()
+        let outcome = try await saveWithParagraphs(keepAudio: true, captured: captured)
+        guard case .saved = outcome else {
+            Issue.record("expected saved, got \(outcome)")
+            return
+        }
+        #expect(captured.all == [AudioMix.mix([0.1, 0.2], [0.3, 0.3, 0.3])])
+    }
+
+    @Test func aLogWithoutMicSamplesKeepsTheSystemTrack() async throws {
+        let captured = Captured()
+        let outcome = try await saveWithParagraphs(keepAudio: true, captured: captured, mic: nil)
+        guard case .saved = outcome else {
+            Issue.record("expected saved, got \(outcome)")
+            return
+        }
+        #expect(captured.all == [[0.3, 0.3, 0.3]])
+    }
+
+    @Test func paragraphsWithoutKeepAudioCallNoEncoder() async throws {
+        let captured = Captured()
+        _ = try await saveWithParagraphs(keepAudio: false, captured: captured)
+        #expect(captured.all.isEmpty)
+    }
+
     @Test func keepAudioWritesTheRecordingAndListsIt() async throws {
         let root = try TempFolder.make()
         defer { TempFolder.remove(root) }

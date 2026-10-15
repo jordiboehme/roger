@@ -232,9 +232,10 @@ struct PermissionsPane: View {
     private func testMicrophone() {
         micTestResult = nil
         let service = coordinator.audioCaptureService
+        let inputUID = coordinator.appState.resolvedInputDeviceUID
         Task {
             do {
-                let result = try await service.probe()
+                let result = try await service.probeAfterWarmUp(inputUID: inputUID)
                 if let samples = result.samples, !samples.isEmpty {
                     let peak = samples.map { abs($0) }.max() ?? 0
                     micTestResult = .success("Works. Loudest level \(String(format: "%.3f", peak)).")

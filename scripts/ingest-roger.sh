@@ -1,37 +1,46 @@
 #!/usr/bin/env bash
 # Runs the ingest-roger skill with Claude Code until Roger has nothing new.
 #
-# Usage: scripts/ingest-roger.sh <crystalline-domain> [max-runs]
+# Usage: scripts/ingest-roger.sh <prompt> [max-runs]
+#
+# Examples:
+#   scripts/ingest-roger.sh "Use the ingest-roger skill to read what is new in Roger. Summarize it."
+#   EXTRA_MCP_SERVERS=crystalline scripts/ingest-roger.sh "Use the ingest-roger skill to read what is new in Roger and fold it into Crystalline with crystalline-capture."
 #
 # Environment:
-#   CLAUDE_BIN              Claude Code binary (default: claude)
-#   ROGER_MCP_SERVER        name of the Roger MCP server (default: roger)
-#   CRYSTALLINE_MCP_SERVER  name of the Crystalline MCP server (default: crystalline)
+#   CLAUDE_BIN         Claude Code binary (default: claude)
+#   ROGER_MCP_SERVER   name of the Roger MCP server (default: roger)
+#   EXTRA_MCP_SERVERS  more MCP servers whose tools are allowed, separated by
+#                      spaces or commas, for example "crystalline" (default: none)
 #
-# Only the tools of these two servers are allowed. Exits 0 when everything
-# was ingested, 1 when a run failed (the next run repeats the same range),
-# 2 for wrong arguments. Also exits 0 when max-runs ran out and there is
-# still more: the next call goes on. A run counts only by its last
-# non-empty line (RESULT: ...). Installs nothing.
+# Only the tools of the Roger server and of EXTRA_MCP_SERVERS are allowed.
+# Exits 0 when everything was ingested, 1 when a run failed (the next run
+# repeats the same range), 2 for wrong arguments. Also exits 0 when max-runs
+# ran out and there is still more: the next call goes on. A run counts only
+# by its last non-empty line (RESULT: ...). Installs nothing.
 set -euo pipefail
 
-domain="${1:-}"
+prompt="${1:-}"
 runs="${2:-10}"
-if [ -z "$domain" ]; then
-  echo "Usage: $0 <crystalline-domain> [max-runs]" >&2
+if [ -z "$prompt" ]; then
+  echo "Usage: $0 <prompt> [max-runs]" >&2
   exit 2
 fi
 if ! [[ "$runs" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Usage: $0 <crystalline-domain> [max-runs]" >&2
+  echo "Usage: $0 <prompt> [max-runs]" >&2
   echo "ingest-roger: max-runs must be a whole number of 1 or more, not \"$runs\"." >&2
   exit 2
 fi
 
 claude_bin="${CLAUDE_BIN:-claude}"
-allowed="mcp__${ROGER_MCP_SERVER:-roger},mcp__${CRYSTALLINE_MCP_SERVER:-crystalline}"
+allowed="mcp__${ROGER_MCP_SERVER:-roger}"
+extra="${EXTRA_MCP_SERVERS:-}"
+for server in ${extra//,/ }; do
+  allowed="$allowed,mcp__$server"
+done
 
 for ((run = 1; run <= runs; run++)); do
-  if ! output=$("$claude_bin" --allowedTools "$allowed" -p "/ingest-roger $domain" 2>&1); then
+  if ! output=$("$claude_bin" --allowedTools "$allowed" -p "$prompt" 2>&1); then
     printf '%s\n' "$output"
     echo "ingest-roger: claude failed in run $run" >&2
     exit 1

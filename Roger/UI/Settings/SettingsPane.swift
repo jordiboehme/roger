@@ -11,6 +11,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
     case files
     case library
     case agents
+    case commands
     case permissions
     case about
 
@@ -47,6 +48,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
         case .files: return "Files"
         case .library: return "Library & Meetings"
         case .agents: return "Agents"
+        case .commands: return "Commands"
         case .permissions: return "Permissions"
         case .about: return "About"
         }
@@ -62,6 +64,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
         case .files: return "doc.text"
         case .library: return "books.vertical"
         case .agents: return "point.3.connected.trianglepath.dotted"
+        case .commands: return "terminal"
         case .permissions: return "hand.raised"
         case .about: return "info.circle"
         }
@@ -78,6 +81,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
         case .files: return .blue
         case .library: return .brown
         case .agents: return .teal
+        case .commands: return .green
         case .permissions: return .indigo
         case .about: return .gray
         }
@@ -87,7 +91,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general, .presets, .microphone: return .top
         case .model, .aiProvider, .files: return .transcription
-        case .library, .agents: return .library
+        case .library, .agents, .commands: return .library
         case .permissions, .about: return .bottom
         }
     }

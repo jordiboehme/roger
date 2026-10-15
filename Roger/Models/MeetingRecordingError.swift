@@ -74,8 +74,6 @@ enum MeetingRecordingError: LocalizedError, Sendable {
 
     /// "a", "a and b", "a, b and c".
     static func listed(_ names: [String]) -> String {
-        guard let last = names.last else { return "" }
-        guard names.count > 1 else { return last }
-        return names.dropLast().joined(separator: ", ") + " and " + last
+        names.joinedAsList
     }
 }

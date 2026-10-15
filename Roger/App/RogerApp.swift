@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Warm up the audio HAL so the first Caps Lock press captures reliably
         Task { await coordinator.warmUpMicrophone() }
+        coordinator.startInputDeviceMonitoring()
 
         // Sync launch-at-login state with SMAppService (catches external changes)
         coordinator.appState.syncLaunchAtLogin()
