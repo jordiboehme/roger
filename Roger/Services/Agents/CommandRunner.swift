@@ -28,13 +28,26 @@ extension CommandRunner {
 }
 
 /// The process groups of the runs that are going, so a quit can end them
-/// without waiting for their tasks.
+/// without waiting for their tasks. After `stopAll` it is closed: no new
+/// group is taken, so a run that starts during the quit stops at once.
 final class ProcessGroupRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var groups: Set<pid_t> = []
     private var stopped: Set<pid_t> = []
+    private var closed = false
 
-    func add(_ group: pid_t) { lock.withLock { _ = groups.insert(group) } }
+    /// True once `stopAll` ran.
+    var isClosed: Bool { lock.withLock { closed } }
+
+    /// Takes `group`. False when the registry is closed: the caller must
+    /// end the group itself.
+    func add(_ group: pid_t) -> Bool {
+        lock.withLock {
+            guard !closed else { return false }
+            groups.insert(group)
+            return true
+        }
+    }
 
     /// Forgets `group`. True when `stopAll` ended it.
     func remove(_ group: pid_t) -> Bool {
@@ -48,6 +61,7 @@ final class ProcessGroupRegistry: @unchecked Sendable {
     /// Blocks the caller for at most `grace`.
     func stopAll(grace: Duration) {
         let targets = lock.withLock {
+            closed = true
             stopped.formUnion(groups)
             return groups
         }
@@ -116,6 +130,13 @@ struct ProcessCommandRunner: CommandRunner {
         out.attach(to: outPipe)
         err.attach(to: errPipe)
 
+        // Roger quits or the run was cancelled: do not start it.
+        if Task.isCancelled || registry.isClosed {
+            outPipe.fileHandleForReading.readabilityHandler = nil
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            return CommandResult(status: .stopped, stdout: "", stderr: "")
+        }
+
         do {
             try process.run()
         } catch {
@@ -127,7 +148,14 @@ struct ProcessCommandRunner: CommandRunner {
         // Process starts the child as the leader of its own process group,
         // so a signal to the group also reaches what the CLI started.
         let group = process.processIdentifier
-        registry.add(group)
+        guard registry.add(group) else {
+            // stopAll ran while this run started: end it at once.
+            kill(-group, SIGKILL)
+            _ = await Self.waitForExit(process, timeout: Self.killWait, stopsOnCancel: false)
+            outPipe.fileHandleForReading.readabilityHandler = nil
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            return CommandResult(status: .stopped, stdout: out.text, stderr: err.text)
+        }
         let finishedInTime = await Self.waitForExit(process, timeout: timeout, stopsOnCancel: true)
         if !finishedInTime {
             kill(-group, SIGTERM)

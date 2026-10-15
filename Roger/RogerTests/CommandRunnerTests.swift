@@ -142,4 +142,34 @@ struct CommandRunnerTests {
         #expect(CLILocator.pathBetweenMarkers("no markers") == nil)
         #expect(CLILocator.pathBetweenMarkers("\(marker)\(marker)") == "")
     }
+
+    @Test func aRunAfterStopAllDoesNotStart() async {
+        let runner = ProcessCommandRunner()
+        runner.stopAll()
+        let start = Date()
+        let result = await runner.run(URL(fileURLWithPath: "/bin/sleep"), ["30"], environment: [:], currentDirectory: tmp, timeout: .seconds(60))
+        #expect(result.status == .stopped)
+        #expect(Date().timeIntervalSince(start) < 2)
+    }
+
+    @Test func aCancelledRunIsStopped() async {
+        let runner = ProcessCommandRunner()
+        let start = Date()
+        let run = Task {
+            await runner.run(URL(fileURLWithPath: "/bin/sleep"), ["30"], environment: [:], currentDirectory: tmp, timeout: .seconds(60))
+        }
+        run.cancel()
+        #expect(await run.value.status == .stopped)
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test func aClosedRegistryTakesNoGroup() {
+        let registry = ProcessGroupRegistry()
+        #expect(registry.add(999_999))
+        #expect(!registry.isClosed)
+        registry.stopAll(grace: .milliseconds(10))
+        #expect(registry.isClosed)
+        #expect(!registry.add(999_998))
+        #expect(registry.remove(999_999))
+    }
 }
