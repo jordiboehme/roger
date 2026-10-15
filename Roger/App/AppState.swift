@@ -414,8 +414,8 @@ final class AppState {
         self.activePresetID = UUID(uuidString: defaults.string(forKey: "activePresetID") ?? "") ?? DictationPreset.defaultPresetID
         self.presets = Self.mergeBuiltInPresets(saved: Self.loadPresets())
         self.modifierBindings = Self.loadModifierBindings()
-        self.commands = (defaults.data(forKey: "commands"))
-            .flatMap { try? JSONDecoder().decode([AgentCommand].self, from: $0) } ?? []
+        self.commands = defaults.data(forKey: "commands")
+            .flatMap { TolerantDecoding.array(of: AgentCommand.self, from: $0, label: "command") } ?? []
         self.meetingCommandID = defaults.string(forKey: "meetingCommandID").flatMap(UUID.init(uuidString:))
         self.fileTranscriptCommandID = defaults.string(forKey: "fileTranscriptCommandID").flatMap(UUID.init(uuidString:))
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
@@ -492,11 +492,10 @@ final class AppState {
         return presets
     }
 
+    /// Entry by entry: a preset Roger cannot read is skipped and logged.
     private static func loadPresets() -> [DictationPreset]? {
-        guard let data = UserDefaults.standard.data(forKey: "presets"),
-              let presets = try? JSONDecoder().decode([DictationPreset].self, from: data)
-        else { return nil }
-        return presets
+        guard let data = UserDefaults.standard.data(forKey: "presets") else { return nil }
+        return TolerantDecoding.array(of: DictationPreset.self, from: data, label: "preset")
     }
 }
 
