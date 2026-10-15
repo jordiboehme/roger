@@ -55,6 +55,7 @@
 		28AA4B0BEC83F311740FB918 /* MeetingSegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0609432308A2B9928260FDB7 /* MeetingSegmentWriter.swift */; };
 		2B1657E82F148FF87395D964 /* DesktopExtensionBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E47E6EF6DEC8C6C1C31FDA /* DesktopExtensionBuilderTests.swift */; };
 		2BAA71A5DCB02C521000BD04 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 3FC7FE5246BAA242A6642847 /* KeyboardShortcuts */; };
+		2CE7C252058E6257D0958979 /* AudioMix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB7EF6DCB747C39ABC4C31B /* AudioMix.swift */; };
 		2E04BBB0D0BA3310A41CA6F2 /* TOONTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCD94E55AB41CB7D92D1C84B /* TOONTests.swift */; };
 		2E09420FA0E0BE4CFB446040 /* LibraryFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC882E1504155A714FA71A90 /* LibraryFixtures.swift */; };
 		2E5B862251733534156C41F2 /* LibraryIndexStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCDA8C59DF4A885647AEDD4 /* LibraryIndexStoreTests.swift */; };
@@ -73,6 +74,7 @@
 		3FE0532872D66072328726C8 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60172AF22E507A9E6C7B0C69 /* ClaudeService.swift */; };
 		40AFF193C01DE1AA39AEB2D9 /* LibraryDayGroupingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC9FC37881BBEBF2A7B1A127 /* LibraryDayGroupingTests.swift */; };
 		41E1890AA5C571B933F51B52 /* MeetingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CAA84EF72C5EA4EE9B47743 /* MeetingSession.swift */; };
+		42F754456471DE0EA6EF44DC /* AudioMixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA179B8E80FC2059C7FC559 /* AudioMixTests.swift */; };
 		43A2ABF70742F1CE4A5580CF /* MeetingTranscriptMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA529E63B0287F8A43365E6 /* MeetingTranscriptMerger.swift */; };
 		441BFA7D5AC98265741CB8CF /* FilesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7081218872DAE9F427A8D6B /* FilesPane.swift */; };
 		448EDF71F14D516F81886F4F /* ModelPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8383E48612E7CA4194202607 /* ModelPane.swift */; };
@@ -218,6 +220,7 @@
 		E3EDB5894F926A54455C941A /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4311308E48E7F37EE21AD540 /* AudioFileLoader.swift */; };
 		E5BDC1517434FC21BBA6BF10 /* ItemResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BE120807D5D2A26DAFB42CA /* ItemResolver.swift */; };
 		E60512D1EC2877C4617ABB86 /* LibraryLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEBB24E3E50C08AD0BBAF2FE /* LibraryLayoutTests.swift */; };
+		E67E64068E438941759EB7FF /* LogEntryParagraphsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1716A027DFB0B8BE4C2AFAAF /* LogEntryParagraphsTests.swift */; };
 		E862DF43084A392964CB6A24 /* TextFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE93D0C8926FBC4EC986742 /* TextFileTests.swift */; };
 		E8BBDCA114B2DB8E857E5D12 /* roger-mcp in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = B7B3390A47DCBCCCD5D97792 /* roger-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		EA4881BA805124A301E42643 /* LibraryExtraFilesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2AC24846DCECE01AFC1FDAD /* LibraryExtraFilesSection.swift */; };
@@ -321,6 +324,7 @@
 		15BF321AAC514D6E15AB4AF5 /* ExternalTranscriptRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalTranscriptRegistryTests.swift; sourceTree = "<group>"; };
 		166BD6B1D214E17B68F76C2D /* TextInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInputTests.swift; sourceTree = "<group>"; };
 		16AE6CE531818E64A242E33D /* SegmentedAudioFileWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedAudioFileWriter.swift; sourceTree = "<group>"; };
+		1716A027DFB0B8BE4C2AFAAF /* LogEntryParagraphsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntryParagraphsTests.swift; sourceTree = "<group>"; };
 		18F2CF7442B66717AABF135F /* MeetingFinalisationStepsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingFinalisationStepsTests.swift; sourceTree = "<group>"; };
 		1907D6724460DD072CE44782 /* LibraryScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScanner.swift; sourceTree = "<group>"; };
 		1AF102D8616E79B4ECF9A708 /* ValueBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueBridge.swift; sourceTree = "<group>"; };
@@ -418,6 +422,7 @@
 		7A07117724CEE116B18D0E94 /* LibraryLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryLocator.swift; sourceTree = "<group>"; };
 		7AA4CCFBDFBF4E9354263F5C /* SpeakerSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerSegment.swift; sourceTree = "<group>"; };
 		7AE93D0C8926FBC4EC986742 /* TextFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextFileTests.swift; sourceTree = "<group>"; };
+		7BB7EF6DCB747C39ABC4C31B /* AudioMix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioMix.swift; sourceTree = "<group>"; };
 		7BEE7A3A56936900F3523CCA /* RogerKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RogerKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E75C40BD5DEDA787EC090FC /* DesktopExtensionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopExtensionBuilder.swift; sourceTree = "<group>"; };
 		7FE54556D7A08CBAEBE91A6A /* ItemResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemResolverTests.swift; sourceTree = "<group>"; };
@@ -433,6 +438,7 @@
 		95C71D4FE122B3EB0B17E2F0 /* SendableAudioBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendableAudioBuffer.swift; sourceTree = "<group>"; };
 		993CA4C04B5681049185B199 /* LibraryDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDocumentTests.swift; sourceTree = "<group>"; };
 		9A163E0E54846AB6648FE20A /* LogEntryWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntryWriter.swift; sourceTree = "<group>"; };
+		9AA179B8E80FC2059C7FC559 /* AudioMixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioMixTests.swift; sourceTree = "<group>"; };
 		9AA820989B3678203F26D5FA /* TOON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOON.swift; sourceTree = "<group>"; };
 		9AE0758E3834600495711EC7 /* LibraryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryToolbar.swift; sourceTree = "<group>"; };
 		9D5464C6881DAEC61315A0B3 /* Roger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Roger.entitlements; sourceTree = "<group>"; };
@@ -880,6 +886,7 @@
 				AAE14D0011E939FFE563B9FC /* AgentsStatusTests.swift */,
 				582DC4C7AAAE0A49B3643199 /* AppRelauncherTests.swift */,
 				B3FC502B82D1D3136099240A /* AppWindowPresenceTests.swift */,
+				9AA179B8E80FC2059C7FC559 /* AudioMixTests.swift */,
 				026815DA742DEA0934CE68FB /* BundledSkillTests.swift */,
 				0473EEFBF3577B6F52856DDB /* CapsLockRemapTests.swift */,
 				EF185C97EB7F0AD1D7EAF674 /* CommandPickerTests.swift */,
@@ -908,6 +915,7 @@
 				56887A60B4B1BD8D491114B6 /* LibraryModelTests.swift */,
 				E9C7D9406B2BA7554AD527E0 /* LibraryQueryTests.swift */,
 				405D5A0F7940D9EEAEFE3A5F /* LibraryRenameStateTests.swift */,
+				1716A027DFB0B8BE4C2AFAAF /* LogEntryParagraphsTests.swift */,
 				D603757008DF2E1D88ED15C1 /* LogEntrySaverTests.swift */,
 				5A30F7C94DC4E26D9241B863 /* LogEntryWriterTests.swift */,
 				5433709BD5C83EE1CB42A6C3 /* MeetingArchiveMergeTests.swift */,
@@ -942,6 +950,7 @@
 				53D9E7817E6899F5FE497ED9 /* AudioDeviceLookup.swift */,
 				4311308E48E7F37EE21AD540 /* AudioFileLoader.swift */,
 				D6F369869C241C4566988E63 /* AudioLevelMeter.swift */,
+				7BB7EF6DCB747C39ABC4C31B /* AudioMix.swift */,
 				781157CAABCA4DE4A5912EE7 /* CapsLockRemap.swift */,
 				83E66D0A924C57BD54A258ED /* HotkeyManager.swift */,
 				B6DCE169264032BC365088F8 /* KeychainManager.swift */,
@@ -1191,6 +1200,7 @@
 				BD0C0395EAE39F3679BC84E3 /* AudioDeviceLookup.swift in Sources */,
 				E3EDB5894F926A54455C941A /* AudioFileLoader.swift in Sources */,
 				B6E2306EFA7E5281695B4565 /* AudioLevelMeter.swift in Sources */,
+				2CE7C252058E6257D0958979 /* AudioMix.swift in Sources */,
 				150D6009EA72368497B01286 /* AudioSegmentConcatenator.swift in Sources */,
 				598D81F35FC80D3D8A2FE57D /* BundledSkill.swift in Sources */,
 				F753B2062AD96434A1588912 /* CapsLockRemap.swift in Sources */,
@@ -1371,6 +1381,7 @@
 				3C76565756D80199585CA462 /* AgentsStatusTests.swift in Sources */,
 				7BE93CEF678AD1BB937832E0 /* AppRelauncherTests.swift in Sources */,
 				ADF8ED9AB73D43E33B1BC811 /* AppWindowPresenceTests.swift in Sources */,
+				42F754456471DE0EA6EF44DC /* AudioMixTests.swift in Sources */,
 				265F48C8BA1070F5C2711DE0 /* BundledSkillTests.swift in Sources */,
 				9AC91086D21509EDDB028017 /* CapsLockRemapTests.swift in Sources */,
 				ED65C529BB8EED9D9F2B81B0 /* CommandPickerTests.swift in Sources */,
@@ -1399,6 +1410,7 @@
 				01EDEADE3772991500167E8A /* LibraryModelTests.swift in Sources */,
 				6F545B2BB4802F812F29B9FE /* LibraryQueryTests.swift in Sources */,
 				4A8147F68D954433BD17F052 /* LibraryRenameStateTests.swift in Sources */,
+				E67E64068E438941759EB7FF /* LogEntryParagraphsTests.swift in Sources */,
 				BA426681891465A5C30C6C4B /* LogEntrySaverTests.swift in Sources */,
 				3DC61A2BFB150E7588739A01 /* LogEntryWriterTests.swift in Sources */,
 				4C5958B71EE549B3EC8FF10F /* MeetingArchiveMergeTests.swift in Sources */,

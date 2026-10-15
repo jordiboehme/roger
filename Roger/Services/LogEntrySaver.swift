@@ -38,6 +38,8 @@ struct LogEntrySaver: Sendable {
         endedAt: Date,
         detectedLanguage: String?,
         samples: [Float]?,
+        paragraphs: [MeetingTranscriptMerger.Paragraph]? = nil,
+        systemSamples: [Float]? = nil,
         recordWritten: @MainActor (URL) -> Void
     ) async -> Outcome {
         guard !Self.isEmpty(text) else { return .empty }
@@ -46,13 +48,19 @@ struct LogEntrySaver: Sendable {
             startedAt: startedAt,
             endedAt: endedAt,
             presetName: preset.name,
-            language: detectedLanguage ?? preset.language
+            language: detectedLanguage ?? preset.language,
+            paragraphs: paragraphs
         )
+        let kept: [Float]? = {
+            guard preset.keepAudio, let samples else { return nil }
+            guard let systemSamples, !systemSamples.isEmpty else { return samples }
+            return AudioMix.mix(samples, systemSamples)
+        }()
         do {
             let url = try await LogEntryWriter.write(
                 entry,
                 layout: layout,
-                audioSamples: preset.keepAudio ? samples : nil,
+                audioSamples: kept,
                 defaultRoot: defaultRoot,
                 encodeAudio: encodeAudio
             )

@@ -11,6 +11,20 @@ struct LogEntry: Sendable {
     let presetName: String
     /// ISO code when known (preset pin or detected), else nil.
     let language: String?
+    /// Speaker paragraphs when the log recorded system audio, else nil.
+    let paragraphs: [MeetingTranscriptMerger.Paragraph]?
+
+    init(
+        text: String, startedAt: Date, endedAt: Date, presetName: String, language: String?,
+        paragraphs: [MeetingTranscriptMerger.Paragraph]? = nil
+    ) {
+        self.text = text
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.presetName = presetName
+        self.language = language
+        self.paragraphs = paragraphs
+    }
 }
 
 /// Writes log entries as OKF Markdown files into
@@ -32,7 +46,9 @@ enum LogEntryWriter {
     /// `time` is the `yyyy-MM-dd HH:mm` display string of `entry.startedAt`.
     private static func title(for entry: LogEntry, time: String) -> String {
         let heading = "Log \(time)"
-        let words = entry.text.split(whereSeparator: \.isWhitespace).prefix(titleWordCount)
+        // A speaker log titles itself from its first paragraph only.
+        let source = entry.paragraphs?.first?.text ?? entry.text
+        let words = source.split(whereSeparator: \.isWhitespace).prefix(titleWordCount)
         var snippet = words.joined(separator: " ")
         while let last = snippet.last, ",.;:!?".contains(last) {
             snippet.removeLast()
@@ -65,7 +81,17 @@ enum LogEntryWriter {
         if let language = entry.language {
             fm.add("language", language)
         }
-        let body = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let paragraphs = entry.paragraphs {
+            fm.add("speaker_count", Set(paragraphs.map(\.speaker)).count)
+        }
+        let body: String
+        if let paragraphs = entry.paragraphs {
+            body = paragraphs.map { MeetingTranscriptWriter.paragraphMarkdown($0, sessionStart: entry.startedAt) }
+                .joined()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            body = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         return fm.render() + "# Log \(time)\n\n\(body)\n"
     }
 
