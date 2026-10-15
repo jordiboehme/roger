@@ -11,7 +11,9 @@ enum HarnessID: String, CaseIterable, Codable, Sendable {
 
 /// One coding agent Roger knows. Paths are relative to the home folder.
 /// Folders and CLIs were checked against each tool's docs on 2026-10-14
-/// (see the plan's Verified facts).
+/// (see the plan's Verified facts). The config files were checked on
+/// 2026-10-15 with codex 0.162.1, gemini 0.46.0, copilot 1.0.98 and
+/// kiro-cli 2.31.1: `mcp add` writes them and `mcp list` reads them.
 struct HarnessSpec: Equatable, Sendable {
     let id: HarnessID
     let name: String
@@ -47,7 +49,7 @@ enum HarnessCatalog {
                     cli: "copilot", configFiles: [".copilot/mcp-config.json"]),
         HarnessSpec(id: .kiro, name: "Kiro", homeFolder: ".kiro",
                     readsSkillFolders: [".kiro/skills"], writesSkillFolder: ".kiro/skills",
-                    cli: "kiro-cli", configFiles: [".kiro/settings/mcp.json", ".kiro/mcp.json"]),
+                    cli: "kiro-cli", configFiles: [".kiro/settings/mcp.json"]),
     ]
 
     static func spec(_ id: HarnessID) -> HarnessSpec {

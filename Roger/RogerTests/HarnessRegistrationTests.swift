@@ -127,12 +127,23 @@ struct HarnessRegistrationTests {
         defer { TempFolder.remove(home) }
         let spec = HarnessCatalog.spec(.kiro)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .notConnected)
-        let second = home.appendingPathComponent(".kiro/mcp.json")
-        try FileManager.default.createDirectory(at: second.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(#"{"mcpServers":{"roger":{"command":"/old/roger-mcp"}}}"#.utf8).write(to: second)
+        let config = home.appendingPathComponent(".kiro/settings/mcp.json")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"mcpServers":{"roger":{"command":"/old/roger-mcp"}}}"#.utf8).write(to: config)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .otherCommand("/old/roger-mcp"))
-        try Data(#"{"mcpServers":{"roger":{"command":"\#(exe)"}}}"#.utf8).write(to: second)
+        try Data(#"{"mcpServers":{"roger":{"command":"\#(exe)"}}}"#.utf8).write(to: config)
         #expect(HarnessRegistration.connection(spec, home: home, executable: exe) == .connected)
+    }
+
+    /// kiro-cli 2.31.1 never reads `~/.kiro/mcp.json` (`kiro-cli mcp list`
+    /// does not show a server there), so Roger does not either.
+    @Test func kiroIgnoresTheTopLevelMcpFile() throws {
+        let (home, _) = try home(with: [])
+        defer { TempFolder.remove(home) }
+        let file = home.appendingPathComponent(".kiro/mcp.json")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"mcpServers":{"roger":{"command":"\#(exe)"}}}"#.utf8).write(to: file)
+        #expect(HarnessRegistration.connection(HarnessCatalog.spec(.kiro), home: home, executable: exe) == .notConnected)
     }
 
     @Test func registersThroughTheCLI() async throws {

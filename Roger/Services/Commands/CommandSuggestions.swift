@@ -12,11 +12,12 @@ struct CommandSuggestion: Identifiable, Equatable {
     let usesCrystalline: Bool
 }
 
-/// Builds the commands that "Suggest Commands" offers. Flags were checked on
-/// 2026-10-15: Claude Code with its own `--help` and a test run, the others
-/// (not installed here) against their docs. Gemini CLI and Kiro have no
-/// documented way to allow only some MCP servers in a one-shot run, so they
-/// are offered in a terminal window only.
+/// Builds the commands that "Suggest Commands" offers. Every flag was
+/// checked on 2026-10-15 with the installed CLI: Claude Code with `--help`
+/// and a test run, codex 0.162.1, gemini 0.46.0, copilot 1.0.98 and
+/// kiro-cli 2.31.1 with their `--help` (no login, no prompt run). Gemini
+/// CLI and Kiro have no flag that allows only some MCP servers in a one-shot
+/// run, so they are offered in a terminal window only.
 enum CommandSuggestions {
     static let crystallineHeadlessPrompt = "Use the ingest-roger skill to read what is new in Roger. Fold it into Crystalline with the ingestion method of crystalline-capture. Choose the domains by their routing. Keep tasks as [task] observations in the engrams they belong to. At the end, list the tasks you found."
     static let crystallineInteractivePrompt = "Use the ingest-roger skill to read what is new in Roger. Fold it into Crystalline with the ingestion method of crystalline-capture. Choose the domains by their routing. Keep tasks as [task] observations in the engrams they belong to. At the end, list the tasks you found and ask me which ones to work on."
@@ -40,15 +41,21 @@ enum CommandSuggestions {
             // `codex exec` never asks, so MCP tools that would ask are
             // refused unless their server approves them. It also refuses to
             // run outside a Git repository without the flag.
-            let names = [HarnessServers.rogerServerName] + [codexCrystalline(servers)].compactMap { $0 }
+            let names = [HarnessServers.rogerServerName] + [bareCrystallineName(servers)].compactMap { $0 }
             let overrides = names.map { "-c " + quoted("mcp_servers.\($0).default_tools_approval_mode=\"approve\"") }
             return (["codex exec --skip-git-repo-check"] + overrides + ["{prompt}"]).joined(separator: " ")
         case (.codex, .interactive):
+            // `-p` is `--profile` and `-i` is `--image` here: the prompt is positional.
             return "codex {prompt}"
         case (.gemini, .interactive):
+            // Gemini starts no MCP server in a folder that is not trusted
+            // (the default). In a terminal the user answers its question.
             return "gemini -i {prompt}"
         case (.copilot, .headless):
-            let names = [HarnessServers.rogerServerName] + [servers.crystallineServerName].compactMap { $0 }
+            // `-p` approves reads but denies every other call that would
+            // ask, MCP tools included. `--allow-tool` takes a list, so it
+            // goes after the prompt.
+            let names = [HarnessServers.rogerServerName] + [bareCrystallineName(servers)].compactMap { $0 }
             return (["copilot -p {prompt}"] + names.map { "--allow-tool=" + quoted($0) }).joined(separator: " ")
         case (.copilot, .interactive):
             return "copilot -i {prompt}"
@@ -93,17 +100,18 @@ enum CommandSuggestions {
     }
 
     /// Crystalline only when the command can allow its tools: Claude Code
-    /// needs the prefix, Copilot the name, Codex a name that is a bare
-    /// TOML key in `-c`.
+    /// needs the prefix, Codex and Copilot a bare name.
     private static func usesCrystalline(_ harness: HarnessID, _ servers: HarnessServers) -> Bool {
         switch harness {
-        case .codex: return codexCrystalline(servers) != nil
-        case .copilot: return servers.crystallineServerName != nil
+        case .codex, .copilot: return bareCrystallineName(servers) != nil
         default: return servers.crystallineToolPrefix != nil
         }
     }
 
-    private static func codexCrystalline(_ servers: HarnessServers) -> String? {
+    /// The Crystalline server name when it is only letters, digits, `_`
+    /// and `-`. Codex needs a bare TOML key in `-c`. Copilot stops the whole
+    /// run on a rule it cannot read, such as a name with a space or a colon.
+    private static func bareCrystallineName(_ servers: HarnessServers) -> String? {
         guard let name = servers.crystallineServerName,
               name.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil
         else { return nil }

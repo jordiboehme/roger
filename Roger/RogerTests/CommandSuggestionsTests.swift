@@ -40,6 +40,25 @@ struct CommandSuggestionsTests {
         #expect(CommandSuggestions.commandLine(for: .copilot, mode: .interactive, servers: rogerOnly) == "copilot -i {prompt}")
     }
 
+    /// copilot 1.0.98 rejects a rule like `my crystalline` and stops the run.
+    @Test func copilotSkipsACrystallineNameItCannotRead() {
+        let spaced = HarnessServers(rogerToolPrefix: "mcp__roger", crystallineToolPrefix: "mcp__my_crystalline", crystallineServerName: "my crystalline")
+        #expect(CommandSuggestions.commandLine(for: .copilot, mode: .headless, servers: spaced)
+            == "copilot -p {prompt} --allow-tool='roger'")
+        let list = CommandSuggestions.suggestions(for: [(.copilot, spaced)])
+        #expect(list.map(\.command.prompt) == [CommandSuggestions.plainHeadlessPrompt, CommandSuggestions.plainInteractivePrompt])
+        let anyUses = list.contains { $0.usesCrystalline }
+        #expect(!anyUses)
+    }
+
+    @Test func codexSkipsACrystallineNameThatIsNoBareKey() {
+        let dotted = HarnessServers(rogerToolPrefix: "mcp__roger", crystallineToolPrefix: "mcp__crystalline_x", crystallineServerName: "crystalline.x")
+        #expect(CommandSuggestions.commandLine(for: .codex, mode: .headless, servers: dotted)
+            == "codex exec --skip-git-repo-check -c 'mcp_servers.roger.default_tools_approval_mode=\"approve\"' {prompt}")
+        let anyUses = CommandSuggestions.suggestions(for: [(.codex, dotted)]).contains { $0.usesCrystalline }
+        #expect(!anyUses)
+    }
+
     @Test func geminiAndKiroOnlyInATerminal() {
         #expect(CommandSuggestions.commandLine(for: .gemini, mode: .headless, servers: rogerOnly) == nil)
         #expect(CommandSuggestions.commandLine(for: .gemini, mode: .interactive, servers: rogerOnly) == "gemini -i {prompt}")
