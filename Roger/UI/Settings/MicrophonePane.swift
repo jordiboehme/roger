@@ -162,11 +162,11 @@ struct MicrophonePane: View {
         starved = false
         peak = 0
         let service = coordinator.audioCaptureService
-        service.preferredInputUID = coordinator.appState.resolvedInputDeviceUID
+        let inputUID = coordinator.appState.resolvedInputDeviceUID
         let expectedDeviceName = resolvedName
         Task {
             do {
-                let result = try await service.probe()
+                let result = try await service.probeAfterWarmUp(inputUID: inputUID)
                 let actualDefault = AudioDeviceLookup.systemDefaultInputName ?? "unknown"
                 if let samples = result.samples, !samples.isEmpty {
                     peak = samples.map { abs($0) }.max() ?? 0

@@ -4,18 +4,22 @@ import os
 
 private let logger = Logger(subsystem: "com.jordiboehme.roger", category: "InputDeviceMonitor")
 
-/// Pure decision: warm up when the resolved UID differs from the one last warmed up.
+/// Pure decision: warm up when the device Roger records from differs from
+/// the one last warmed up. Keyed on the actual device (for System default the
+/// UID of the macOS default input), so a change of the macOS default input
+/// warms up too.
 struct MicWarmUpTracker {
-    /// `nil` = never warmed. `.some(nil)` = warmed with the system default.
+    /// `nil` = never warmed. `.some(nil)` = warmed while Core Audio named no device.
     private(set) var lastWarmedUID: String??
 
-    mutating func shouldWarmUp(resolved: String?) -> Bool {
+    func shouldWarmUp(device: String?) -> Bool {
         guard let last = lastWarmedUID else { return true }
-        return last != resolved
+        return last != device
     }
 
-    mutating func didWarmUp(resolved: String?) {
-        lastWarmedUID = .some(resolved)
+    /// Call only after a warm-up that ran to its end.
+    mutating func didWarmUp(device: String?) {
+        lastWarmedUID = .some(device)
     }
 }
 
@@ -43,9 +47,7 @@ final class InputDeviceMonitor {
     func start() {
         guard !started else { return }
         started = true
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            Task { @MainActor in self?.simulateChange() }
-        }
+        let block = Self.makeListener(self)
         listener = block
         for selector in Self.selectors {
             var address = Self.address(selector)
@@ -79,6 +81,14 @@ final class InputDeviceMonitor {
             guard !Task.isCancelled, let self else { return }
             self.debounceTask = nil
             self.onChange()
+        }
+    }
+
+    /// Built outside the main actor: Core Audio calls the block on `queue`,
+    /// so it must not be inferred as main-actor isolated.
+    private nonisolated static func makeListener(_ monitor: InputDeviceMonitor) -> AudioObjectPropertyListenerBlock {
+        { [weak monitor] _, _ in
+            Task { @MainActor in monitor?.simulateChange() }
         }
     }
 

@@ -4,45 +4,49 @@ import Testing
 
 struct InputDeviceMonitorTests {
     @Test func trackerWarmsUpWhenNeverWarmed() {
-        var tracker = MicWarmUpTracker()
-        let r1 = tracker.shouldWarmUp(resolved: "a")
-        #expect(r1)
-        let r2 = tracker.shouldWarmUp(resolved: nil)
-        #expect(r2)
+        let tracker = MicWarmUpTracker()
+        #expect(tracker.shouldWarmUp(device: "a"))
+        #expect(tracker.shouldWarmUp(device: nil))
     }
 
-    @Test func trackerSkipsTheSameUID() {
+    @Test func trackerSkipsTheSameDevice() {
         var tracker = MicWarmUpTracker()
-        tracker.didWarmUp(resolved: "a")
-        let r3 = tracker.shouldWarmUp(resolved: "a")
-        #expect(!r3)
-        let r4 = tracker.shouldWarmUp(resolved: "b")
-        #expect(r4)
-        tracker.didWarmUp(resolved: nil)
-        let r5 = tracker.shouldWarmUp(resolved: nil)
-        #expect(!r5)
+        tracker.didWarmUp(device: "a")
+        #expect(!tracker.shouldWarmUp(device: "a"))
+        #expect(tracker.shouldWarmUp(device: "b"))
+        tracker.didWarmUp(device: nil)
+        #expect(!tracker.shouldWarmUp(device: nil))
     }
 
-    @Test func trackerTreatsNilAndDeviceAsDifferent() {
+    /// System default stays first in the list, macOS switches its default
+    /// input from the built-in mic to a headset: that is a new device.
+    @Test func aNewMacOSDefaultInputWarmsUp() {
         var tracker = MicWarmUpTracker()
-        tracker.didWarmUp(resolved: nil)
-        let r6 = tracker.shouldWarmUp(resolved: "a")
-        #expect(r6)
-        tracker.didWarmUp(resolved: "a")
-        let r7 = tracker.shouldWarmUp(resolved: nil)
-        #expect(r7)
+        tracker.didWarmUp(device: AudioDeviceLookup.actualInputUID(resolved: nil, defaultUID: { "builtin" }))
+        let after = AudioDeviceLookup.actualInputUID(resolved: nil, defaultUID: { "headset" })
+        #expect(tracker.shouldWarmUp(device: after))
+        let same = AudioDeviceLookup.actualInputUID(resolved: nil, defaultUID: { "builtin" })
+        #expect(!tracker.shouldWarmUp(device: same))
     }
 
+    /// One call for a burst of changes. Polls instead of trusting one sleep,
+    /// so a slow test machine does not fail it.
     @MainActor
     @Test func debouncesBurstsIntoOneCall() async throws {
         var count = 0
-        let monitor = InputDeviceMonitor(debounce: .milliseconds(200)) { count += 1 }
+        let monitor = InputDeviceMonitor(debounce: .milliseconds(300)) { count += 1 }
         monitor.simulateChange()
-        try await Task.sleep(for: .milliseconds(40))
+        try await Task.sleep(for: .milliseconds(20))
         monitor.simulateChange()
-        try await Task.sleep(for: .milliseconds(40))
+        try await Task.sleep(for: .milliseconds(20))
         monitor.simulateChange()
-        try await Task.sleep(for: .milliseconds(500))
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(2)
+        while count == 0, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(count == 1)
+        try await Task.sleep(for: .milliseconds(450))
         #expect(count == 1)
     }
 }

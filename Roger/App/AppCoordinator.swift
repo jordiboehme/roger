@@ -48,6 +48,9 @@ final class AppCoordinator {
     /// Language pin resolved at recording start, applied when the buffer is
     /// transcribed on release.
     private var activeRecordingLanguageOverride: String?
+    /// The input UID the running dictation records from (nil: system
+    /// default), resolved once at start. The empty-transcript diagnostic logs it.
+    private var activeRecordingInputUID: String?
     private(set) var recordingStartTime: Date?
     private var isWarmingUp = false
     private var warmUpTracker = MicWarmUpTracker()
@@ -427,9 +430,9 @@ final class AppCoordinator {
             // earlier meeting) records pure silence. Lift the mute for this
             // dictation; it is re-applied when the capture ends.
             let inputUID = appState.resolvedInputDeviceUID
+            activeRecordingInputUID = inputUID
             systemMicMute.releaseStaleMute(inputUID: inputUID)
-            audioCaptureService.preferredInputUID = inputUID
-            try audioCaptureService.startCapture()
+            try audioCaptureService.startCapture(inputUID: inputUID)
 
             systemAudioUnavailable = false
             switch SystemAudioRecorder.plan(
@@ -460,6 +463,7 @@ final class AppCoordinator {
             audioLevelMeter.reset()
             activeRecordingPresetID = nil
             activeRecordingLanguageOverride = nil
+            activeRecordingInputUID = nil
             _ = audioCaptureService.stopCapture()
             discardSystemAudioRecorder()
             systemMicMute.reapplyReleasedMute()
@@ -509,6 +513,8 @@ final class AppCoordinator {
         let samples = capture.samples
         let languageOverride = activeRecordingLanguageOverride
         activeRecordingLanguageOverride = nil
+        let inputUID = activeRecordingInputUID
+        activeRecordingInputUID = nil
         // Taken here so every early return below can drop it.
         let systemRecorder = systemAudioRecorder
         systemAudioRecorder = nil
@@ -565,7 +571,8 @@ final class AppCoordinator {
                                                  startedAt: startedAt, endedAt: endedAt)
                 return
             }
-            await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt, samples: samples) {
+            await self.runPipeline(audioSeconds: duration, startedAt: startedAt, endedAt: endedAt,
+                                   samples: samples, inputUID: inputUID) {
                 guard let samples, !samples.isEmpty else {
                     return TranscriptionEngine.TranscriptionResult(text: "", detectedLanguage: nil)
                 }
@@ -640,6 +647,7 @@ final class AppCoordinator {
         startedAt: Date,
         endedAt: Date,
         samples: [Float]?,
+        inputUID: String?,
         transcribe: @escaping () async throws -> TranscriptionEngine.TranscriptionResult
     ) async {
         appState.dictationState = .transcribing
@@ -653,10 +661,9 @@ final class AppCoordinator {
             let whisperMs = Date().timeIntervalSince(whisperStart) * 1000
 
             guard !result.text.isEmpty else {
-                let resolvedUID = appState.resolvedInputDeviceUID
-                let uid = resolvedUID ?? "automatic"
-                let deviceResolved = resolvedUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
-                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (resolved: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
+                let uid = inputUID ?? "system default"
+                let deviceResolved = inputUID.map { AudioDeviceLookup.deviceID(forUID: $0) != nil } ?? true
+                logger.error("Empty transcription after \(String(format: "%.1f", audioSeconds), privacy: .public)s — input UID \(uid, privacy: .public) (still connected: \(deviceResolved, privacy: .public)). If this persists, check Privacy & Security > Microphone for Roger.")
                 floatingPanel.hide()
                 audioLevelMeter.reset()
                 appState.dictationState = .error("No speech detected. Try speaking louder or closer to the mic.")
@@ -885,9 +892,6 @@ final class AppCoordinator {
 
     // MARK: - Microphone Warm-Up
 
-    /// Fires a brief silent capture so the CoreAudio HAL is warm before the
-    /// user's first real Caps Lock press. Safe to call repeatedly — re-entrant
-    /// calls are coalesced.
     /// Relaunches the app — the fix for a process-scoped CoreAudio wedge.
     /// Refuses while a meeting recording is active so a live session never
     /// has to go through crash recovery.
@@ -900,16 +904,21 @@ final class AppCoordinator {
         AppRelauncher.relaunch()
     }
 
+    /// Fires a brief silent capture so the CoreAudio HAL is warm before the
+    /// user's first real Caps Lock press. Safe to call repeatedly - re-entrant
+    /// calls are coalesced. Never runs during a meeting: a second engine next
+    /// to the meeting's mic tap can switch a Bluetooth headset's profile.
     func warmUpMicrophone() async {
         guard permissionManager.microphoneAuthorized else { return }
         guard !isWarmingUp else { return }
-        guard appState.dictationState == .idle else { return }
+        guard appState.dictationState == .idle, !meetingRecorder.isActive else { return }
         isWarmingUp = true
         defer { isWarmingUp = false }
         let resolved = appState.resolvedInputDeviceUID
-        audioCaptureService.preferredInputUID = resolved
-        warmUpTracker.didWarmUp(resolved: resolved)
-        await audioCaptureService.warmUp()
+        let device = AudioDeviceLookup.actualInputUID(resolved: resolved)
+        if await audioCaptureService.warmUp(inputUID: resolved) {
+            warmUpTracker.didWarmUp(device: device)
+        }
     }
 
     /// Warms the microphone up again when a device connects or disconnects and
@@ -919,9 +928,9 @@ final class AppCoordinator {
         let monitor = InputDeviceMonitor { [weak self] in
             guard let self else { return }
             self.inputDevicesGeneration += 1
-            let resolved = self.appState.resolvedInputDeviceUID
-            guard self.warmUpTracker.shouldWarmUp(resolved: resolved) else { return }
-            logger.info("Input devices changed, Roger now uses \(resolved ?? "default", privacy: .public)")
+            let device = AudioDeviceLookup.actualInputUID(resolved: self.appState.resolvedInputDeviceUID)
+            guard self.warmUpTracker.shouldWarmUp(device: device) else { return }
+            logger.info("Input devices changed, Roger now uses \(device ?? "no device", privacy: .public)")
             Task { await self.warmUpMicrophone() }
         }
         inputDeviceMonitor = monitor

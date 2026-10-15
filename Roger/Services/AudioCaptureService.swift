@@ -16,6 +16,14 @@ final class AudioCaptureService: @unchecked Sendable {
     /// Guards `audioEngine`, `backgroundEngine` and `captureStartedAt`. Warm-up and
     /// probe run off the main actor while recordings run on it. Recursive because
     /// the warm-up and probe call stopCapture() while holding it.
+    ///
+    /// The lock is held across the device lookup and `engine.start()`. A
+    /// recording that starts while a warm-up is inside `engine.start()` waits
+    /// on the main actor until that call returns. That is accepted: the wait
+    /// is normally a few milliseconds, and the warm-up's start is the very
+    /// thing that wakes the HAL the recording needs, so the recording gets
+    /// its first buffers sooner afterwards. During a coreaudiod wedge the
+    /// recording's own `engine.start()` would hang just as long.
     private let stateLock = NSRecursiveLock()
 
     /// Target sample rate for WhisperKit (16kHz mono)
@@ -54,25 +62,26 @@ final class AudioCaptureService: @unchecked Sendable {
         var startedAt: Date? = nil
     }
 
-    /// UID of the input device to use, or nil for system default.
-    var preferredInputUID: String?
-
     /// Fires on every captured buffer with its RMS level (~0…1), so the
     /// floating indicator's waveform stays live during batch dictation. Invoked
     /// off the main actor — hop before touching main-actor state.
     var onLevelUpdate: (@Sendable (Float) -> Void)?
 
-    /// Runs a short silent capture to wake the audio HAL so the next real
-    /// capture gets samples immediately. Never throws; logs and returns.
-    func warmUp() async {
-        guard !isCapturing else { return }
+    /// Runs a short silent capture on `inputUID` (nil: system default) to wake
+    /// the audio HAL so the next real capture gets samples immediately. Never
+    /// throws; logs and returns. True when the warm-up ran to its end, false
+    /// when it did not start (busy, no permission, no device) or a recording
+    /// took over.
+    @discardableResult
+    func warmUp(inputUID: String?) async -> Bool {
+        guard !isCapturing else { return false }
         do {
-            let mine = try startBackgroundCapture()
+            let mine = try startBackgroundCapture(inputUID: inputUID)
             try? await Task.sleep(nanoseconds: UInt64(Self.warmUpDuration * 1_000_000_000))
             // A recording took over while we slept: it owns the engine now.
             guard let result = finishBackgroundCapture(mine) else {
                 logger.info("Mic warm-up superseded by a recording")
-                return
+                return false
             }
             let count = result.samples?.count ?? 0
             if result.health == .halStarved {
@@ -82,8 +91,10 @@ final class AudioCaptureService: @unchecked Sendable {
             } else {
                 logger.info("Mic warm-up done (\(count) samples)")
             }
+            return true
         } catch {
             logger.info("Mic warm-up skipped: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -95,10 +106,10 @@ final class AudioCaptureService: @unchecked Sendable {
 
     /// Starts a warm-up or probe capture and returns its engine. Throws `busy`
     /// while a capture runs.
-    private func startBackgroundCapture() throws -> AVAudioEngine? {
+    private func startBackgroundCapture(inputUID: String?) throws -> AVAudioEngine? {
         stateLock.lock()
         defer { stateLock.unlock() }
-        try startCapture(forWarmUp: true)
+        try startCapture(inputUID: inputUID, forWarmUp: true)
         return backgroundEngine
     }
 
@@ -112,15 +123,20 @@ final class AudioCaptureService: @unchecked Sendable {
         return stopCapture()
     }
 
-    func startCapture() throws {
-        try startCapture(forWarmUp: false)
+    /// Starts a recording on `inputUID` (nil: system default). A running
+    /// warm-up or probe is stopped for it; a running recording is not.
+    func startCapture(inputUID: String?) throws {
+        try startCapture(inputUID: inputUID, forWarmUp: false)
     }
 
-    private func startCapture(forWarmUp: Bool) throws {
+    private func startCapture(inputUID: String?, forWarmUp: Bool) throws {
         stateLock.lock()
         defer { stateLock.unlock() }
-        // A warm-up or probe never takes over a running capture.
-        if forWarmUp, audioEngine != nil { throw AudioCaptureError.busy }
+        // A warm-up or probe never takes over a running capture, and a
+        // recording never takes over another recording.
+        if let running = audioEngine, forWarmUp || running !== backgroundEngine {
+            throw AudioCaptureError.busy
+        }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw AudioCaptureError.permissionDenied
         }
@@ -137,7 +153,7 @@ final class AudioCaptureService: @unchecked Sendable {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        if let uid = preferredInputUID {
+        if let uid = inputUID {
             if let deviceID = AudioDeviceLookup.deviceID(forUID: uid) {
                 applyDeviceID(deviceID, to: inputNode)
             } else {
@@ -206,7 +222,14 @@ final class AudioCaptureService: @unchecked Sendable {
         }
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            // Leave nothing behind: no tap, no half-started engine.
+            inputNode.removeTap(onBus: 0)
+            engine.stop()
+            throw error
+        }
         audioEngine = engine
         if forWarmUp { backgroundEngine = engine }
         captureStartedAt = Date()
@@ -263,19 +286,21 @@ final class AudioCaptureService: @unchecked Sendable {
         return CaptureResult(samples: samples, health: health, startedAt: startedAt)
     }
 
-    /// Short capture probe for the settings test buttons. Retries once when
-    /// the first attempt yields nothing — a cold HAL legitimately needs one
-    /// capture as a wake-up call, and the retry keeps a sleeping HAL from
-    /// being misreported as the coreaudiod wedge.
-    func probe(duration: TimeInterval = 0.5) async throws -> CaptureResult {
+    /// Short capture probe on `inputUID` (nil: system default) for the
+    /// settings test buttons. Retries once when the first attempt yields
+    /// nothing - a cold HAL legitimately needs one capture as a wake-up call,
+    /// and the retry keeps a sleeping HAL from being misreported as the
+    /// coreaudiod wedge. Throws `busy` when a capture runs or a recording
+    /// takes over.
+    func probe(inputUID: String?, duration: TimeInterval = 0.5) async throws -> CaptureResult {
         var last = CaptureResult(samples: nil, health: .indeterminate)
         for attempt in 1...2 {
             // A recording always wins over a probe.
-            let mine = try startBackgroundCapture()
+            let mine = try startBackgroundCapture(inputUID: inputUID)
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
             guard let result = finishBackgroundCapture(mine) else {
                 logger.info("Mic probe superseded by a recording")
-                return last
+                throw AudioCaptureError.busy
             }
             last = result
             if let samples = last.samples, !samples.isEmpty {
@@ -284,6 +309,18 @@ final class AudioCaptureService: @unchecked Sendable {
             logger.info("Mic probe attempt \(attempt) came back empty (health: \(String(describing: last.health), privacy: .public))")
         }
         return last
+    }
+
+    /// `probe` for the test buttons: when a warm-up holds the microphone
+    /// (for example right after a device change), waits for it to end and
+    /// tries once more before reporting busy.
+    func probeAfterWarmUp(inputUID: String?) async throws -> CaptureResult {
+        do {
+            return try await probe(inputUID: inputUID)
+        } catch AudioCaptureError.busy {
+            try? await Task.sleep(nanoseconds: UInt64((Self.warmUpDuration + 0.1) * 1_000_000_000))
+            return try await probe(inputUID: inputUID)
+        }
     }
 
     private func applyDeviceID(_ deviceID: AudioDeviceID, to inputNode: AVAudioInputNode) {
@@ -357,7 +394,7 @@ enum AudioCaptureError: LocalizedError {
         case .permissionDenied:
             return "Microphone access denied. Grant permission in System Settings > Privacy & Security."
         case .busy:
-            return "The microphone is in use by a recording."
+            return "The microphone is busy. Try again in a moment."
         }
     }
 }
