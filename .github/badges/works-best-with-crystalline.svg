@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="166" height="20" role="img" aria-label="works best with: Crystalline">
+  <title>works best with: Crystalline</title>
+  <!-- Flat badge in the shields.io style. Label 97 px wide, value 69 px.
+       Change a text: adjust its textLength (10x the width in px) and the widths. -->
+  <linearGradient id="shine" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="round">
+    <rect width="166" height="20" rx="3"/>
+  </clipPath>
+  <g clip-path="url(#round)">
+    <rect width="97" height="20" fill="#555"/>
+    <rect x="97" width="69" height="20" fill="#6f42c1"/>
+    <rect width="166" height="20" fill="url(#shine)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110" transform="scale(.1)">
+    <text x="495" y="150" fill="#010101" fill-opacity=".3" textLength="870" aria-hidden="true">works best with</text>
+    <text x="495" y="140" textLength="870">works best with</text>
+    <text x="1305" y="150" fill="#010101" fill-opacity=".3" textLength="590" aria-hidden="true">Crystalline</text>
+    <text x="1305" y="140" textLength="590">Crystalline</text>
+  </g>
+</svg>
