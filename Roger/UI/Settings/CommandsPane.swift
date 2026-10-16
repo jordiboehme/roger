@@ -93,7 +93,7 @@ struct CommandsPane: View {
             .padding(8)
         }
         .sheet(isPresented: $showingSuggestions) {
-            CommandSuggestionsSheet(load: { await coordinator.commandSuggestions() }, onAdd: add)
+            CommandSuggestionsSheet(load: { await coordinator.commandSuggestions(progress: $0) }, onAdd: add)
         }
     }
 
@@ -175,10 +175,11 @@ struct CommandsPane: View {
 
 /// The list behind "Suggest Commands": one row per coding agent and mode.
 private struct CommandSuggestionsSheet: View {
-    let load: () async -> [CommandSuggestion]
+    let load: (SuggestionProgress) async -> [CommandSuggestion]
     let onAdd: (AgentCommand) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var suggestions: [CommandSuggestion]?
+    @State private var progress = SuggestionProgress()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -194,7 +195,7 @@ private struct CommandSuggestionsSheet: View {
         }
         .frame(minWidth: 480, minHeight: 420)
         .task {
-            suggestions = await load()
+            suggestions = await load(progress)
         }
     }
 
@@ -227,13 +228,84 @@ private struct CommandSuggestionsSheet: View {
                 }
             }
         } else {
-            ProgressView("Looking for coding agents…")
+            SettingsForm {
+                Section("Looking for coding agents") {
+                    ForEach(progress.steps) { step in
+                        SuggestionStepRow(step: step)
+                    }
+                }
+            }
         }
     }
 
     private func note(for suggestion: CommandSuggestion) -> String {
         if let reason = suggestion.disabledReason { return reason }
         return suggestion.usesCrystalline ? "Uses Crystalline" : "Plain summary"
+    }
+}
+
+/// One line of the Suggest Commands checklist. A running step shows its
+/// seconds after 3 s, the find step also the folder it looks at.
+private struct SuggestionStepRow: View {
+    let step: SuggestionProgress.Step
+
+    var body: some View {
+        if step.state == .running, let startedAt = step.startedAt {
+            TimelineView(.periodic(from: startedAt, by: 1)) { context in
+                line(elapsed: context.date.timeIntervalSince(startedAt))
+            }
+        } else {
+            line(elapsed: 0)
+        }
+    }
+
+    private func line(elapsed: TimeInterval) -> some View {
+        let slow = elapsed > 3
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            symbol
+                .frame(width: 18)
+            SettingsLabel(title: step.title, note: note(slow: slow), truncatesNote: isFolderNote(slow: slow))
+            Spacer(minLength: 8)
+            if let trailing = trailing(elapsed: elapsed, slow: slow) {
+                Text(trailing)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var symbol: some View {
+        switch step.state {
+        case .waiting:
+            Image(systemName: "circle")
+                .foregroundStyle(.tertiary)
+        case .running:
+            ProgressView()
+                .controlSize(.small)
+        case .done:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .warning:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private func isFolderNote(slow: Bool) -> Bool {
+        step.state == .running && slow && step.checking != nil
+    }
+
+    private func note(slow: Bool) -> String? {
+        if case .warning(let note) = step.state { return note }
+        if isFolderNote(slow: slow), let folder = step.checking { return "Checking \(folder)" }
+        return nil
+    }
+
+    private func trailing(elapsed: TimeInterval, slow: Bool) -> String? {
+        if step.state == .running { return slow ? "\(Int(elapsed)) s" : nil }
+        return step.detail
     }
 }
 

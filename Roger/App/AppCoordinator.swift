@@ -154,13 +154,15 @@ final class AppCoordinator {
 
     /// "Suggest Commands": the coding agents on this Mac and their servers,
     /// found off the main actor (`claude mcp list` takes a few seconds).
-    func commandSuggestions() async -> [CommandSuggestion] {
+    /// Each step is reported to `progress`.
+    func commandSuggestions(progress: SuggestionProgress) async -> [CommandSuggestion] {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let path = await commandSearchPath.value(runner: commandRunner, home: home)
-        let detector = HarnessServerDetector(home: home, runner: commandRunner, searchPath: path,
-                                             codexHome: commandSearchPath.codexHome)
-        let found = await Task.detached(priority: .userInitiated) { await detector.detect() }.value
-        return CommandSuggestions.suggestions(for: found)
+        let runner = commandRunner
+        let cache = commandSearchPath
+        let finder = CommandSuggestionFinder(home: home, runner: runner) {
+            await cache.lookup(runner: runner, home: home)
+        }
+        return await finder.run(progress: progress)
     }
 
     /// The newest item with Markdown in the library, for "Run now". Nil when
@@ -1341,27 +1343,5 @@ private extension AppState.DictationState {
     var isErrorState: Bool {
         if case .error = self { return true }
         return false
-    }
-}
-
-/// The login shell's `PATH` plus the extra folders, looked up once per
-/// launch for the commands (the shell takes a moment to answer), and the
-/// shell's `CODEX_HOME` for Suggest Commands.
-@MainActor
-private final class CommandSearchPathCache {
-    private var cached: [String]?
-    /// Set by `value` once the shell answered.
-    private(set) var codexHome: String?
-
-    func value(runner: any CommandRunner, home: URL) async -> [String] {
-        if let cached { return cached }
-        let environment = await CLILocator.loginShellEnvironment(runner: runner, home: home)
-        let path = CLILocator.searchPath(loginShellPATH: environment?.path, home: home)
-        // A shell that did not answer is asked again on the next run.
-        if let environment {
-            cached = path
-            codexHome = environment.codexHome
-        }
-        return path
     }
 }
