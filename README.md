@@ -4,15 +4,16 @@
 
 # Roger
 
+[![CI](https://github.com/jordiboehme/roger/actions/workflows/ci.yml/badge.svg)](https://github.com/jordiboehme/roger/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/jordiboehme/roger)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/jordiboehme/roger)](https://github.com/jordiboehme/roger/releases/latest)
+[![Works best with Crystalline](.github/badges/works-best-with-crystalline.svg)](https://github.com/jordiboehme/crystalline)
+
 Speak. It types. Anywhere on your Mac.
 
 Roger lives in your menu bar and turns your voice into text - in any app. Hold a hotkey, say what you need and it appears at your cursor. No cloud. No latency. Just your voice and Apple Silicon.
 
 **Your voice stays on your machine.** Speech recognition runs entirely on-device using the Neural Engine. Cloud AI is available for text cleanup but always opt-in.
-
-[![Works best with Crystalline](.github/badges/works-best-with-crystalline.svg)](https://github.com/jordiboehme/crystalline)
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V31T6CL9)
 
 ## Features
 
@@ -214,6 +215,12 @@ Each preset also controls what lands at the cursor: append nothing, a space or a
 | **Ollama** | Local | Your Mac, your NAS, your homelab |
 | **Claude** | Cloud | Anthropic API |
 | **OpenAI** | Cloud | OpenAI API |
+
+## Support
+
+Roger is free and open source. If it earned its place on your Mac, you can support the work here:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V31T6CL9)
 
 ## Privacy
 
