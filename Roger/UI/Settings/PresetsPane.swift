@@ -299,6 +299,8 @@ private struct PresetDetailForm: View {
         SettingsForm {
             Section("Preset") {
                 TextField("Name", text: $preset.name, prompt: Text(DictationPreset.untitledName))
+                    // A right-aligned field hides a trailing space while you type.
+                    .multilineTextAlignment(.leading)
                     .focused($nameFocused)
                     .onSubmit(trimName)
                     .onChange(of: nameFocused) { _, focused in
