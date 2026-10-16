@@ -163,7 +163,7 @@ struct CommandSuggestionFinder {
             }
         }.value
         let names = clis.map(\.0.name)
-        progress.finish(.findAgents, detail: names.isEmpty ? Self.noAgentsDetail : names.joined(separator: ", "))
+        progress.finish(.findAgents, detail: names.isEmpty ? Self.noAgentsDetail : names.joinedAsList)
 
         var added = clis.map { SuggestionProgress.Step(id: .readSettings($0.0.id), title: "Read the \($0.0.name) settings") }
         let claude = clis.first { $0.0.id == .claudeCode }?.1

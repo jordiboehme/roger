@@ -77,7 +77,7 @@ struct SuggestionProgressTests {
             "Prepare the suggestions",
         ])
         #expect(progress.steps.allSatisfy { $0.state == .done })
-        #expect(progress.step(.findAgents)?.detail == "Claude Code, Codex")
+        #expect(progress.step(.findAgents)?.detail == "Claude Code and Codex")
         #expect(runner.calls == [["claude", "mcp", "list"]])
         #expect(suggestions.contains { $0.usesCrystalline })
     }
