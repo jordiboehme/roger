@@ -161,7 +161,7 @@ struct PresetsPane: View {
                 onReset: { pendingReset = preset },
                 onDelete: { pendingDelete = preset }
             )
-            // A new form per preset, so Advanced starts collapsed.
+            // A new form per preset, so the name edit of one never ends in another.
             .id(id)
         } else {
             ContentUnavailableView(
@@ -292,22 +292,25 @@ private struct PresetDetailForm: View {
     let commands: [AgentCommand]
     let onReset: () -> Void
     let onDelete: () -> Void
-    @State private var advancedExpanded = false
     @FocusState private var nameFocused: Bool
 
     var body: some View {
         SettingsForm {
             Section("Preset") {
-                TextField("Name", text: $preset.name, prompt: Text(DictationPreset.untitledName))
-                    // A right-aligned field hides a trailing space while you type.
-                    .multilineTextAlignment(.leading)
-                    .focused($nameFocused)
-                    .onSubmit(trimName)
-                    .onChange(of: nameFocused) { _, focused in
-                        if !focused { trimName() }
-                    }
-                    // Switching to another preset ends editing too.
-                    .onDisappear(perform: trimName)
+                // Label above: the form right-aligns a field in a row, and a
+                // right-aligned field hides a trailing space while you type.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Name")
+                    TextField("Name", text: $preset.name, prompt: Text(DictationPreset.untitledName))
+                        .labelsHidden()
+                        .focused($nameFocused)
+                        .onSubmit(trimName)
+                        .onChange(of: nameFocused) { _, focused in
+                            if !focused { trimName() }
+                        }
+                        // Switching to another preset ends editing too.
+                        .onDisappear(perform: trimName)
+                }
                 Picker(selection: $preset.language) {
                     Text("Automatic").tag(String?.none)
                     ForEach(WhisperLanguage.all, id: \.code) { entry in
@@ -327,11 +330,40 @@ private struct PresetDetailForm: View {
                 }
             }
 
+            // In the order the steps run. A step shows its details while it is on.
             Section("Processing") {
                 SettingsToggle(title: "Remove filler words", note: "Drops um, uh and similar words.", isOn: $preset.enableFillerRemoval)
                 SettingsToggle(title: "Remove repeated words", note: "Drops a word you said twice in a row.", isOn: $preset.enableDedup)
                 SettingsToggle(title: "AI formatting", note: "Uses your text model: \(provider.displayName).", isOn: $preset.enableAIFormatting)
+                if preset.enableAIFormatting {
+                    SettingsTextEditor(title: "Formatting prompt", text: $preset.aiPrompt)
+                }
+                SettingsToggle(title: "Custom dictionary", note: preset.dictionarySummary, isOn: $preset.enableCustomDictionary)
+                if preset.enableCustomDictionary {
+                    ForEach($preset.dictionaryEntries) { $entry in
+                        HStack {
+                            TextField("Find", text: $entry.find, prompt: Text("Find"))
+                            Image(systemName: "arrow.right")
+                                .foregroundStyle(.tertiary)
+                            TextField("Replace", text: $entry.replace, prompt: Text("Replace"))
+                            Button {
+                                preset.dictionaryEntries.removeAll { $0.id == entry.id }
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove this word")
+                        }
+                        .labelsHidden()
+                    }
+                    Button("Add Word") {
+                        preset.dictionaryEntries.append(DictionaryEntry(find: "", replace: ""))
+                    }
+                }
                 SettingsToggle(title: "AI rewrite", note: "Uses your text model: \(provider.displayName).", isOn: $preset.enableRewrite)
+                if preset.enableRewrite {
+                    SettingsTextEditor(title: "Rewrite prompt", text: $preset.rewritePrompt)
+                }
             }
 
             Section {
@@ -360,35 +392,6 @@ private struct PresetDetailForm: View {
             } footer: {
                 if preset.output == .logEntry {
                     Text("Saves the text as a Markdown file in the Logs folder of your library. Nothing is typed.")
-                }
-            }
-
-            Section {
-                DisclosureGroup("Advanced", isExpanded: $advancedExpanded) {
-                    SettingsTextEditor(title: "Formatting prompt", text: $preset.aiPrompt)
-                    SettingsTextEditor(title: "Rewrite prompt", text: $preset.rewritePrompt)
-                    SettingsToggle(title: "Custom dictionary", note: preset.dictionarySummary, isOn: $preset.enableCustomDictionary)
-                    if preset.enableCustomDictionary {
-                        ForEach($preset.dictionaryEntries) { $entry in
-                            HStack {
-                                TextField("Find", text: $entry.find, prompt: Text("Find"))
-                                Image(systemName: "arrow.right")
-                                    .foregroundStyle(.tertiary)
-                                TextField("Replace", text: $entry.replace, prompt: Text("Replace"))
-                                Button {
-                                    preset.dictionaryEntries.removeAll { $0.id == entry.id }
-                                } label: {
-                                    Image(systemName: "minus.circle")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Remove this word")
-                            }
-                            .labelsHidden()
-                        }
-                        Button("Add Word") {
-                            preset.dictionaryEntries.append(DictionaryEntry(find: "", replace: ""))
-                        }
-                    }
                 }
             }
 

@@ -365,9 +365,13 @@ private struct CommandDetailForm: View {
     var body: some View {
         SettingsForm {
             Section("Command") {
-                TextField("Name", text: $command.name, prompt: Text("Untitled"))
-                    // A right-aligned field hides a trailing space while you type.
-                    .multilineTextAlignment(.leading)
+                // Label above: the form right-aligns a field in a row, and a
+                // right-aligned field hides a trailing space while you type.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Name")
+                    TextField("Name", text: $command.name, prompt: Text("Untitled"))
+                        .labelsHidden()
+                }
                 // Label above, so a long line gets the full width.
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Command line")
