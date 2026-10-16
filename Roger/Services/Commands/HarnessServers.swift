@@ -87,18 +87,38 @@ struct HarnessServerDetector: Sendable {
 
     func detect() async -> [(HarnessID, HarnessServers)] {
         var found: [(HarnessID, HarnessServers)] = []
-        for spec in HarnessCatalog.all {
-            guard let cli = spec.cli, let executable = CLILocator.find(cli, in: searchPath) else { continue }
+        for (spec, executable) in findCLIs() {
             var servers = configuredServers(spec)
-            if spec.id == .claudeCode {
-                servers += await claudeMcpList(executable)
+            if spec.id == .claudeCode, case .servers(let listed) = await claudeMcpList(executable) {
+                servers += listed
             }
             found.append((spec.id, HarnessServers(configured: servers)))
         }
         return found
     }
 
-    private func configuredServers(_ spec: HarnessSpec) -> [ConfiguredServer] {
+    /// The harnesses whose CLI is on the search path, in catalog order, each
+    /// with the CLI in the first folder that holds it. `checking` gets each
+    /// folder before it is looked at (a privacy prompt or a dead network
+    /// folder can block there). Blocks: call it off the main actor.
+    func findCLIs(checking: (String) -> Void = { _ in }) -> [(HarnessSpec, URL)] {
+        let specs = HarnessCatalog.all.filter { $0.cli != nil }
+        var found: [HarnessID: URL] = [:]
+        for directory in searchPath {
+            guard found.count < specs.count else { break }
+            checking(directory)
+            for spec in specs where found[spec.id] == nil {
+                guard let cli = spec.cli else { continue }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(cli)
+                if FileManager.default.isExecutableFile(atPath: url.path) { found[spec.id] = url }
+            }
+        }
+        return specs.compactMap { spec in found[spec.id].map { (spec, $0) } }
+    }
+
+    /// The servers in the harness's config files. Blocks: call it off the
+    /// main actor.
+    func configuredServers(_ spec: HarnessSpec) -> [ConfiguredServer] {
         spec.configURLs(home: home, codexHome: codexHome).flatMap { file -> [ConfiguredServer] in
             guard let data = try? Data(contentsOf: file) else { return [] }
             if spec.id == .codex { return HarnessRegistration.tomlServers(TextFile.decode(data)) }
@@ -106,7 +126,14 @@ struct HarnessServerDetector: Sendable {
         }
     }
 
-    private func claudeMcpList(_ executable: URL) async -> [ConfiguredServer] {
+    enum ClaudeListOutcome: Equatable, Sendable {
+        case servers([ConfiguredServer])
+        /// The call failed or timed out: only the config counts.
+        case failed(CommandResult.Status)
+    }
+
+    /// `claude mcp list`, which also knows the claude.ai connectors.
+    func claudeMcpList(_ executable: URL) async -> ClaudeListOutcome {
         let result = await runner.run(
             executable,
             ["mcp", "list"],
@@ -116,8 +143,8 @@ struct HarnessServerDetector: Sendable {
         )
         guard result.succeeded else {
             Self.logger.info("claude mcp list did not work (\(String(describing: result.status), privacy: .public)), using the config only")
-            return []
+            return .failed(result.status)
         }
-        return ClaudeMcpList.parse(result.stdout)
+        return .servers(ClaudeMcpList.parse(result.stdout))
     }
 }
