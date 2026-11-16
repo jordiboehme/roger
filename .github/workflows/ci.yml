@@ -151,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -r 'to_entries[] | "  \(.value.result)  \(.key)"' <<<"$RESULTS"
-          bad=$(jq -r 'to_entries[] | select(.value.result != "success" and !(.key == "tested" and .value.result == "skipped")) | "\(.key): \(.value.result)"' <<<"$RESULTS")
+          bad=$(jq -r 'to_entries[] | select(.value.result != "success" and ((.key == "tested" and .value.result == "skipped") | not)) | "\(.key): \(.value.result)"' <<<"$RESULTS")
           if [ -n "$bad" ]; then
             echo "::error::not every job passed: $(tr '\n' ' ' <<<"$bad")"
             exit 1
