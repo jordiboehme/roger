@@ -193,7 +193,11 @@ jobs:
   # that is already tagged does nothing, a new version releases.
   release-check:
     needs: ci-passed
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci-passed.result == 'success' }}
+    # !cancelled(): a condition without a status function gets an implicit
+    # success(), which is false when any job up the needs chain was skipped
+    # (`tested` is skipped on purpose on pull requests). The release must
+    # depend on ci-passed alone.
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci-passed.result == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.check.outputs.tag }}
@@ -213,7 +217,8 @@ jobs:
   # re-run this workflow run: the tag is still missing, so it releases again.
   release:
     needs: release-check
-    if: ${{ needs.release-check.outputs.release == 'true' }}
+    # !cancelled() for the same reason as release-check above.
+    if: ${{ !cancelled() && needs.release-check.result == 'success' && needs.release-check.outputs.release == 'true' }}
     concurrency:
       group: release-main
       cancel-in-progress: false
