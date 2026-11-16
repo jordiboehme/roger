@@ -64,7 +64,10 @@ actor DiarizationService {
     /// The manager is not Sendable. The actor's queue guarantees one call at
     /// a time, which is what makes the unchecked conformance hold.
     private final class Engine: @unchecked Sendable {
-        private let manager = OfflineDiarizerManager()
+        /// Exclusive segments: one speaker at every instant, which is what
+        /// SpeakerAligner needs to give each word a speaker. FluidAudio keeps
+        /// overlapping speech by default since 0.18.2.
+        private let manager = OfflineDiarizerManager(config: OfflineDiarizerConfig(exclusiveSegments: true))
         private var ready = false
 
         func prepare() async throws {

@@ -9,8 +9,9 @@ options:
 packages:
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
-    from: "0.17.7"
-    traits: []
+    from: "0.18.3"
+    # Only the diarizer: no NeMo text processing and no TTS.
+    traits: ["Diarizer"]
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts.git
     from: "3.1.0"
