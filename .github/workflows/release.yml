@@ -1,22 +1,61 @@
 name: Release
 
+# Three ways in. The `notes` job resolves the release once and the release
+# job reads its outputs, never the ref:
+#
+# - workflow_call: CI on main calls this after `ci-passed` when
+#   MARKETING_VERSION has no tag yet (scripts/release-check.sh). The tag comes
+#   from the `tag` input. github.ref and github.event_name are the caller's
+#   here (refs/heads/main, push). The release job creates the tag at the
+#   tested commit (github.sha) before it publishes.
+# - push of a `v*` tag: the fallback. The tag is the pushed ref.
+# - workflow_dispatch: a rehearsal from main. Every step except the GitHub
+#   release and the tap update. Start it with: gh workflow run release.yml --ref main
 on:
   push:
     tags: ["v*"]
-  # A rehearsal: runs every step except the GitHub release and the tap update.
-  # Start it from main with: gh workflow run release.yml --ref main
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: The tag to release, v<MARKETING_VERSION>
+        type: string
+        required: true
+    secrets:
+      DEVELOPER_ID_CERTIFICATE_BASE64:
+        required: true
+      DEVELOPER_ID_CERTIFICATE_PASSWORD:
+        required: true
+      APPLE_TEAM_ID:
+        required: true
+      APPLE_ID:
+        required: true
+      APPLE_ID_PASSWORD:
+        required: true
+      TAP_GITHUB_TOKEN:
+        required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  # Outputs:
+  # - version: the version to build.
+  # - tag: the release tag, empty for a rehearsal.
+  # - publish: true when the run publishes (a call or a tag push).
+  # - build: false only when a call finds its tag already at another commit,
+  #   which means another release of this version won; the run then stops green.
+  # - called: true for a call from CI, which has to create the tag.
   notes:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
+      tag: ${{ steps.version.outputs.TAG }}
+      publish: ${{ steps.version.outputs.PUBLISH }}
+      build: ${{ steps.version.outputs.BUILD }}
+      called: ${{ steps.version.outputs.CALLED }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,27 +69,59 @@ jobs:
           echo "::error::A rehearsal runs only from main, not from $REF."
           exit 1
 
+      # inputs.tag is set only by a call. In a call GITHUB_REF_TYPE is the
+      # caller's (branch).
       - name: Resolve version
         id: version
         env:
-          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
+          set -euo pipefail
           pinned=$(sed -n 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"\{0,1\}\([0-9][0-9.]*\)"\{0,1\}[[:space:]]*$/\1/p' Roger/project.yml | head -n1)
           if [ -z "$pinned" ]; then
             echo "::error::No MARKETING_VERSION found in Roger/project.yml."
             exit 1
           fi
-          if [ "$EVENT" = "push" ]; then
-            version="${GITHUB_REF_NAME#v}"
+          build=true
+          called=false
+          if [ -n "${INPUT_TAG:-}" ]; then
+            tag="$INPUT_TAG"
+            publish=true
+            called=true
+            # The caller checked that the tag is new, but a second push to
+            # main can pass that check while the first release still runs.
+            # The tag at this commit is a re-run and goes on; the tag at
+            # another commit means that release won, so this one stops here.
+            at="$(bash scripts/release-check.sh tag-commit "$tag")"
+            if [ -n "$at" ] && [ "$at" != "$GITHUB_SHA" ]; then
+              echo "release: $tag already points at $at, not at $GITHUB_SHA, so another run released it. Nothing to do."
+              build=false
+              publish=false
+            fi
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+            publish=true
+          else
+            tag=""
+            publish=false
+          fi
+          if [ -n "$tag" ]; then
+            version="${tag#v}"
             if [ "$version" != "$pinned" ]; then
-              echo "::error::Tag $GITHUB_REF_NAME does not match MARKETING_VERSION $pinned in Roger/project.yml."
+              echo "::error::Tag $tag does not match MARKETING_VERSION $pinned in Roger/project.yml."
               exit 1
             fi
           else
             version="$pinned"
           fi
-          echo "Version: $version"
-          echo "VERSION=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version, tag: ${tag:-none (rehearsal)}, publish: $publish"
+          {
+            echo "VERSION=$version"
+            echo "TAG=$tag"
+            echo "PUBLISH=$publish"
+            echo "BUILD=$build"
+            echo "CALLED=$called"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check release notes file
         env:
@@ -58,7 +129,7 @@ jobs:
         run: |
           f="release-notes/v${VERSION}.md"
           if [ ! -s "$f" ]; then
-            echo "::error::$f is missing or empty. Write the release notes before tagging."
+            echo "::error::$f is missing or empty. Add it to main (a merge releases again)."
             exit 1
           fi
           if ! head -n1 "$f" | grep -q '^# '; then
@@ -68,15 +139,26 @@ jobs:
 
   release:
     needs: notes
+    if: needs.notes.outputs.build == 'true'
     runs-on: macos-26
+    # The tag and the GitHub release.
+    permissions:
+      contents: write
     env:
       KEYCHAIN: build.keychain-db
       KEYCHAIN_PASSWORD: actions
       VERSION: ${{ needs.notes.outputs.version }}
+      TAG: ${{ needs.notes.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The build number counts the commits, so it needs the history.
+          fetch-depth: 0
+
+      # The commit count on main only grows, whichever workflow builds.
+      - name: Build number
+        run: echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
 
       - name: Import signing certificate
         env:
@@ -107,7 +189,7 @@ jobs:
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
             ARCHS=arm64 \
             MARKETING_VERSION="$VERSION" \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
       - name: Write ExportOptions.plist
         run: |
@@ -204,17 +286,53 @@ jobs:
           echo "SHA256=$SHA" >> "$GITHUB_OUTPUT"
           echo "SHA256: $SHA"
 
-      - name: Create GitHub Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      # Only for a call from CI. A tag made with GITHUB_TOKEN starts no other
+      # workflow, so this run is the only release of it. The tag already at
+      # this commit is a re-run after a failed publish; at another commit it is
+      # an error, never moved.
+      - name: Create the tag at the tested commit
+        if: needs.notes.outputs.called == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$DMG_PATH" \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file "release-notes/$GITHUB_REF_NAME.md"
+          set -euo pipefail
+          at="$(bash scripts/release-check.sh tag-commit "$TAG")"
+          if [ -n "$at" ]; then
+            if [ "$at" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG already points at $at, not at the tested commit $GITHUB_SHA"
+              exit 1
+            fi
+            echo "release: $TAG already points at $GITHUB_SHA"
+            exit 0
+          fi
+          object="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags" \
+            -f tag="$TAG" -f message="$TAG" -f object="$GITHUB_SHA" -f type=commit \
+            --jq .sha)"
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/$TAG" -f sha="$object" > /dev/null
+          echo "release: tagged $GITHUB_SHA as $TAG"
+
+      - name: Create GitHub Release
+        if: needs.notes.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A re-run after a later step failed finds the release already there.
+        # The DMG is rebuilt (a new signature, a new SHA), so it replaces the
+        # old one and the tap below gets the matching sha256.
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "release: $TAG exists, replacing its DMG"
+            gh release upload "$TAG" "$DMG_PATH" --clobber
+          else
+            gh release create "$TAG" "$DMG_PATH" \
+              --verify-tag \
+              --title "$TAG" \
+              --notes-file "release-notes/$TAG.md"
+          fi
 
       - name: Update Homebrew tap
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        if: needs.notes.outputs.publish == 'true'
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
@@ -261,11 +379,11 @@ jobs:
           git push
 
       - name: Rehearsal summary
-        if: github.event_name == 'workflow_dispatch'
+        if: needs.notes.outputs.publish != 'true'
         env:
           SHA256: ${{ steps.sha.outputs.SHA256 }}
         run: |
-          msg="Rehearsal ok: ${VERSION}, DMG ${DMG_NAME}, sha256 ${SHA256}. Push the tag to publish."
+          msg="Rehearsal ok: ${VERSION}, DMG ${DMG_NAME}, sha256 ${SHA256}. Merge the release pull request to publish."
           echo "$msg"
           echo "$msg" >> "$GITHUB_STEP_SUMMARY"
 
