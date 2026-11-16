@@ -39,7 +39,73 @@ jobs:
       - name: Test the ingest script
         run: bash scripts/test-ingest-roger.sh
 
+  # Test once. The main ruleset requires a pull request to be up to date with
+  # main before it merges, so the merge commit on main has the tree the pull
+  # request's run already tested. On a push to main this looks for the proof
+  # `ci-passed` uploads on a green pull request run (artifact
+  # tested-tree-<tree>). Found: the build job builds and checks the bundle but
+  # skips the tests. Not found, or any error: the tests run.
+  tested:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tested: ${{ steps.lookup.outputs.tested }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Only artifacts of runs whose head is in this repository count: a fork's
+      # pull request runs its own copy of this file and could upload any name.
+      - name: Look for a green pull request run of this tree
+        id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REPO_ID: ${{ github.repository_id }}
+        run: |
+          # Every failure in here has to end in tested=false and exit 0.
+          set +e
+          set -u
+
+          run_the_tests() {
+            echo "tested: $1, so the tests run."
+            echo "tested=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          case "$REPO_ID" in
+            ''|*[!0-9]*) run_the_tests "the repository id '$REPO_ID' is not a number" ;;
+          esac
+
+          if ! tree=$(git rev-parse 'HEAD^{tree}'); then
+            run_the_tests "git could not name the tree of HEAD"
+          fi
+          case "$tree" in
+            ''|*[!0-9a-f]*) run_the_tests "'$tree' is not a tree sha" ;;
+          esac
+
+          name="tested-tree-$tree"
+          echo "tested: looking for the artifact $name"
+          if ! runs=$(gh api "repos/$REPO/actions/artifacts?name=$name&per_page=100" \
+            --jq "[.artifacts[] | select(.name == \"$name\" and .expired == false and .workflow_run.repository_id == $REPO_ID and .workflow_run.head_repository_id == $REPO_ID) | .workflow_run.id] | unique | map(tostring) | join(\" \")"); then
+            run_the_tests "the artifact lookup for $name failed"
+          fi
+          if [ -z "$runs" ]; then
+            echo "::notice title=tree skip missed::no green pull request run of the tree $tree. Likely the pull request was not up to date with main when it merged, or this was a direct push."
+            run_the_tests "no pull request run left an unexpired $name"
+          fi
+
+          echo "tested: the pull request run(s) $runs passed on the tree $tree, so the tests are skipped."
+          echo "tested=true" >>"$GITHUB_OUTPUT"
+
   build:
+    needs: tested
+    # `tested` is skipped on pull requests; build runs anyway.
+    if: ${{ !cancelled() }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,6 +125,7 @@ jobs:
             ARCHS=arm64
 
       - name: Test
+        if: ${{ needs.tested.outputs.tested != 'true' }}
         run: |
           xcodebuild test -project Roger/Roger.xcodeproj \
             -scheme Roger \
@@ -69,3 +136,97 @@ jobs:
 
       - name: Check app bundle
         run: bash scripts/bundle-check.sh build/Roger.app
+
+  # The one required check of the main ruleset. Green when every job passed
+  # (`tested` may be skipped, on a pull request). On a pull request it also
+  # uploads the proof that this tree passed, which the push to main reads.
+  ci-passed:
+    needs: [lint, version-pins, tested, build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "  \(.value.result)  \(.key)"' <<<"$RESULTS"
+          bad=$(jq -r 'to_entries[] | select(.value.result != "success" and !(.key == "tested" and .value.result == "skipped")) | "\(.key): \(.value.result)"' <<<"$RESULTS")
+          if [ -n "$bad" ]; then
+            echo "::error::not every job passed: $(tr '\n' ' ' <<<"$bad")"
+            exit 1
+          fi
+          echo "ci-passed: every job passed"
+
+      # The commit every job above checked out: refs/pull/N/merge at github.sha.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          persist-credentials: false
+
+      - name: Name the tested tree
+        id: tree
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "ci-passed: every job passed on the tree $tree (commit $GITHUB_SHA)"
+          echo "tree=$tree" >>"$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/tested-tree"
+          printf 'tree %s\ncommit %s\nrun %s\n' "$tree" "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+            >"$RUNNER_TEMP/tested-tree/tested-tree.txt"
+
+      # A re-run of this job uploads the same name again, hence overwrite.
+      - name: Upload the proof
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-tree-${{ steps.tree.outputs.tree }}
+          path: ${{ runner.temp }}/tested-tree/tested-tree.txt
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
+
+  # Release on merge. The last pull request of a version bumps
+  # MARKETING_VERSION and adds release-notes/v<version>.md. Once that merge
+  # passes `ci-passed` on main, scripts/release-check.sh decides: a version
+  # that is already tagged does nothing, a new version releases.
+  release-check:
+    needs: ci-passed
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci-passed.result == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Is this version new
+        id: check
+        run: bash scripts/release-check.sh
+
+  # release.yml, called directly: a tag created with GITHUB_TOKEN starts no
+  # other workflow, so the tag trigger would never fire. release.yml creates
+  # the tag at this commit. If the release fails (for example notarization),
+  # re-run this workflow run: the tag is still missing, so it releases again.
+  release:
+    needs: release-check
+    if: ${{ needs.release-check.outputs.release == 'true' }}
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    # actionlint does not parse the self-repository syntax `$/` yet.
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]
+    with:
+      tag: ${{ needs.release-check.outputs.tag }}
+    secrets:
+      DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+      DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+      TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
