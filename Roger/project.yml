@@ -9,8 +9,9 @@ options:
 packages:
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
-    from: "0.17.7"
-    traits: []
+    from: "0.18.3"
+    # Only the diarizer: no NeMo text processing and no TTS.
+    traits: ["Diarizer"]
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts.git
     from: "3.1.0"
@@ -40,7 +41,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jordiboehme.roger
-        MARKETING_VERSION: "0.27.1"
+        MARKETING_VERSION: "0.27.2"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_FILE: Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/Roger.entitlements
