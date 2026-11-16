@@ -316,11 +316,20 @@ jobs:
         if: needs.notes.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        # A re-run after a later step failed finds the release already there.
+        # The DMG is rebuilt (a new signature, a new SHA), so it replaces the
+        # old one and the tap below gets the matching sha256.
         run: |
-          gh release create "$TAG" "$DMG_PATH" \
-            --verify-tag \
-            --title "$TAG" \
-            --notes-file "release-notes/$TAG.md"
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "release: $TAG exists, replacing its DMG"
+            gh release upload "$TAG" "$DMG_PATH" --clobber
+          else
+            gh release create "$TAG" "$DMG_PATH" \
+              --verify-tag \
+              --title "$TAG" \
+              --notes-file "release-notes/$TAG.md"
+          fi
 
       - name: Update Homebrew tap
         if: needs.notes.outputs.publish == 'true'
